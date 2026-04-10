@@ -8,7 +8,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for HadronDetector — particle combination mechanic.
+ * Tests for HadronDetector — gluon-bridge particle combination mechanic.
  */
 class HadronDetectorTest {
 
@@ -21,110 +21,137 @@ class HadronDetectorTest {
         detector = new HadronDetector();
     }
 
-    // ==================== PROTON TESTS ====================
+    // ==================== PION TESTS (simplest: 1 top + 1 bottom + 1 gluon) ====================
 
     @Test
-    void detectsProtonFromTwoTopOneBottom() {
-        // Place 2 top quarks + 1 bottom quark in a connected line
-        board.setCell(3, 0, Piece.TOP_QUARK_R);
-        board.setCell(4, 0, Piece.TOP_QUARK_G);
-        board.setCell(5, 0, Piece.BOTTOM_QUARK_R);
-
-        // Detect using last placed piece at (5,0)
-        List<Hadron> hadrons = detector.detect(board, Piece.BOTTOM_QUARK_R, 0, 3, 1);
-        // The detect method searches around placed cells, so we need the
-        // right parameters. Let's use a simpler approach:
-        // Reset and use direct placement coordinates
-        board = new Board();
-        board.setCell(3, 0, Piece.TOP_QUARK_R);
-        board.setCell(4, 0, Piece.TOP_QUARK_G);
-
-        // Place a bottom quark adjacent
-        board.setCell(4, 1, Piece.BOTTOM_QUARK_R);
-
-        // Simulate detect from a piece that placed the bottom quark
-        // Use Piece.BOTTOM_QUARK_R with J-shape, rotation 0, at col 3 row 1
-        // But for simplicity, just directly test with the method
-        hadrons = detectNearCell(board, 4, 1);
-
-        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PROTON),
-                "Should detect a proton from 2 top + 1 bottom quark");
-    }
-
-    @Test
-    void detectsNeutronFromOneTopTwoBottom() {
-        board.setCell(3, 0, Piece.TOP_QUARK_R);
-        board.setCell(4, 0, Piece.BOTTOM_QUARK_R);
-        board.setCell(4, 1, Piece.BOTTOM_QUARK_G);
-
-        List<Hadron> hadrons = detectNearCell(board, 4, 1);
-        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.NEUTRON),
-                "Should detect a neutron from 1 top + 2 bottom quarks");
-    }
-
-    // ==================== PION TESTS ====================
-
-    @Test
-    void detectsPionPlusFromTopQuarkAndGluon() {
-        board.setCell(5, 0, Piece.TOP_QUARK_R);
-        board.setCell(5, 1, Piece.GLUON);
-
-        List<Hadron> hadrons = detectNearCell(board, 5, 1);
-        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION_PLUS),
-                "Should detect π+ from top quark + gluon");
-    }
-
-    @Test
-    void detectsPionMinusFromBottomQuarkAndGluon() {
-        board.setCell(5, 0, Piece.BOTTOM_QUARK_R);
-        board.setCell(5, 1, Piece.GLUON);
-
-        List<Hadron> hadrons = detectNearCell(board, 5, 1);
-        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION_MINUS),
-                "Should detect π- from bottom quark + gluon");
-    }
-
-    @Test
-    void detectsPionZeroFromTwoSameQuarksAndGluon() {
-        // Gluon in center, two top quarks on sides
-        board.setCell(3, 0, Piece.TOP_QUARK_R);
+    void detectsPionWhenQuarksLinkedByGluon() {
+        // top_quark - gluon - bottom_quark (in a line)
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
         board.setCell(4, 0, Piece.GLUON);
-        board.setCell(5, 0, Piece.TOP_QUARK_G);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
 
         List<Hadron> hadrons = detectNearCell(board, 4, 0);
-        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION_ZERO),
-                "Should detect π0 from 2 top quarks + gluon");
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
+                "Should detect a pion from top quark + gluon + bottom quark");
     }
 
     @Test
-    void detectsPionZeroFromTwoBottomQuarksAndGluon() {
-        board.setCell(3, 0, Piece.BOTTOM_QUARK_R);
-        board.setCell(4, 0, Piece.GLUON);
-        board.setCell(5, 0, Piece.BOTTOM_QUARK_G);
+    void noPionWithoutGluonBridge() {
+        // Two quarks adjacent but NO gluon bridge → no hadron
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.BOTTOM_QUARK_A);
 
         List<Hadron> hadrons = detectNearCell(board, 4, 0);
-        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION_ZERO),
-                "Should detect π0 from 2 bottom quarks + gluon");
+        assertTrue(hadrons.isEmpty(),
+                "Quarks touching without gluon should NOT form a pion");
     }
 
-    // ==================== NO DETECTION TESTS ====================
-
     @Test
-    void noHadronFromOnlyTopQuarks() {
-        board.setCell(3, 0, Piece.TOP_QUARK_R);
-        board.setCell(4, 0, Piece.TOP_QUARK_G);
+    void noPionFromTwoSameQuarksAndGluon() {
+        // 2 top quarks + 1 gluon → pion needs 1 top + 1 bottom
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.GLUON);
         board.setCell(5, 0, Piece.TOP_QUARK_B);
 
         List<Hadron> hadrons = detectNearCell(board, 4, 0);
-        // 3 top quarks doesn't match any recipe (proton needs 2t+1b)
-        assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.PROTON),
-                "3 top quarks should not form a proton");
+        assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.PION),
+                "2 top quarks + gluon should NOT form a pion");
     }
 
     @Test
+    void pionWithVerticalArrangement() {
+        // Vertical: top at (5,0), gluon at (5,1), bottom at (5,2)
+        board.setCell(5, 0, Piece.TOP_QUARK_A);
+        board.setCell(5, 1, Piece.GLUON);
+        board.setCell(5, 2, Piece.BOTTOM_QUARK_B);
+
+        List<Hadron> hadrons = detectNearCell(board, 5, 1);
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
+                "Vertical quark-gluon-quark should form a pion");
+    }
+
+    // ==================== PROTON TESTS (2 top + 1 bottom + 2 gluons) ====================
+
+    @Test
+    void detectsProtonWithGluonBridges() {
+        // Layout: quarks around a connected gluon pair
+        //   top(3,1)   top(4,1)
+        //   gluon(3,0) gluon(4,0)
+        //              bottom(5,0)
+        board.setCell(3, 0, Piece.GLUON);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(3, 1, Piece.TOP_QUARK_A);
+        board.setCell(4, 1, Piece.TOP_QUARK_B);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
+
+        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PROTON),
+                "Should detect proton from 2 top + 1 bottom + 2 connected gluons");
+    }
+
+    @Test
+    void noProtonWithoutEnoughGluons() {
+        // 2 top + 1 bottom + only 1 gluon → not enough for proton
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
+        board.setCell(6, 0, Piece.TOP_QUARK_B);
+
+        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        // Should form a pion (1t+1b+1g) but NOT a proton
+        assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.PROTON),
+                "Should not form proton with only 1 gluon");
+    }
+
+    @Test
+    void noProtonWithoutGluons() {
+        // 2 top + 1 bottom adjacent, NO gluons at all
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.TOP_QUARK_B);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
+
+        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        assertTrue(hadrons.isEmpty(),
+                "Quarks without gluon bridges should not form any hadron");
+    }
+
+    // ==================== NEUTRON TESTS (1 top + 2 bottom + 2 gluons) ====================
+
+    @Test
+    void detectsNeutronWithGluonBridges() {
+        // Layout: quarks around a connected gluon pair
+        //   bottom(3,1)  top(4,1)
+        //   gluon(3,0)   gluon(4,0)
+        //                bottom(5,0)
+        board.setCell(3, 0, Piece.GLUON);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(3, 1, Piece.BOTTOM_QUARK_A);
+        board.setCell(4, 1, Piece.TOP_QUARK_A);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_B);
+
+        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.NEUTRON),
+                "Should detect neutron from 1 top + 2 bottom + 2 connected gluons");
+    }
+
+    @Test
+    void noNeutronWithOnly1Gluon() {
+        // 1 top + 2 bottom + 1 gluon → pion possible, not neutron
+        board.setCell(3, 0, Piece.BOTTOM_QUARK_A);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(5, 0, Piece.TOP_QUARK_A);
+        board.setCell(6, 0, Piece.BOTTOM_QUARK_B);
+
+        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.NEUTRON),
+                "Should not form neutron with only 1 gluon");
+    }
+
+    // ==================== DISCONNECTED TESTS ====================
+
+    @Test
     void noHadronFromDisconnectedPieces() {
-        // Top quark at (0,0) and bottom quark at (9,0) — not adjacent
-        board.setCell(0, 0, Piece.TOP_QUARK_R);
+        board.setCell(0, 0, Piece.TOP_QUARK_A);
         board.setCell(9, 0, Piece.GLUON);
 
         List<Hadron> hadrons = detectNearCell(board, 9, 0);
@@ -132,49 +159,90 @@ class HadronDetectorTest {
                 "Disconnected pieces should not form hadrons");
     }
 
+    @Test
+    void noHadronFromGluonOnly() {
+        // Gluons alone don't form anything
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(5, 0, Piece.GLUON);
+
+        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        assertTrue(hadrons.isEmpty(),
+                "Gluons alone should not form hadrons");
+    }
+
     // ==================== CELL CONSUMPTION TESTS ====================
 
     @Test
     void consumedCellsAreCleared() {
-        board.setCell(5, 0, Piece.TOP_QUARK_R);
-        board.setCell(5, 1, Piece.GLUON);
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
 
-        detectNearCell(board, 5, 1);
+        detectNearCell(board, 4, 0);
 
-        // The cells used for the pion should be cleared
-        assertNull(board.getCell(5, 0), "Top quark cell should be consumed");
-        assertNull(board.getCell(5, 1), "Gluon cell should be consumed");
+        assertNull(board.getCell(3, 0), "Top quark cell should be consumed");
+        assertNull(board.getCell(4, 0), "Gluon cell should be consumed");
+        assertNull(board.getCell(5, 0), "Bottom quark cell should be consumed");
     }
 
     @Test
     void gravityAppliesAfterConsumption() {
-        // Place particles: gluon at (5,0), top quark at (5,1), and something at (5,2)
-        board.setCell(5, 0, Piece.GLUON);
-        board.setCell(5, 1, Piece.TOP_QUARK_R);
-        board.setCell(5, 2, Piece.BOTTOM_QUARK_R);
+        // Layout: gluon pair with quarks, plus an uninvolved piece above
+        // Row 0: TOP_QUARK_A(3,0), GLUON(4,0), BOTTOM_QUARK_A(5,0)
+        // Row 1: unrelated piece at (3,1)
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
+        board.setCell(3, 1, Piece.BOTTOM_QUARK_B); // sitting above top quark
 
-        // Detect near the gluon — should form pion+ from gluon(5,0) + top(5,1)
-        detectNearCell(board, 5, 0);
+        // Detect pion from gluon at (4,0) — consumes (3,0), (4,0), (5,0) — err,
+        // actually the gluon group from (4,0) connects top(3,0) and bottom(5,0).
+        // Pion will consume 1 top + 1 bottom + 1 gluon = (3,0) + (5,0) + (4,0)
+        detectNearCell(board, 4, 0);
 
-        // After pion+ consumes (5,0) and (5,1), the bottom quark at (5,2) should drop
-        // It should now be at row 0 (the lowest available position)
-        assertNotNull(board.getCell(5, 0), "Remaining piece should drop down");
-        assertEquals(Piece.BOTTOM_QUARK_R, board.getCell(5, 0));
-        assertNull(board.getCell(5, 2), "Original position should be empty after gravity");
+        // After pion consumes row 0 cells under (3,0), BOTTOM_QUARK_B at (3,1) should drop to (3,0)
+        assertEquals(Piece.BOTTOM_QUARK_B, board.getCell(3, 0),
+                "Remaining piece should drop down after gravity");
+        assertNull(board.getCell(3, 1),
+                "Original position should be empty after gravity");
+    }
+
+    // ==================== GLUON-BRIDGE SPECIFIC TESTS ====================
+
+    @Test
+    void quarksLinkedThroughMultipleGluons() {
+        // top - gluon - gluon - bottom → gluon chain connects them
+        board.setCell(2, 0, Piece.TOP_QUARK_A);
+        board.setCell(3, 0, Piece.GLUON);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
+
+        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
+                "Quarks linked through gluon chain should form a pion");
+    }
+
+    @Test
+    void lShapedGluonBridge() {
+        // Gluon at (4,0) and (4,1) forming an L
+        // Top quark at (3,0) touches gluon at (4,0)
+        // Bottom quark at (5,1) touches gluon at (4,1)  (wait, that's adjacent to (4,1))
+        // Actually: (4,1) is above (4,0)
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(4, 1, Piece.GLUON);
+        board.setCell(5, 1, Piece.BOTTOM_QUARK_A);
+
+        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
+                "L-shaped gluon bridge should connect quarks for pion");
     }
 
     // ==================== HELPER ====================
 
-    /**
-     * Helper: runs detect simulating a piece placed near the given cell.
-     * Uses a single-cell "fake" placement to trigger area scanning.
-     */
     private List<Hadron> detectNearCell(Board board, int col, int row) {
-        // Use the piece at the given cell for detection context
         Piece p = board.getCell(col, row);
-        if (p == null) p = Piece.GLUON; // fallback
-
-        // Create a minimal placement context that includes this cell
+        if (p == null) p = Piece.GLUON;
         return detector.detect(board, p, 0, col, row);
     }
 }

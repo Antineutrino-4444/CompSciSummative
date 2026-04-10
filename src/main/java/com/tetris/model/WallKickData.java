@@ -1,100 +1,61 @@
 package com.tetris.model;
 
 /**
- * Provides the Super Rotation System (SRS) wall kick offset data
- * as defined in the Tetris Guideline.
+ * Provides wall kick offset data for piece rotations.
  *
- * <p>When a piece cannot rotate in place, the game tries up to 5 alternative
- * positions (kick tests) to see if the rotation can succeed. The offsets
- * differ between normal pieces (J, L, S, T, Z) and the I-piece.</p>
- *
- * <p>Each rotation transition (e.g. 0→R, R→2, etc.) has a specific set of
- * 5 offset tests. The game tries them in order; if any position is valid
- * (no collision), the rotation succeeds at that offset.</p>
- *
- * <h3>Rotation State Naming</h3>
- * <ul>
- *   <li>0 = Spawn state</li>
- *   <li>R = Clockwise rotation from spawn</li>
- *   <li>2 = 180° rotation from spawn</li>
- *   <li>L = Counter-clockwise rotation from spawn</li>
- * </ul>
+ * <p>Since the new particle pieces are smaller than standard tetrominoes
+ * (3-cell trominoes and 1-cell gluons), the wall kicks are simplified.
+ * Trominoes use a small set of kick tests within a 2×2 or 3×1 bounding box.
+ * The gluon (single cell) doesn't rotate.</p>
  */
 public final class WallKickData {
 
-    private WallKickData() {
-        // Utility class
-    }
+    private WallKickData() {}
 
     /**
-     * Wall kick offsets for J, L, S, T, Z pieces.
-     *
-     * <p>Indexed as {@code JLSTZ_KICKS[fromRotation][toRotation][testIndex]},
-     * where each entry is {dx, dy} (column offset, row offset).
-     * Positive dx = right, positive dy = up.</p>
-     *
-     * <p>The 8 possible rotation transitions and their 5 tests each:</p>
+     * Kick data for L/J-tromino pieces (2×2 bounding box).
+     * Small pieces need fewer kicks — just try offsets to keep the piece in bounds.
      */
-    private static final int[][][][] JLSTZ_KICKS = new int[4][4][][];
+    private static final int[][][][] TROMINO_LJ_KICKS = new int[4][4][][];
 
     /**
-     * Wall kick offsets for the I-piece.
-     *
-     * <p>Same indexing as {@link #JLSTZ_KICKS}. The I-piece has different
-     * offsets because of its 4×4 bounding box.</p>
+     * Kick data for line-tromino pieces (3×1 or 1×3 bounding box).
      */
-    private static final int[][][][] I_KICKS = new int[4][4][][];
+    private static final int[][][][] TROMINO_LINE_KICKS = new int[4][4][][];
 
     static {
-        // JLSTZ wall kick data (from Tetris Guideline / SRS specification)
-        // 0→R
-        JLSTZ_KICKS[0][1] = new int[][] {{0,0},{-1,0},{-1,1},{0,-2},{-1,-2}};
-        // R→0
-        JLSTZ_KICKS[1][0] = new int[][] {{0,0},{1,0},{1,-1},{0,2},{1,2}};
-        // R→2
-        JLSTZ_KICKS[1][2] = new int[][] {{0,0},{1,0},{1,-1},{0,2},{1,2}};
-        // 2→R
-        JLSTZ_KICKS[2][1] = new int[][] {{0,0},{-1,0},{-1,1},{0,-2},{-1,-2}};
-        // 2→L
-        JLSTZ_KICKS[2][3] = new int[][] {{0,0},{1,0},{1,1},{0,-2},{1,-2}};
-        // L→2
-        JLSTZ_KICKS[3][2] = new int[][] {{0,0},{-1,0},{-1,-1},{0,2},{-1,2}};
-        // L→0
-        JLSTZ_KICKS[3][0] = new int[][] {{0,0},{-1,0},{-1,-1},{0,2},{-1,2}};
-        // 0→L
-        JLSTZ_KICKS[0][3] = new int[][] {{0,0},{1,0},{1,1},{0,-2},{1,-2}};
+        // L/J tromino kicks (2×2 bounding box)
+        // These are lightweight — 3 tests each
+        for (int from = 0; from < 4; from++) {
+            for (int to = 0; to < 4; to++) {
+                if (from != to) {
+                    TROMINO_LJ_KICKS[from][to] = new int[][] {
+                        {0, 0}, {-1, 0}, {1, 0}, {0, 1}, {0, -1}
+                    };
+                }
+            }
+        }
 
-        // I-piece wall kick data
-        // 0→R
-        I_KICKS[0][1] = new int[][] {{0,0},{-2,0},{1,0},{-2,-1},{1,2}};
-        // R→0
-        I_KICKS[1][0] = new int[][] {{0,0},{2,0},{-1,0},{2,1},{-1,-2}};
-        // R→2
-        I_KICKS[1][2] = new int[][] {{0,0},{-1,0},{2,0},{-1,2},{2,-1}};
-        // 2→R
-        I_KICKS[2][1] = new int[][] {{0,0},{1,0},{-2,0},{1,-2},{-2,1}};
-        // 2→L
-        I_KICKS[2][3] = new int[][] {{0,0},{2,0},{-1,0},{2,1},{-1,-2}};
-        // L→2
-        I_KICKS[3][2] = new int[][] {{0,0},{-2,0},{1,0},{-2,-1},{1,2}};
-        // L→0
-        I_KICKS[3][0] = new int[][] {{0,0},{1,0},{-2,0},{1,-2},{-2,1}};
-        // 0→L
-        I_KICKS[0][3] = new int[][] {{0,0},{-1,0},{2,0},{-1,2},{2,-1}};
+        // Line tromino kicks (3×1 ↔ 1×3)
+        // Horizontal to vertical: shift to keep in play area
+        for (int from = 0; from < 4; from++) {
+            for (int to = 0; to < 4; to++) {
+                if (from != to) {
+                    TROMINO_LINE_KICKS[from][to] = new int[][] {
+                        {0, 0}, {-1, 0}, {1, 0}, {-1, 1}, {1, 1}, {0, -1}
+                    };
+                }
+            }
+        }
     }
 
     /**
      * Gets the wall kick offsets for a rotation transition.
      *
-     * <p>Uses the I-piece kick data for Bottom Quark Blue (the I-shape),
-     * and JLSTZ data for all other quarks (T, S, Z, J, L shapes).
-     * Gluon (O-shape) doesn't rotate.</p>
-     *
      * @param piece        the piece being rotated
      * @param fromRotation the current rotation state (0-3)
      * @param toRotation   the target rotation state (0-3)
-     * @return array of 5 kick tests, each as {dx, dy}. Returns null if no data
-     *         exists (e.g. same-state rotation).
+     * @return array of kick tests, each as {dx, dy}, or null if no data
      */
     public static int[][] getKicks(Piece piece, int fromRotation, int toRotation) {
         fromRotation &= 3;
@@ -102,15 +63,18 @@ public final class WallKickData {
         if (fromRotation == toRotation) {
             return new int[][] {{0, 0}};
         }
-        // Bottom Quark Blue uses 4×4 bounding box (I-piece equivalent)
-        if (piece == Piece.BOTTOM_QUARK_B) {
-            return I_KICKS[fromRotation][toRotation];
-        }
-        // Gluon (O-shape) doesn't rotate
+
+        // Gluon (single cell) doesn't need rotation
         if (piece == Piece.GLUON) {
             return new int[][] {{0, 0}};
         }
-        // All other quarks use JLSTZ kicks
-        return JLSTZ_KICKS[fromRotation][toRotation];
+
+        // Line trominoes (TOP_QUARK_B, BOTTOM_QUARK_B) — 3×1 / 1×3
+        if (piece == Piece.TOP_QUARK_B || piece == Piece.BOTTOM_QUARK_B) {
+            return TROMINO_LINE_KICKS[fromRotation][toRotation];
+        }
+
+        // L/J trominoes (TOP_QUARK_A, BOTTOM_QUARK_A) — 2×2
+        return TROMINO_LJ_KICKS[fromRotation][toRotation];
     }
 }

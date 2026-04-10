@@ -10,12 +10,24 @@ import static org.junit.jupiter.api.Assertions.*;
 class PieceTest {
 
     @Test
-    void allPiecesHaveFourCells() {
+    void allPiecesHaveCorrectCellCounts() {
+        // Top/Bottom quark A: 3 cells (L-tromino)
+        assertEquals(3, Piece.TOP_QUARK_A.getCellCount());
+        assertEquals(3, Piece.BOTTOM_QUARK_A.getCellCount());
+        // Top/Bottom quark B: 3 cells (line tromino)
+        assertEquals(3, Piece.TOP_QUARK_B.getCellCount());
+        assertEquals(3, Piece.BOTTOM_QUARK_B.getCellCount());
+        // Gluon: 1 cell
+        assertEquals(1, Piece.GLUON.getCellCount());
+    }
+
+    @Test
+    void cellCountsMatchCellsArray() {
         for (Piece piece : Piece.values()) {
             for (int rot = 0; rot < 4; rot++) {
                 int[][] cells = piece.getCells(rot);
-                assertEquals(4, cells.length,
-                        piece.name() + " rotation " + rot + " should have 4 cells");
+                assertEquals(piece.getCellCount(), cells.length,
+                        piece.name() + " rotation " + rot + " cell count mismatch");
             }
         }
     }
@@ -31,33 +43,29 @@ class PieceTest {
 
     @Test
     void boundingBoxSizes() {
-        // Bottom Quark Blue (I-equivalent) has 4×4
-        assertEquals(4, Piece.BOTTOM_QUARK_B.getBoundingBox());
-        // All others have 3×3
-        assertEquals(3, Piece.TOP_QUARK_R.getBoundingBox());
-        assertEquals(3, Piece.TOP_QUARK_G.getBoundingBox());
+        assertEquals(2, Piece.TOP_QUARK_A.getBoundingBox());
         assertEquals(3, Piece.TOP_QUARK_B.getBoundingBox());
-        assertEquals(3, Piece.BOTTOM_QUARK_R.getBoundingBox());
-        assertEquals(3, Piece.BOTTOM_QUARK_G.getBoundingBox());
-        assertEquals(3, Piece.GLUON.getBoundingBox());
+        assertEquals(2, Piece.BOTTOM_QUARK_A.getBoundingBox());
+        assertEquals(3, Piece.BOTTOM_QUARK_B.getBoundingBox());
+        assertEquals(1, Piece.GLUON.getBoundingBox());
     }
 
     @Test
     void topQuarksAreTopType() {
-        assertTrue(Piece.TOP_QUARK_R.isTopQuark());
-        assertTrue(Piece.TOP_QUARK_G.isTopQuark());
+        assertTrue(Piece.TOP_QUARK_A.isTopQuark());
         assertTrue(Piece.TOP_QUARK_B.isTopQuark());
-        assertFalse(Piece.TOP_QUARK_R.isBottomQuark());
-        assertFalse(Piece.TOP_QUARK_R.isGluon());
+        assertFalse(Piece.TOP_QUARK_A.isBottomQuark());
+        assertFalse(Piece.TOP_QUARK_A.isGluon());
+        assertTrue(Piece.TOP_QUARK_A.isQuark());
     }
 
     @Test
     void bottomQuarksAreBottomType() {
-        assertTrue(Piece.BOTTOM_QUARK_R.isBottomQuark());
-        assertTrue(Piece.BOTTOM_QUARK_G.isBottomQuark());
+        assertTrue(Piece.BOTTOM_QUARK_A.isBottomQuark());
         assertTrue(Piece.BOTTOM_QUARK_B.isBottomQuark());
-        assertFalse(Piece.BOTTOM_QUARK_R.isTopQuark());
-        assertFalse(Piece.BOTTOM_QUARK_R.isGluon());
+        assertFalse(Piece.BOTTOM_QUARK_A.isTopQuark());
+        assertFalse(Piece.BOTTOM_QUARK_A.isGluon());
+        assertTrue(Piece.BOTTOM_QUARK_A.isQuark());
     }
 
     @Test
@@ -65,12 +73,13 @@ class PieceTest {
         assertTrue(Piece.GLUON.isGluon());
         assertFalse(Piece.GLUON.isTopQuark());
         assertFalse(Piece.GLUON.isBottomQuark());
+        assertFalse(Piece.GLUON.isQuark());
     }
 
     @Test
     void particleTypeEnum() {
-        assertEquals(Piece.ParticleType.TOP_QUARK, Piece.TOP_QUARK_R.getParticleType());
-        assertEquals(Piece.ParticleType.BOTTOM_QUARK, Piece.BOTTOM_QUARK_R.getParticleType());
+        assertEquals(Piece.ParticleType.TOP_QUARK, Piece.TOP_QUARK_A.getParticleType());
+        assertEquals(Piece.ParticleType.BOTTOM_QUARK, Piece.BOTTOM_QUARK_A.getParticleType());
         assertEquals(Piece.ParticleType.GLUON, Piece.GLUON.getParticleType());
     }
 
@@ -83,19 +92,19 @@ class PieceTest {
     }
 
     @Test
-    void allPiecesHavePixelArt() {
-        for (Piece piece : Piece.values()) {
-            String[] art = piece.getPixelArt();
-            assertNotNull(art);
-            assertEquals(4, art.length, piece.name() + " should have 4-row pixel art");
-        }
+    void quarkLabels() {
+        assertEquals("u", Piece.TOP_QUARK_A.getLabel());
+        assertEquals("u", Piece.TOP_QUARK_B.getLabel());
+        assertEquals("d", Piece.BOTTOM_QUARK_A.getLabel());
+        assertEquals("d", Piece.BOTTOM_QUARK_B.getLabel());
+        assertEquals("g", Piece.GLUON.getLabel());
     }
 
     @Test
     void allPiecesHaveSpawnColumns() {
         for (Piece piece : Piece.values()) {
-            assertEquals(3, piece.getSpawnColumn(),
-                    piece.name() + " should spawn at column 3");
+            assertEquals(4, piece.getSpawnColumn(),
+                    piece.name() + " should spawn at column 4");
         }
     }
 
@@ -108,7 +117,6 @@ class PieceTest {
 
     @Test
     void gluonDoesNotRotate() {
-        // All 4 rotation states should be identical for Gluon (O-equivalent)
         int[][] r0 = Piece.GLUON.getCells(0);
         for (int rot = 1; rot < 4; rot++) {
             int[][] rx = Piece.GLUON.getCells(rot);
@@ -118,15 +126,31 @@ class PieceTest {
 
     @Test
     void rotationWrapsAround() {
-        Piece piece = Piece.TOP_QUARK_R;
+        Piece piece = Piece.TOP_QUARK_A;
         assertArrayEquals(piece.getCells(0), piece.getCells(4));
         assertArrayEquals(piece.getCells(1), piece.getCells(5));
         assertArrayEquals(piece.getCells(3), piece.getCells(-1));
     }
 
     @Test
-    void sevenPieceTypes() {
-        assertEquals(7, Piece.values().length,
-                "Should have exactly 7 particle piece types");
+    void fivePieceTypes() {
+        assertEquals(5, Piece.values().length,
+                "Should have exactly 5 particle piece types");
+    }
+
+    @Test
+    void cellsAreWithinBoundingBox() {
+        for (Piece piece : Piece.values()) {
+            int bb = piece.getBoundingBox();
+            for (int rot = 0; rot < 4; rot++) {
+                int[][] cells = piece.getCells(rot);
+                for (int[] cell : cells) {
+                    assertTrue(cell[0] >= 0 && cell[0] < bb + 1,
+                            piece.name() + " rot " + rot + " col " + cell[0] + " out of bounds");
+                    assertTrue(cell[1] >= 0 && cell[1] < bb + 1,
+                            piece.name() + " rot " + rot + " row " + cell[1] + " out of bounds");
+                }
+            }
+        }
     }
 }

@@ -28,8 +28,7 @@ class GameStateTest {
 
     @Test
     void currentPieceIsAParticle() {
-        Piece p = state.getCurrentPiece();
-        assertNotNull(p.getParticleType());
+        assertNotNull(state.getCurrentPiece().getParticleType());
     }
 
     @Test
@@ -51,10 +50,7 @@ class GameStateTest {
 
     @Test
     void hardDrop() {
-        int startRow = state.getCurrentRow();
         state.hardDrop();
-        // After hard drop, a new piece should have spawned
-        // (or game over in extreme case)
         assertNotNull(state.getCurrentPiece());
     }
 
@@ -68,11 +64,10 @@ class GameStateTest {
 
     @Test
     void holdCanOnlyBeUsedOnce() {
-        Piece firstPiece = state.getCurrentPiece();
         state.hold();
         Piece secondPiece = state.getCurrentPiece();
         assertTrue(state.isHoldUsed());
-        state.hold(); // Should be blocked
+        state.hold();
         assertEquals(secondPiece, state.getCurrentPiece(),
                 "Second hold should be blocked");
     }
@@ -96,53 +91,37 @@ class GameStateTest {
 
     @Test
     void rotateCW() {
-        // Gluon doesn't rotate, but any quark should
-        // Keep trying pieces until we get a non-gluon
         GameState s = new GameState();
-        boolean foundRotation = false;
         for (int attempt = 0; attempt < 20; attempt++) {
             if (s.getCurrentPiece() != Piece.GLUON) {
                 int oldRot = s.getCurrentRotation();
                 boolean rotated = s.rotateCW();
                 if (rotated) {
                     assertEquals((oldRot + 1) & 3, s.getCurrentRotation());
-                    foundRotation = true;
                     break;
                 }
             }
             s = new GameState();
         }
-        // It's possible (but very unlikely) all 20 attempts got a gluon
-        // which is acceptable for a non-deterministic test
     }
 
     @Test
     void gluonDoesNotRotate() {
-        // Create state and keep trying until we get a gluon
-        // or test with a seeded randomizer — but we can just directly test
-        // via a new state where we force the piece
         GameState s = new GameState();
-        // This is a behavioral test — if the current piece is not a gluon,
-        // we can skip. Otherwise, rotation should fail.
         if (s.getCurrentPiece() == Piece.GLUON) {
             assertFalse(s.rotateCW());
             assertFalse(s.rotateCCW());
         }
-        // Also verify the rotation method rejects gluon
-        // (tested indirectly through WallKickData)
     }
 
     @Test
     void ghostRowIsAtOrBelowCurrent() {
-        int ghostRow = state.getGhostRow();
-        assertTrue(ghostRow <= state.getCurrentRow(),
-                "Ghost should be at or below current piece");
+        assertTrue(state.getGhostRow() <= state.getCurrentRow());
     }
 
     @Test
     void previewPiecesAvailable() {
-        List<Piece> preview = state.getPreviewPieces();
-        assertEquals(GameState.PREVIEW_COUNT, preview.size());
+        assertEquals(GameState.PREVIEW_COUNT, state.getPreviewPieces().size());
     }
 
     @Test
@@ -155,16 +134,14 @@ class GameStateTest {
     @Test
     void gravityMovesPieceDown() {
         int startRow = state.getCurrentRow();
-        // Update with enough time for gravity to apply (level 1 ≈ 1 second)
         state.update(1.1);
-        assertTrue(state.getCurrentRow() < startRow || state.isGameOver(),
-                "Gravity should move piece down after 1.1 seconds");
+        assertTrue(state.getCurrentRow() < startRow || state.isGameOver());
     }
 
     @Test
     void dasStartsMovement() {
         int startCol = state.getCurrentCol();
-        state.startDAS(1); // right
+        state.startDAS(1);
         assertEquals(startCol + 1, state.getCurrentCol());
         state.stopDAS(1);
     }
@@ -186,11 +163,10 @@ class GameStateTest {
 
     @Test
     void gameOverPreventsMoves() {
-        // Fill board to cause game over
         Board board = state.getBoard();
         for (int r = 18; r < Board.HEIGHT; r++) {
             for (int c = 0; c < Board.WIDTH; c++) {
-                board.setCell(c, r, Piece.TOP_QUARK_R);
+                board.setCell(c, r, Piece.TOP_QUARK_A);
             }
         }
         while (!state.isGameOver()) {

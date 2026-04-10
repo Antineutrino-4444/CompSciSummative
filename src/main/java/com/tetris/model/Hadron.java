@@ -1,139 +1,79 @@
 package com.tetris.model;
 
 /**
- * Represents a discovered hadron — a composite particle made from quarks.
+ * Represents a discovered hadron — a composite particle made from quarks bound by gluons.
  *
- * <p>In the Particle Tetris game, players build structures on the board that
- * match known hadron recipes. When a valid combination of quarks is detected
- * adjacent to each other, the hadron is "discovered" and added to the
- * collection.</p>
+ * <h3>Formation Mechanic</h3>
+ * <p>Hadrons form when the correct combination of quarks are connected through
+ * a network of gluon cells on the board. Simply placing quarks next to each other
+ * is NOT enough — they must be bridged by gluons.</p>
  *
- * <h3>Hadrons (for now: Top and Bottom quarks only)</h3>
+ * <h3>How it works</h3>
+ * <ol>
+ *   <li>Place quarks on the board</li>
+ *   <li>Place gluons between/adjacent to quarks to create bridges</li>
+ *   <li>When the correct quark recipe is connected through gluons, the hadron forms</li>
+ *   <li>All participating cells (quarks + gluons) are consumed</li>
+ * </ol>
+ *
+ * <h3>Recipes</h3>
  * <ul>
- *   <li><b>Proton</b> (uud) — 2 Top Quarks + 1 Bottom Quark in an L/triangle shape</li>
- *   <li><b>Neutron</b> (udd) — 1 Top Quark + 2 Bottom Quarks in an L/triangle shape</li>
- *   <li><b>Pion π+</b> (u d̄) — Top Quark + Gluon touching (up-type meson)</li>
- *   <li><b>Pion π−</b> (d ū) — Bottom Quark + Gluon touching (down-type meson)</li>
- *   <li><b>Pion π0</b> (uū/dd̄) — 2 same-type Quarks + Gluon in a row</li>
+ *   <li><b>Proton</b> (uud): 2 Top + 1 Bottom quark, connected through gluons</li>
+ *   <li><b>Neutron</b> (udd): 1 Top + 2 Bottom quark, connected through gluons</li>
+ *   <li><b>Pion π⁺</b>: 1 Top + 1 Bottom quark, connected through exactly 1 gluon</li>
  * </ul>
- *
- * <p>The particle names use simplified quark notation for educational purposes.</p>
  */
 public enum Hadron {
 
     /**
-     * Proton — made of 2 Top Quarks (up) and 1 Bottom Quark (down).
-     * The three quarks must form a connected 3-cell L-shape or line on the board.
-     * Recipe: any 3 connected cells with exactly 2 TOP_QUARK_* and 1 BOTTOM_QUARK_*.
+     * Proton — 2 Top Quarks + 1 Bottom Quark, all connected through gluons.
+     * Requires at least 2 gluon bridges in the connecting path.
      */
-    PROTON("Proton", "uud", "2 Top + 1 Bottom Quark",
-            new int[]{2, 1, 0}, // 2 top, 1 bottom, 0 gluon needed
-            0xFF4444,
-            new String[] {
-                "  ####  ",
-                " ##  ## ",
-                " ##  ## ",
-                " ###### ",
-                " ##     ",
-                " ##     ",
-                " ##     ",
-                "  ####  "
-            }),
+    PROTON("Proton", "uud", "2 Top + 1 Bottom, gluon-linked",
+            2, 1, 2, 0xFF4444),
 
     /**
-     * Neutron — made of 1 Top Quark (up) and 2 Bottom Quarks (down).
-     * Recipe: any 3 connected cells with exactly 1 TOP_QUARK_* and 2 BOTTOM_QUARK_*.
+     * Neutron — 1 Top Quark + 2 Bottom Quarks, all connected through gluons.
+     * Requires at least 2 gluon bridges in the connecting path.
      */
-    NEUTRON("Neutron", "udd", "1 Top + 2 Bottom Quark",
-            new int[]{1, 2, 0},
-            0x4444FF,
-            new String[] {
-                " ##  ## ",
-                " ### ## ",
-                " ###### ",
-                " ## ### ",
-                " ##  ## ",
-                " ##  ## ",
-                " ##  ## ",
-                " ##  ## "
-            }),
+    NEUTRON("Neutron", "udd", "1 Top + 2 Bottom, gluon-linked",
+            1, 2, 2, 0x4488FF),
 
     /**
-     * Pion π+ — a meson made of a Top Quark and a Gluon.
-     * Recipe: 1 TOP_QUARK_* cell adjacent to 1 GLUON cell.
+     * Pion — 1 Top Quark + 1 Bottom Quark, connected through exactly 1 gluon.
+     * The simplest hadron — a quark-antiquark pair mediated by a single gluon.
      */
-    PION_PLUS("Pion π⁺", "u + g", "Top Quark + Gluon",
-            new int[]{1, 0, 1},
-            0xFF8800,
-            new String[] {
-                "   ##   ",
-                "  ####  ",
-                " ###### ",
-                "   ##   ",
-                "   ##   ",
-                "   ##   ",
-                "   ##   ",
-                "   ##   "
-            }),
-
-    /**
-     * Pion π− — a meson made of a Bottom Quark and a Gluon.
-     * Recipe: 1 BOTTOM_QUARK_* cell adjacent to 1 GLUON cell.
-     */
-    PION_MINUS("Pion π⁻", "d + g", "Bottom Quark + Gluon",
-            new int[]{0, 1, 1},
-            0x4488FF,
-            new String[] {
-                "   ##   ",
-                "   ##   ",
-                "   ##   ",
-                "   ##   ",
-                "   ##   ",
-                " ###### ",
-                "  ####  ",
-                "   ##   "
-            }),
-
-    /**
-     * Pion π0 — a neutral meson. 2 quarks of same flavor + gluon in a line.
-     * Recipe: 2 TOP_QUARK_* (or 2 BOTTOM_QUARK_*) with a GLUON between them.
-     */
-    PION_ZERO("Pion π⁰", "q q̄ g", "2 Same Quarks + Gluon",
-            new int[]{2, 0, 1}, // special: also accepts {0, 2, 1}
-            0xCCCCCC,
-            new String[] {
-                "  ####  ",
-                " ##  ## ",
-                " ##  ## ",
-                " ##  ## ",
-                " ##  ## ",
-                " ##  ## ",
-                " ##  ## ",
-                "  ####  "
-            });
+    PION("Pion", "ud", "1 Top + 1 Bottom + 1 Gluon between",
+            1, 1, 1, 0xFFAA00);
 
     private final String displayName;
     private final String quarkNotation;
     private final String description;
-    private final int[] recipe; // [topQuarks, bottomQuarks, gluons]
+    private final int topQuarksNeeded;
+    private final int bottomQuarksNeeded;
+    private final int minGluons;
     private final int color;
-    private final String[] pixelArt; // 8×8 pixel art pattern (# = filled)
 
     Hadron(String displayName, String quarkNotation, String description,
-           int[] recipe, int color, String[] pixelArt) {
+           int topQuarksNeeded, int bottomQuarksNeeded, int minGluons, int color) {
         this.displayName = displayName;
         this.quarkNotation = quarkNotation;
         this.description = description;
-        this.recipe = recipe;
+        this.topQuarksNeeded = topQuarksNeeded;
+        this.bottomQuarksNeeded = bottomQuarksNeeded;
+        this.minGluons = minGluons;
         this.color = color;
-        this.pixelArt = pixelArt;
     }
 
     public String getDisplayName() { return displayName; }
     public String getQuarkNotation() { return quarkNotation; }
     public String getDescription() { return description; }
-    public int[] getRecipe() { return recipe; }
+    public int getTopQuarksNeeded() { return topQuarksNeeded; }
+    public int getBottomQuarksNeeded() { return bottomQuarksNeeded; }
+    public int getMinGluons() { return minGluons; }
     public int getColor() { return color; }
-    public String[] getPixelArt() { return pixelArt; }
     public String getColorHex() { return String.format("#%06X", color); }
+
+    /** Total quarks required for this hadron. */
+    public int getTotalQuarks() { return topQuarksNeeded + bottomQuarksNeeded; }
 }

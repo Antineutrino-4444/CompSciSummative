@@ -10,94 +10,88 @@ import java.util.Set;
 /**
  * Scans the board for valid hadron patterns after each piece locks.
  *
- * <h3>Detection Mechanic</h3>
- * <p>After a piece locks onto the board, the detector scans all cells belonging
- * to the just-placed piece and their neighbors to find connected groups of
- * particles that match a known hadron recipe.</p>
+ * <h3>Gluon-Bridge Detection</h3>
+ * <p>The key mechanic: quarks don't combine just by being adjacent. They must be
+ * connected through a network of <b>gluon cells</b>. A "gluon-linked group" is a
+ * connected component of cells where quarks are linked through gluon bridges.</p>
  *
- * <h3>How Hadrons Form</h3>
- * <p>A hadron is formed when the right combination of quarks and gluons are
- * <b>adjacent</b> (orthogonally connected — up/down/left/right, not diagonal)
- * on the board. When a valid combination is found:</p>
+ * <h3>Algorithm</h3>
  * <ol>
- *   <li>The hadron is recorded in the discovery log</li>
- *   <li>The participating cells are cleared from the board (consumed)</li>
- *   <li>Cells above drop down (gravity)</li>
+ *   <li>After a piece locks, find all gluon cells near the placed piece</li>
+ *   <li>For each gluon, BFS outward through adjacent gluons and quarks to find
+ *       the connected "gluon-linked group" (quarks must touch a gluon, not just
+ *       each other)</li>
+ *   <li>Count top quarks, bottom quarks, and gluons in each group</li>
+ *   <li>Check if any hadron recipe matches</li>
+ *   <li>Consume the minimum cells needed for the hadron</li>
  * </ol>
  *
- * <h3>Recipes</h3>
- * <ul>
- *   <li><b>Proton</b>: 3 connected cells — exactly 2 Top Quarks + 1 Bottom Quark</li>
- *   <li><b>Neutron</b>: 3 connected cells — exactly 1 Top Quark + 2 Bottom Quarks</li>
- *   <li><b>Pion π+</b>: 2 connected cells — 1 Top Quark + 1 Gluon</li>
- *   <li><b>Pion π−</b>: 2 connected cells — 1 Bottom Quark + 1 Gluon</li>
- *   <li><b>Pion π0</b>: 3 connected cells — 2 same-flavor Quarks + 1 Gluon in the middle</li>
- * </ul>
+ * <h3>What counts as "gluon-linked"</h3>
+ * <p>A quark is part of a gluon network if it is orthogonally adjacent to at least
+ * one gluon cell. Two quarks are gluon-linked if there exists a path of cells
+ * between them that passes through at least one gluon. Quark-to-quark adjacency
+ * WITHOUT an intervening gluon does NOT count.</p>
  */
 public class HadronDetector {
 
-    /** Orthogonal neighbor offsets: right, up, left, down. */
     private static final int[][] NEIGHBORS = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
 
     /**
-     * Scans the board for hadron patterns near the given piece placement.
+     * Scans the board for hadron formations near the placed piece.
      *
-     * <p>Returns a list of detected hadrons. For each detection, the participating
-     * cells are cleared from the board. Multiple hadrons can be detected from
-     * a single piece placement.</p>
-     *
-     * @param board the game board
-     * @param piece the piece that was just placed
+     * @param board    the game board
+     * @param piece    the piece that was just placed
      * @param rotation the rotation of the placed piece
-     * @param col the column of the placed piece
-     * @param row the row of the placed piece
+     * @param col      the column of the placed piece
+     * @param row      the row of the placed piece
      * @return list of hadrons detected (may be empty)
      */
     public List<Hadron> detect(Board board, Piece piece, int rotation, int col, int row) {
         List<Hadron> found = new ArrayList<>();
 
-        // Collect all cells belonging to the just-placed piece
-        Set<Long> pieceCells = new HashSet<>();
+        // Collect cells belonging to the just-placed piece and their neighbors
+        Set<Long> seedCells = new HashSet<>();
         int[][] cells = piece.getCells(rotation);
         for (int[] cell : cells) {
             int cx = col + cell[0];
             int cy = row - cell[1];
-            pieceCells.add(packCoord(cx, cy));
-        }
-
-        // Also include immediate neighbors of placed cells for detection
-        Set<Long> searchArea = new HashSet<>(pieceCells);
-        for (long packed : new HashSet<>(pieceCells)) {
-            int cx = unpackCol(packed);
-            int cy = unpackRow(packed);
+            seedCells.add(pack(cx, cy));
+            // Also add neighbors
             for (int[] n : NEIGHBORS) {
                 int nx = cx + n[0];
                 int ny = cy + n[1];
-                if (nx >= 0 && nx < Board.WIDTH && ny >= 0 && ny < Board.HEIGHT) {
-                    if (board.getCell(nx, ny) != null) {
-                        searchArea.add(packCoord(nx, ny));
-                    }
+                if (inBounds(nx, ny) && board.getCell(nx, ny) != null) {
+                    seedCells.add(pack(nx, ny));
                 }
             }
         }
 
-        // Try to find hadrons starting from each cell in the search area
-        Set<Long> consumed = new HashSet<>(); // Cells already used in a hadron
+        // Find gluon-linked groups starting from gluon cells in the seed area
+        Set<Long> visited = new HashSet<>();
+        Set<Long> allConsumed = new HashSet<>();
 
-        // Priority: larger hadrons first (Proton/Neutron/Pion0 = 3 cells, then Pion+/- = 2 cells)
-        // Check 3-cell hadrons first
-        found.addAll(findBaryons(board, searchArea, consumed));
-        found.addAll(findPionZero(board, searchArea, consumed));
-        // Then 2-cell mesons
-        found.addAll(findPionCharged(board, searchArea, consumed));
+        for (long seed : seedCells) {
+            if (visited.contains(seed) || allConsumed.contains(seed)) continue;
+            int sx = unpackCol(seed);
+            int sy = unpackRow(seed);
+            Piece sp = board.getCell(sx, sy);
+            if (sp == null) continue;
 
-        // Clear consumed cells from the board
-        for (long packed : consumed) {
+            // Start BFS from gluon cells to find gluon-linked groups
+            if (sp.isGluon()) {
+                GluonGroup group = buildGluonGroup(board, sx, sy, visited, allConsumed);
+                List<Hadron> groupHadrons = matchRecipes(group, allConsumed);
+                found.addAll(groupHadrons);
+            }
+        }
+
+        // Clear consumed cells
+        for (long packed : allConsumed) {
             board.setCell(unpackCol(packed), unpackRow(packed), null);
         }
 
-        // If cells were consumed, apply gravity (drop cells down)
-        if (!consumed.isEmpty()) {
+        // Apply gravity if cells were consumed
+        if (!allConsumed.isEmpty()) {
             applyGravity(board);
         }
 
@@ -105,168 +99,132 @@ public class HadronDetector {
     }
 
     /**
-     * Finds Proton (uud) and Neutron (udd) baryons — 3 connected cells.
+     * BFS from a gluon cell to find the complete gluon-linked group.
+     * A gluon-linked group consists of:
+     * - All gluon cells connected to the starting gluon (through other gluons)
+     * - All quark cells that are directly adjacent to at least one gluon in the group
+     *
+     * Quarks that only touch other quarks (not gluons) are NOT included.
      */
-    private List<Hadron> findBaryons(Board board, Set<Long> searchArea, Set<Long> consumed) {
-        List<Hadron> found = new ArrayList<>();
+    private GluonGroup buildGluonGroup(Board board, int startCol, int startRow,
+                                        Set<Long> globalVisited, Set<Long> consumed) {
+        GluonGroup group = new GluonGroup();
+        Queue<Long> gluonQueue = new LinkedList<>();
+        Set<Long> localVisited = new HashSet<>();
 
-        for (long packed : searchArea) {
-            int cx = unpackCol(packed);
-            int cy = unpackRow(packed);
-            if (consumed.contains(packed)) continue;
+        long start = pack(startCol, startRow);
+        gluonQueue.add(start);
+        localVisited.add(start);
+
+        // Phase 1: BFS through gluon cells
+        while (!gluonQueue.isEmpty()) {
+            long current = gluonQueue.poll();
+            int cx = unpackCol(current);
+            int cy = unpackRow(current);
             Piece p = board.getCell(cx, cy);
-            if (p == null) continue;
 
-            // Try to form 3-cell connected groups
-            for (int[] n1 : NEIGHBORS) {
-                int x1 = cx + n1[0];
-                int y1 = cy + n1[1];
-                long p1 = packCoord(x1, y1);
-                if (consumed.contains(p1)) continue;
-                Piece piece1 = board.getCell(x1, y1);
-                if (piece1 == null) continue;
+            if (p == null || consumed.contains(current)) continue;
 
-                for (int[] n2 : NEIGHBORS) {
-                    int x2 = x1 + n2[0];
-                    int y2 = y1 + n2[1];
-                    long p2 = packCoord(x2, y2);
-                    if (p2 == packed || consumed.contains(p2)) continue;
-                    Piece piece2 = board.getCell(x2, y2);
-                    if (piece2 == null) continue;
+            if (p.isGluon()) {
+                group.gluons.add(current);
+                group.allCells.add(current);
+                globalVisited.add(current);
 
-                    // Count particle types in this trio
-                    int topCount = countType(Piece.ParticleType.TOP_QUARK, p, piece1, piece2);
-                    int bottomCount = countType(Piece.ParticleType.BOTTOM_QUARK, p, piece1, piece2);
-                    int gluonCount = countType(Piece.ParticleType.GLUON, p, piece1, piece2);
-
-                    // Proton: 2 top + 1 bottom
-                    if (topCount == 2 && bottomCount == 1 && gluonCount == 0) {
-                        found.add(Hadron.PROTON);
-                        consumed.add(packed);
-                        consumed.add(p1);
-                        consumed.add(p2);
-                    }
-                    // Neutron: 1 top + 2 bottom
-                    else if (topCount == 1 && bottomCount == 2 && gluonCount == 0) {
-                        found.add(Hadron.NEUTRON);
-                        consumed.add(packed);
-                        consumed.add(p1);
-                        consumed.add(p2);
-                    }
-                }
-            }
-        }
-        return found;
-    }
-
-    /**
-     * Finds neutral pion π0 — 3 connected cells: 2 same quarks + 1 gluon.
-     * The gluon must be in the middle (connecting the two quarks).
-     */
-    private List<Hadron> findPionZero(Board board, Set<Long> searchArea, Set<Long> consumed) {
-        List<Hadron> found = new ArrayList<>();
-
-        for (long packed : searchArea) {
-            int cx = unpackCol(packed);
-            int cy = unpackRow(packed);
-            if (consumed.contains(packed)) continue;
-            Piece p = board.getCell(cx, cy);
-            if (p == null || !p.isGluon()) continue;
-
-            // This gluon is the center — look for 2 same-type quarks on opposite sides
-            // or in an L-shape around it
-            List<long[]> quarkNeighbors = new ArrayList<>();
-            for (int[] n : NEIGHBORS) {
-                int nx = cx + n[0];
-                int ny = cy + n[1];
-                long np = packCoord(nx, ny);
-                if (consumed.contains(np)) continue;
-                Piece neighbor = board.getCell(nx, ny);
-                if (neighbor != null && (neighbor.isTopQuark() || neighbor.isBottomQuark())) {
-                    quarkNeighbors.add(new long[]{np, neighbor.isTopQuark() ? 1 : 2});
-                }
-            }
-
-            // Need 2 quarks of same flavor adjacent to this gluon
-            for (int i = 0; i < quarkNeighbors.size(); i++) {
-                for (int j = i + 1; j < quarkNeighbors.size(); j++) {
-                    if (quarkNeighbors.get(i)[1] == quarkNeighbors.get(j)[1]) {
-                        long qp1 = quarkNeighbors.get(i)[0];
-                        long qp2 = quarkNeighbors.get(j)[0];
-                        if (!consumed.contains(qp1) && !consumed.contains(qp2)) {
-                            found.add(Hadron.PION_ZERO);
-                            consumed.add(packed);
-                            consumed.add(qp1);
-                            consumed.add(qp2);
-                            break;
+                // Explore neighbors
+                for (int[] n : NEIGHBORS) {
+                    int nx = cx + n[0];
+                    int ny = cy + n[1];
+                    long np = pack(nx, ny);
+                    if (inBounds(nx, ny) && !localVisited.contains(np) && !consumed.contains(np)) {
+                        Piece neighbor = board.getCell(nx, ny);
+                        if (neighbor != null) {
+                            localVisited.add(np);
+                            if (neighbor.isGluon()) {
+                                gluonQueue.add(np);
+                            }
+                            // Quarks adjacent to gluons will be collected in phase 2
                         }
                     }
                 }
-                if (consumed.contains(packed)) break;
             }
         }
-        return found;
+
+        // Phase 2: Collect quarks that are adjacent to ANY gluon in the group
+        for (long gluonPacked : group.gluons) {
+            int gx = unpackCol(gluonPacked);
+            int gy = unpackRow(gluonPacked);
+            for (int[] n : NEIGHBORS) {
+                int nx = gx + n[0];
+                int ny = gy + n[1];
+                long np = pack(nx, ny);
+                if (inBounds(nx, ny) && !consumed.contains(np) && !group.allCells.contains(np)) {
+                    Piece neighbor = board.getCell(nx, ny);
+                    if (neighbor != null && neighbor.isQuark()) {
+                        group.allCells.add(np);
+                        if (neighbor.isTopQuark()) {
+                            group.topQuarks.add(np);
+                        } else {
+                            group.bottomQuarks.add(np);
+                        }
+                    }
+                }
+            }
+        }
+
+        return group;
     }
 
     /**
-     * Finds charged pions — 2 connected cells: 1 quark + 1 gluon.
-     * π+ = Top Quark + Gluon, π− = Bottom Quark + Gluon.
+     * Checks if a gluon-linked group matches any hadron recipe.
+     * Tries larger recipes first (Proton/Neutron need 3 quarks),
+     * then smaller ones (Pion needs 2 quarks).
+     *
+     * Adds only the cells actually used to the consumed set.
      */
-    private List<Hadron> findPionCharged(Board board, Set<Long> searchArea, Set<Long> consumed) {
-        List<Hadron> found = new ArrayList<>();
+    private List<Hadron> matchRecipes(GluonGroup group, Set<Long> consumed) {
+        List<Hadron> results = new ArrayList<>();
 
-        for (long packed : searchArea) {
-            int cx = unpackCol(packed);
-            int cy = unpackRow(packed);
-            if (consumed.contains(packed)) continue;
-            Piece p = board.getCell(cx, cy);
-            if (p == null) continue;
+        // Make consumable iterators from the sets
+        List<Long> availableTop = new ArrayList<>(group.topQuarks);
+        List<Long> availableBottom = new ArrayList<>(group.bottomQuarks);
+        List<Long> availableGluons = new ArrayList<>(group.gluons);
 
-            // Look for quark-gluon pairs
-            if (p.isGluon()) {
-                // Check neighbors for quarks
-                for (int[] n : NEIGHBORS) {
-                    int nx = cx + n[0];
-                    int ny = cy + n[1];
-                    long np = packCoord(nx, ny);
-                    if (consumed.contains(np)) continue;
-                    Piece neighbor = board.getCell(nx, ny);
-                    if (neighbor == null) continue;
-
-                    if (neighbor.isTopQuark()) {
-                        found.add(Hadron.PION_PLUS);
-                        consumed.add(packed);
-                        consumed.add(np);
-                        break;
-                    } else if (neighbor.isBottomQuark()) {
-                        found.add(Hadron.PION_MINUS);
-                        consumed.add(packed);
-                        consumed.add(np);
-                        break;
-                    }
-                }
-            } else if (p.isTopQuark() || p.isBottomQuark()) {
-                // Check neighbors for gluons
-                for (int[] n : NEIGHBORS) {
-                    int nx = cx + n[0];
-                    int ny = cy + n[1];
-                    long np = packCoord(nx, ny);
-                    if (consumed.contains(np)) continue;
-                    Piece neighbor = board.getCell(nx, ny);
-                    if (neighbor != null && neighbor.isGluon()) {
-                        found.add(p.isTopQuark() ? Hadron.PION_PLUS : Hadron.PION_MINUS);
-                        consumed.add(packed);
-                        consumed.add(np);
-                        break;
-                    }
-                }
-            }
+        // Proton: 2 top + 1 bottom + 2 gluons
+        while (availableTop.size() >= 2 && availableBottom.size() >= 1
+                && availableGluons.size() >= 2) {
+            results.add(Hadron.PROTON);
+            consumed.add(availableTop.remove(availableTop.size() - 1));
+            consumed.add(availableTop.remove(availableTop.size() - 1));
+            consumed.add(availableBottom.remove(availableBottom.size() - 1));
+            consumed.add(availableGluons.remove(availableGluons.size() - 1));
+            consumed.add(availableGluons.remove(availableGluons.size() - 1));
         }
-        return found;
+
+        // Neutron: 1 top + 2 bottom + 2 gluons
+        while (availableTop.size() >= 1 && availableBottom.size() >= 2
+                && availableGluons.size() >= 2) {
+            results.add(Hadron.NEUTRON);
+            consumed.add(availableTop.remove(availableTop.size() - 1));
+            consumed.add(availableBottom.remove(availableBottom.size() - 1));
+            consumed.add(availableBottom.remove(availableBottom.size() - 1));
+            consumed.add(availableGluons.remove(availableGluons.size() - 1));
+            consumed.add(availableGluons.remove(availableGluons.size() - 1));
+        }
+
+        // Pion: 1 top + 1 bottom + 1 gluon
+        while (availableTop.size() >= 1 && availableBottom.size() >= 1
+                && availableGluons.size() >= 1) {
+            results.add(Hadron.PION);
+            consumed.add(availableTop.remove(availableTop.size() - 1));
+            consumed.add(availableBottom.remove(availableBottom.size() - 1));
+            consumed.add(availableGluons.remove(availableGluons.size() - 1));
+        }
+
+        return results;
     }
 
     /**
-     * Applies naive gravity after cells are consumed — drops floating cells down.
+     * Applies column gravity after cells are consumed.
      */
     private void applyGravity(Board board) {
         for (int c = 0; c < Board.WIDTH; c++) {
@@ -284,27 +242,29 @@ public class HadronDetector {
         }
     }
 
-    /** Counts how many of the given pieces match the specified particle type. */
-    private int countType(Piece.ParticleType type, Piece... pieces) {
-        int count = 0;
-        for (Piece p : pieces) {
-            if (p.getParticleType() == type) count++;
-        }
-        return count;
+    private boolean inBounds(int col, int row) {
+        return col >= 0 && col < Board.WIDTH && row >= 0 && row < Board.HEIGHT;
     }
 
-    /** Packs column and row into a single long for use as a hash key. */
-    private long packCoord(int col, int row) {
+    private long pack(int col, int row) {
         return ((long) col << 32) | (row & 0xFFFFFFFFL);
     }
 
-    /** Unpacks the column from a packed coordinate. */
     private int unpackCol(long packed) {
         return (int) (packed >> 32);
     }
 
-    /** Unpacks the row from a packed coordinate. */
     private int unpackRow(long packed) {
         return (int) packed;
+    }
+
+    /**
+     * Represents a group of cells linked through gluons.
+     */
+    private static class GluonGroup {
+        final Set<Long> gluons = new HashSet<>();
+        final Set<Long> topQuarks = new HashSet<>();
+        final Set<Long> bottomQuarks = new HashSet<>();
+        final Set<Long> allCells = new HashSet<>();
     }
 }

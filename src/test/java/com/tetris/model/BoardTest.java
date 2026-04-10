@@ -29,8 +29,8 @@ class BoardTest {
 
     @Test
     void setAndGetCell() {
-        board.setCell(5, 3, Piece.TOP_QUARK_R);
-        assertEquals(Piece.TOP_QUARK_R, board.getCell(5, 3));
+        board.setCell(5, 3, Piece.TOP_QUARK_A);
+        assertEquals(Piece.TOP_QUARK_A, board.getCell(5, 3));
         assertFalse(board.isEmpty(5, 3));
     }
 
@@ -58,44 +58,47 @@ class BoardTest {
 
     @Test
     void collidesWithWalls() {
-        assertTrue(board.collides(Piece.TOP_QUARK_R, 0, -2, 5));
-        assertTrue(board.collides(Piece.TOP_QUARK_R, 0, Board.WIDTH, 5));
+        assertTrue(board.collides(Piece.TOP_QUARK_A, 0, -2, 5));
+        assertTrue(board.collides(Piece.TOP_QUARK_A, 0, Board.WIDTH, 5));
     }
 
     @Test
     void collidesWithExistingBlocks() {
+        // TOP_QUARK_A rot 0 cells: {0,0},{1,0},{1,1}
+        // At col=3, row=19: cells at (3,19),(4,19),(4,18)
         board.setCell(4, 18, Piece.GLUON);
-        // TOP_QUARK_R (T-shape) at rotation 0: cells at {1,0},{0,1},{1,1},{2,1}
-        // At col=3, row=19: cell (3+1, 19-0)=(4,19) and (3+0, 19-1)=(3,18), etc.
-        // cell (3+1, 19-1) = (4, 18) → occupied!
-        assertTrue(board.collides(Piece.TOP_QUARK_R, 0, 3, 19));
+        assertTrue(board.collides(Piece.TOP_QUARK_A, 0, 3, 19));
     }
 
     @Test
     void noCollisionOnEmptyBoard() {
-        assertFalse(board.collides(Piece.TOP_QUARK_R, 0, 3, 19));
+        assertFalse(board.collides(Piece.TOP_QUARK_A, 0, 3, 19));
     }
 
     @Test
     void placePiece() {
+        // GLUON rot 0 is just {0,0} → cell at (4, 1)
         board.placePiece(Piece.GLUON, 0, 4, 1);
-        // GLUON at rot 0: {1,0},{2,0},{1,1},{2,1} → cells at (5,1),(6,1),(5,0),(6,0)
-        assertEquals(Piece.GLUON, board.getCell(5, 1));
-        assertEquals(Piece.GLUON, board.getCell(6, 1));
-        assertEquals(Piece.GLUON, board.getCell(5, 0));
-        assertEquals(Piece.GLUON, board.getCell(6, 0));
+        assertEquals(Piece.GLUON, board.getCell(4, 1));
+    }
+
+    @Test
+    void placeTriomino() {
+        // TOP_QUARK_A rot 0: {0,0},{1,0},{1,1} at col=3, row=2
+        // → cells at (3,2), (4,2), (4,1)
+        board.placePiece(Piece.TOP_QUARK_A, 0, 3, 2);
+        assertEquals(Piece.TOP_QUARK_A, board.getCell(3, 2));
+        assertEquals(Piece.TOP_QUARK_A, board.getCell(4, 2));
+        assertEquals(Piece.TOP_QUARK_A, board.getCell(4, 1));
     }
 
     @Test
     void clearFullLine() {
-        // Fill row 0 completely
         for (int c = 0; c < Board.WIDTH; c++) {
-            board.setCell(c, 0, Piece.TOP_QUARK_R);
+            board.setCell(c, 0, Piece.TOP_QUARK_A);
         }
         int cleared = board.clearLines();
         assertEquals(1, cleared);
-
-        // Row should now be empty
         for (int c = 0; c < Board.WIDTH; c++) {
             assertNull(board.getCell(c, 0));
         }
@@ -105,11 +108,10 @@ class BoardTest {
     void clearMultipleLines() {
         for (int r = 0; r < 4; r++) {
             for (int c = 0; c < Board.WIDTH; c++) {
-                board.setCell(c, r, Piece.BOTTOM_QUARK_R);
+                board.setCell(c, r, Piece.BOTTOM_QUARK_A);
             }
         }
-        int cleared = board.clearLines();
-        assertEquals(4, cleared);
+        assertEquals(4, board.clearLines());
     }
 
     @Test
@@ -117,22 +119,17 @@ class BoardTest {
         for (int c = 0; c < Board.WIDTH - 1; c++) {
             board.setCell(c, 0, Piece.GLUON);
         }
-        int cleared = board.clearLines();
-        assertEquals(0, cleared);
+        assertEquals(0, board.clearLines());
     }
 
     @Test
     void linesAboveDrop() {
-        // Fill row 0 and place a block on row 1
         for (int c = 0; c < Board.WIDTH; c++) {
-            board.setCell(c, 0, Piece.TOP_QUARK_R);
+            board.setCell(c, 0, Piece.TOP_QUARK_A);
         }
-        board.setCell(3, 1, Piece.BOTTOM_QUARK_G);
-
+        board.setCell(3, 1, Piece.BOTTOM_QUARK_A);
         board.clearLines();
-
-        // The block that was on row 1 should now be on row 0
-        assertEquals(Piece.BOTTOM_QUARK_G, board.getCell(3, 0));
+        assertEquals(Piece.BOTTOM_QUARK_A, board.getCell(3, 0));
     }
 
     @Test
@@ -145,7 +142,7 @@ class BoardTest {
     @Test
     void hasBlocksAboveVisible() {
         assertFalse(board.hasBlocksAboveVisible());
-        board.setCell(5, Board.VISIBLE_HEIGHT, Piece.TOP_QUARK_R);
+        board.setCell(5, Board.VISIBLE_HEIGHT, Piece.TOP_QUARK_A);
         assertTrue(board.hasBlocksAboveVisible());
     }
 
@@ -158,12 +155,11 @@ class BoardTest {
 
     @Test
     void copy() {
-        board.setCell(3, 3, Piece.TOP_QUARK_R);
+        board.setCell(3, 3, Piece.TOP_QUARK_A);
         Board copy = board.copy();
-        assertEquals(Piece.TOP_QUARK_R, copy.getCell(3, 3));
-        // Modify copy, original unchanged
+        assertEquals(Piece.TOP_QUARK_A, copy.getCell(3, 3));
         copy.setCell(3, 3, null);
-        assertEquals(Piece.TOP_QUARK_R, board.getCell(3, 3));
+        assertEquals(Piece.TOP_QUARK_A, board.getCell(3, 3));
     }
 
     @Test

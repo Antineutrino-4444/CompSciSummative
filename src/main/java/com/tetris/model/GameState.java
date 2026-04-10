@@ -7,121 +7,57 @@ import java.util.List;
 /**
  * The core game state and logic engine for Particle Tetris.
  *
- * <p>This class manages all aspects of the game loop including:</p>
- * <ul>
- *   <li>Piece spawning, movement, rotation, and locking</li>
- *   <li>Gravity and soft/hard drop mechanics</li>
- *   <li>DAS (Delayed Auto-Shift) and ARR (Auto-Repeat Rate)</li>
- *   <li>Lock delay with move/rotation reset</li>
- *   <li>Hold piece functionality</li>
- *   <li>Ghost piece calculation</li>
- *   <li>Line clearing (standard Tetris mechanic)</li>
- *   <li>Hadron detection (particle combination mechanic)</li>
- *   <li>Game over detection</li>
- * </ul>
- *
- * <p>Note: The traditional scoring system has been removed. Instead, the game
- * tracks discovered hadrons (composite particles created by adjacent quarks
- * and gluons on the board).</p>
+ * <p>Manages piece spawning, movement, rotation, locking, gravity,
+ * DAS/ARR, lock delay, hold piece, ghost piece, line clearing,
+ * hadron detection, and game over detection.</p>
  */
 public class GameState {
 
-    // --- Timing constants (in seconds) ---
-
-    /** Lock delay in seconds. */
     public static final double LOCK_DELAY = 0.5;
-
-    /** Maximum number of times lock delay can be reset by movement/rotation. */
     public static final int MAX_LOCK_RESETS = 15;
-
-    /** Delayed Auto-Shift: initial delay before auto-repeat (seconds). */
     public static final double DAS = 0.167;
-
-    /** Auto-Repeat Rate: interval between repeated movements (seconds). */
     public static final double ARR = 0.033;
-
-    /** Number of preview pieces shown. */
     public static final int PREVIEW_COUNT = 5;
-
-    /** Default gravity interval in seconds (level 1 speed). */
-    private static final double DEFAULT_GRAVITY = 1.0;
-
-    /** Gravity gets faster as more lines are cleared (every 10 lines = level up). */
     private static final int LINES_PER_LEVEL = 10;
-
-    // --- Game components ---
 
     private final Board board;
     private final BagRandomizer bag;
     private final HadronDetector hadronDetector;
-
-    // --- Current piece state ---
 
     private Piece currentPiece;
     private int currentRotation;
     private int currentCol;
     private int currentRow;
 
-    // --- Hold piece ---
-
     private Piece holdPiece;
     private boolean holdUsed;
-
-    // --- Lock delay state ---
 
     private double lockTimer;
     private boolean onSurface;
     private int lockResets;
     private int lowestRow;
 
-    // --- Gravity ---
-
     private double gravityAccumulator;
-
-    // --- DAS/ARR state ---
 
     private int dasDirection;
     private double dasTimer;
     private double arrTimer;
     private boolean dasCharged;
 
-    // --- Game state flags ---
-
     private boolean gameOver;
     private boolean paused;
 
-    // --- Stats (replaces scoring) ---
-
-    /** Total lines cleared. */
     private int totalLinesCleared;
-
-    /** All hadrons discovered during this game. */
     private final List<Hadron> discoveredHadrons = new ArrayList<>();
-
-    /** Hadrons discovered in the most recent piece lock. */
     private List<Hadron> lastDiscoveredHadrons = Collections.emptyList();
-
-    /** Lines cleared in the most recent lock. */
     private int lastLinesCleared;
-
-    /** Action text to display. */
     private String actionText = "";
-
-    /** Timer for how long to show the action text. */
     private double actionTextTimer;
 
-    /**
-     * Creates a new game with default settings.
-     */
     public GameState() {
         this(1);
     }
 
-    /**
-     * Creates a new game starting at the specified level.
-     *
-     * @param startLevel the starting level (1+, affects initial gravity speed)
-     */
     public GameState(int startLevel) {
         this.board = new Board();
         this.bag = new BagRandomizer(PREVIEW_COUNT);
@@ -141,9 +77,6 @@ public class GameState {
 
     // ==================== PIECE SPAWNING ====================
 
-    /**
-     * Spawns the next piece from the bag randomizer.
-     */
     private void spawnNextPiece() {
         currentPiece = bag.next();
         currentRotation = 0;
@@ -166,9 +99,6 @@ public class GameState {
 
     // ==================== MOVEMENT ====================
 
-    /**
-     * Attempts to move the current piece left.
-     */
     public boolean moveLeft() {
         if (gameOver || paused || currentPiece == null) return false;
         if (!board.collides(currentPiece, currentRotation, currentCol - 1, currentRow)) {
@@ -179,9 +109,6 @@ public class GameState {
         return false;
     }
 
-    /**
-     * Attempts to move the current piece right.
-     */
     public boolean moveRight() {
         if (gameOver || paused || currentPiece == null) return false;
         if (!board.collides(currentPiece, currentRotation, currentCol + 1, currentRow)) {
@@ -192,9 +119,6 @@ public class GameState {
         return false;
     }
 
-    /**
-     * Performs a soft drop (moves piece down one row).
-     */
     public boolean softDrop() {
         if (gameOver || paused || currentPiece == null) return false;
         if (!board.collides(currentPiece, currentRotation, currentCol, currentRow - 1)) {
@@ -205,9 +129,6 @@ public class GameState {
         return false;
     }
 
-    /**
-     * Performs a hard drop. Locks the piece immediately.
-     */
     public void hardDrop() {
         if (gameOver || paused || currentPiece == null) return;
         while (!board.collides(currentPiece, currentRotation, currentCol, currentRow - 1)) {
@@ -216,42 +137,30 @@ public class GameState {
         lockPiece();
     }
 
-    // ==================== ROTATION (SRS) ====================
+    // ==================== ROTATION ====================
 
-    /**
-     * Attempts to rotate the piece clockwise using SRS wall kicks.
-     */
     public boolean rotateCW() {
         return rotate((currentRotation + 1) & 3);
     }
 
-    /**
-     * Attempts to rotate the piece counter-clockwise using SRS wall kicks.
-     */
     public boolean rotateCCW() {
         return rotate((currentRotation + 3) & 3);
     }
 
-    /**
-     * Attempts to rotate the piece 180°.
-     */
     public boolean rotate180() {
         return rotate((currentRotation + 2) & 3);
     }
 
-    /**
-     * Internal rotation logic with SRS wall kick testing.
-     */
     private boolean rotate(int newRotation) {
         if (gameOver || paused || currentPiece == null) return false;
-        if (currentPiece == Piece.GLUON) return false; // Gluon (O-shape) doesn't rotate
+        if (currentPiece == Piece.GLUON) return false;
 
         int[][] kicks = WallKickData.getKicks(currentPiece, currentRotation, newRotation);
         if (kicks == null) return false;
 
-        for (int i = 0; i < kicks.length; i++) {
-            int testCol = currentCol + kicks[i][0];
-            int testRow = currentRow + kicks[i][1];
+        for (int[] kick : kicks) {
+            int testCol = currentCol + kick[0];
+            int testRow = currentRow + kick[1];
             if (!board.collides(currentPiece, newRotation, testCol, testRow)) {
                 currentCol = testCol;
                 currentRow = testRow;
@@ -265,9 +174,6 @@ public class GameState {
 
     // ==================== HOLD ====================
 
-    /**
-     * Swaps the current piece with the hold piece.
-     */
     public void hold() {
         if (gameOver || paused || currentPiece == null || holdUsed) return;
 
@@ -311,25 +217,12 @@ public class GameState {
 
     // ==================== PIECE LOCKING ====================
 
-    /**
-     * Locks the current piece to the board and processes the result.
-     *
-     * <p>This handles:</p>
-     * <ol>
-     *   <li>Placing the piece cells on the board</li>
-     *   <li>Hadron detection (particle combinations)</li>
-     *   <li>Line clear checking</li>
-     *   <li>Lock out detection</li>
-     *   <li>Spawning the next piece</li>
-     * </ol>
-     */
     private void lockPiece() {
         if (currentPiece == null) return;
 
-        // Place the piece on the board
         board.placePiece(currentPiece, currentRotation, currentCol, currentRow);
 
-        // Check for lock out (piece entirely above visible area)
+        // Check lock out
         boolean allAboveVisible = true;
         int[][] cells = currentPiece.getCells(currentRotation);
         for (int[] cell : cells) {
@@ -344,13 +237,13 @@ public class GameState {
             return;
         }
 
-        // Detect hadrons (particle combinations)
+        // Detect hadrons
         List<Hadron> hadrons = hadronDetector.detect(board, currentPiece, currentRotation,
                 currentCol, currentRow);
         lastDiscoveredHadrons = hadrons;
         discoveredHadrons.addAll(hadrons);
 
-        // Clear lines (standard Tetris mechanic — still works!)
+        // Clear lines
         int linesCleared = board.clearLines();
         lastLinesCleared = linesCleared;
         totalLinesCleared += linesCleared;
@@ -370,7 +263,7 @@ public class GameState {
                 case 1 -> "Single!";
                 case 2 -> "Double!";
                 case 3 -> "Triple!";
-                case 4 -> "Tetris!";
+                case 4 -> "Quad!";
                 default -> linesCleared + " Lines!";
             });
         }
@@ -379,16 +272,12 @@ public class GameState {
             actionTextTimer = 2.5;
         }
 
-        // Spawn next piece
         spawnNextPiece();
         holdUsed = false;
     }
 
     // ==================== GHOST PIECE ====================
 
-    /**
-     * Calculates the row where the ghost piece would land.
-     */
     public int getGhostRow() {
         if (currentPiece == null) return 0;
         int ghostRow = currentRow;
@@ -398,26 +287,18 @@ public class GameState {
         return ghostRow;
     }
 
-    // ==================== GAME LOOP UPDATE ====================
+    // ==================== GAME LOOP ====================
 
-    /**
-     * Updates the game state by the given time delta.
-     */
     public void update(double deltaTime) {
         if (gameOver || paused || currentPiece == null) return;
 
-        // Update action text timer
         if (actionTextTimer > 0) {
             actionTextTimer -= deltaTime;
-            if (actionTextTimer <= 0) {
-                actionText = "";
-            }
+            if (actionTextTimer <= 0) actionText = "";
         }
 
-        // DAS/ARR processing
         updateDAS(deltaTime);
 
-        // Gravity
         double gravityInterval = getGravityInterval();
         gravityAccumulator += deltaTime;
         while (gravityAccumulator >= gravityInterval) {
@@ -427,40 +308,29 @@ public class GameState {
             }
         }
 
-        // Lock delay
         boolean nowOnSurface = board.collides(currentPiece, currentRotation, currentCol,
                 currentRow - 1);
         if (nowOnSurface) {
             onSurface = true;
             lockTimer += deltaTime;
-            if (lockTimer >= LOCK_DELAY) {
-                lockPiece();
-            }
+            if (lockTimer >= LOCK_DELAY) lockPiece();
         } else {
             onSurface = false;
             lockTimer = 0;
         }
     }
 
-    /**
-     * Calculates the gravity interval based on lines cleared (pseudo-level).
-     * Uses the standard Tetris formula.
-     */
     public double getGravityInterval() {
         int level = (totalLinesCleared / LINES_PER_LEVEL) + 1;
         return Math.pow(0.8 - (level - 1) * 0.007, level - 1);
     }
 
-    /**
-     * Returns the current level (based on lines cleared).
-     */
     public int getLevel() {
         return (totalLinesCleared / LINES_PER_LEVEL) + 1;
     }
 
     private void updateDAS(double deltaTime) {
         if (dasDirection == 0) return;
-
         dasTimer += deltaTime;
 
         if (!dasCharged) {
@@ -480,11 +350,8 @@ public class GameState {
         }
     }
 
-    // ==================== INPUT HANDLING ====================
+    // ==================== INPUT ====================
 
-    /**
-     * Starts DAS charging for the given direction.
-     */
     public void startDAS(int direction) {
         if (direction == dasDirection) return;
         dasDirection = direction;
@@ -495,9 +362,6 @@ public class GameState {
         else if (direction > 0) moveRight();
     }
 
-    /**
-     * Stops DAS for the given direction.
-     */
     public void stopDAS(int direction) {
         if (dasDirection == direction) {
             dasDirection = 0;
@@ -524,16 +388,10 @@ public class GameState {
     public List<Hadron> getDiscoveredHadrons() { return Collections.unmodifiableList(discoveredHadrons); }
     public List<Hadron> getLastDiscoveredHadrons() { return lastDiscoveredHadrons; }
 
-    /**
-     * Returns the list of upcoming preview pieces.
-     */
     public List<Piece> getPreviewPieces() {
         return bag.peekNext(PREVIEW_COUNT);
     }
 
-    /**
-     * Toggles the pause state.
-     */
     public void togglePause() {
         paused = !paused;
     }
