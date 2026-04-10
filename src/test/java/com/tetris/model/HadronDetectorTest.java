@@ -238,6 +238,72 @@ class HadronDetectorTest {
                 "L-shaped gluon bridge should connect quarks for pion");
     }
 
+    // ==================== QUARK CHAIN INCLUSION (prefer larger hadrons) ====================
+
+    @Test
+    void neutronWhenMultipleBottomQuarksChainToGluon() {
+        // Scenario: up quark already connected to 2 gluons, player drops bottom quark piece
+        // where one cell touches gluon and others chain through quark adjacency.
+        // Should form NEUTRON (1t+2b+2g), not PION.
+        //
+        // Layout:  top(3,1)
+        //          gluon(3,0) gluon(4,0) bottom(5,0) bottom(6,0)
+        //
+        // bottom(5,0) is adjacent to gluon(4,0) → included
+        // bottom(6,0) is adjacent to bottom(5,0) → included via quark chain
+        // Group: 2 gluons + 1 top + 2 bottom → Neutron
+        board.setCell(3, 0, Piece.GLUON);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(3, 1, Piece.TOP_QUARK_A);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
+        board.setCell(6, 0, Piece.BOTTOM_QUARK_A);
+
+        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.NEUTRON),
+                "Bottom quarks chained together adjacent to gluon should form neutron");
+        assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.PION),
+                "Should prefer neutron over pion when enough quarks chain to gluons");
+    }
+
+    @Test
+    void protonWhenMultipleTopQuarksChainToGluon() {
+        // Scenario: bottom quark connected to 2 gluons, 2 top quarks chained
+        // Layout:  bottom(3,1)
+        //          gluon(3,0) gluon(4,0) top(5,0) top(6,0)
+        //
+        // top(5,0) adjacent to gluon(4,0), top(6,0) chains via top(5,0)
+        // Group: 2 gluons + 2 top + 1 bottom → Proton
+        board.setCell(3, 0, Piece.GLUON);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(3, 1, Piece.BOTTOM_QUARK_A);
+        board.setCell(5, 0, Piece.TOP_QUARK_A);
+        board.setCell(6, 0, Piece.TOP_QUARK_A);
+
+        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PROTON),
+                "Top quarks chained together adjacent to gluon should form proton");
+    }
+
+    @Test
+    void isolatedSingleQuarkFormsPion() {
+        // To purposefully form a pion, the player attaches exactly 1 quark
+        // cell to the gluon network without any adjacent quark cells.
+        // Layout:  top(3,1)
+        //          gluon(3,0)  bottom(4,0)    <-- isolated single bottom quark
+        //
+        // bottom(4,0) is adjacent to gluon(3,0), no other quarks adjacent to bottom(4,0)
+        // Group: 1 gluon + 1 top + 1 bottom → Pion
+        board.setCell(3, 0, Piece.GLUON);
+        board.setCell(3, 1, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.BOTTOM_QUARK_A);
+
+        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
+                "Isolated single quark should form pion");
+        assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.NEUTRON),
+                "Single bottom quark should not form neutron");
+    }
+
     // ==================== HELPER ====================
 
     private List<Hadron> detectNearCell(Board board, int col, int row) {

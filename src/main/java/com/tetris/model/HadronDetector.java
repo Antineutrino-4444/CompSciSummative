@@ -18,13 +18,22 @@ import java.util.Set;
  * <h3>Algorithm</h3>
  * <ol>
  *   <li>After a piece locks, find all gluon cells near the placed piece</li>
- *   <li>For each gluon, BFS outward through adjacent gluons and quarks to find
- *       the connected "gluon-linked group" (quarks must touch a gluon, not just
- *       each other)</li>
- *   <li>Count top quarks, bottom quarks, and gluons in each group</li>
- *   <li>Check if any hadron recipe matches</li>
+ *   <li>For each gluon, BFS outward through adjacent gluons to find
+ *       the connected gluon cluster</li>
+ *   <li>Collect quarks directly adjacent to any gluon in the cluster</li>
+ *   <li>Extend the quark set through quark-quark adjacency (BFS):
+ *       if a quark touches the gluon network and other quarks are adjacent
+ *       to it, they all participate. This ensures multi-cell quark pieces
+ *       contribute all their cells, preferring larger hadrons.</li>
+ *   <li>Check if any hadron recipe matches (Proton &gt; Neutron &gt; Pion priority)</li>
  *   <li>Consume the minimum cells needed for the hadron</li>
  * </ol>
+ *
+ * <h3>Design Implication</h3>
+ * <p>Because quarks chain through quark-quark adjacency, dropping a multi-cell
+ * quark piece onto a gluon network will include all connected quark cells.
+ * To deliberately form a <b>pion</b> (the smallest hadron), the player must
+ * attach only a single isolated quark cell to the gluon network.</p>
  *
  * <h3>What counts as "gluon-linked"</h3>
  * <p>A quark is part of a gluon network if it is orthogonally adjacent to at least
@@ -150,6 +159,7 @@ public class HadronDetector {
         }
 
         // Phase 2: Collect quarks that are adjacent to ANY gluon in the group
+        Queue<Long> quarkBfsQueue = new LinkedList<>();
         for (long gluonPacked : group.gluons) {
             int gx = unpackCol(gluonPacked);
             int gy = unpackRow(gluonPacked);
@@ -161,6 +171,35 @@ public class HadronDetector {
                     Piece neighbor = board.getCell(nx, ny);
                     if (neighbor != null && neighbor.isQuark()) {
                         group.allCells.add(np);
+                        quarkBfsQueue.add(np);
+                        if (neighbor.isTopQuark()) {
+                            group.topQuarks.add(np);
+                        } else {
+                            group.bottomQuarks.add(np);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Phase 3: BFS through quark cells to include connected quarks.
+        // If a quark touches the gluon network and other quarks are adjacent to it,
+        // they all participate — so dropping a multi-cell quark piece prefers larger
+        // hadrons (e.g. neutron over pion). To form a pion the player must
+        // purposefully attach only a single quark cell to the gluon network.
+        while (!quarkBfsQueue.isEmpty()) {
+            long current = quarkBfsQueue.poll();
+            int cx = unpackCol(current);
+            int cy = unpackRow(current);
+            for (int[] n : NEIGHBORS) {
+                int nx = cx + n[0];
+                int ny = cy + n[1];
+                long np = pack(nx, ny);
+                if (inBounds(nx, ny) && !consumed.contains(np) && !group.allCells.contains(np)) {
+                    Piece neighbor = board.getCell(nx, ny);
+                    if (neighbor != null && neighbor.isQuark()) {
+                        group.allCells.add(np);
+                        quarkBfsQueue.add(np);
                         if (neighbor.isTopQuark()) {
                             group.topQuarks.add(np);
                         } else {
