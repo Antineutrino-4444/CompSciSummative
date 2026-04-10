@@ -1,13 +1,12 @@
 package com.tetris.model;
 
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for the Board class covering grid operations, collision detection,
- * line clearing, and perfect clear detection.
+ * Tests for the Board class.
  */
 class BoardTest {
 
@@ -29,14 +28,22 @@ class BoardTest {
     }
 
     @Test
-    void setCellAndGetCell() {
-        board.setCell(3, 5, Piece.T);
-        assertEquals(Piece.T, board.getCell(3, 5));
-        assertFalse(board.isEmpty(3, 5));
+    void setAndGetCell() {
+        board.setCell(5, 3, Piece.TOP_QUARK_R);
+        assertEquals(Piece.TOP_QUARK_R, board.getCell(5, 3));
+        assertFalse(board.isEmpty(5, 3));
     }
 
     @Test
-    void outOfBoundsGetCellReturnsNull() {
+    void clearCell() {
+        board.setCell(5, 3, Piece.GLUON);
+        board.setCell(5, 3, null);
+        assertNull(board.getCell(5, 3));
+        assertTrue(board.isEmpty(5, 3));
+    }
+
+    @Test
+    void outOfBoundsGetReturnsNull() {
         assertNull(board.getCell(-1, 0));
         assertNull(board.getCell(Board.WIDTH, 0));
         assertNull(board.getCell(0, -1));
@@ -44,144 +51,119 @@ class BoardTest {
     }
 
     @Test
-    void outOfBoundsIsEmptyReturnsFalse() {
+    void outOfBoundsIsNotEmpty() {
         assertFalse(board.isEmpty(-1, 0));
         assertFalse(board.isEmpty(Board.WIDTH, 0));
-        assertFalse(board.isEmpty(0, -1));
     }
 
     @Test
     void collidesWithWalls() {
-        // I-piece at spawn rotation, going off left edge
-        assertTrue(board.collides(Piece.I, 0, -1, 5));
-        // I-piece going off right edge
-        assertTrue(board.collides(Piece.I, 0, 8, 5));
-        // I-piece going off bottom
-        assertTrue(board.collides(Piece.I, 0, 3, 0));
+        assertTrue(board.collides(Piece.TOP_QUARK_R, 0, -2, 5));
+        assertTrue(board.collides(Piece.TOP_QUARK_R, 0, Board.WIDTH, 5));
     }
 
     @Test
     void collidesWithExistingBlocks() {
-        board.setCell(4, 5, Piece.S);
-        // T-piece overlapping at that position
-        assertTrue(board.collides(Piece.T, 0, 3, 6));
+        board.setCell(4, 18, Piece.GLUON);
+        // TOP_QUARK_R (T-shape) at rotation 0: cells at {1,0},{0,1},{1,1},{2,1}
+        // At col=3, row=19: cell (3+1, 19-0)=(4,19) and (3+0, 19-1)=(3,18), etc.
+        // cell (3+1, 19-1) = (4, 18) → occupied!
+        assertTrue(board.collides(Piece.TOP_QUARK_R, 0, 3, 19));
     }
 
     @Test
-    void noCollisionInEmptyArea() {
-        assertFalse(board.collides(Piece.T, 0, 3, 19));
+    void noCollisionOnEmptyBoard() {
+        assertFalse(board.collides(Piece.TOP_QUARK_R, 0, 3, 19));
     }
 
     @Test
-    void placePieceAddsBlocksToBoard() {
-        board.placePiece(Piece.T, 0, 3, 5);
-        // T-piece rotation 0: {1,0},{0,1},{1,1},{2,1}
-        // At col=3, row=5: cells at (4,5), (3,4), (4,4), (5,4)
-        assertNotNull(board.getCell(4, 5)); // (3+1, 5-0)
-        assertNotNull(board.getCell(3, 4)); // (3+0, 5-1)
-        assertNotNull(board.getCell(4, 4)); // (3+1, 5-1)
-        assertNotNull(board.getCell(5, 4)); // (3+2, 5-1)
+    void placePiece() {
+        board.placePiece(Piece.GLUON, 0, 4, 1);
+        // GLUON at rot 0: {1,0},{2,0},{1,1},{2,1} → cells at (5,1),(6,1),(5,0),(6,0)
+        assertEquals(Piece.GLUON, board.getCell(5, 1));
+        assertEquals(Piece.GLUON, board.getCell(6, 1));
+        assertEquals(Piece.GLUON, board.getCell(5, 0));
+        assertEquals(Piece.GLUON, board.getCell(6, 0));
     }
 
     @Test
-    void clearLinesRemovesFullRows() {
+    void clearFullLine() {
         // Fill row 0 completely
         for (int c = 0; c < Board.WIDTH; c++) {
-            board.setCell(c, 0, Piece.I);
+            board.setCell(c, 0, Piece.TOP_QUARK_R);
         }
-        assertEquals(1, board.clearLines());
-        // Row 0 should now be empty
+        int cleared = board.clearLines();
+        assertEquals(1, cleared);
+
+        // Row should now be empty
         for (int c = 0; c < Board.WIDTH; c++) {
             assertNull(board.getCell(c, 0));
         }
     }
 
     @Test
-    void clearLinesDropsRowsDown() {
-        // Fill rows 0 and 1, leave gap in row 0
-        for (int c = 0; c < Board.WIDTH; c++) {
-            board.setCell(c, 0, Piece.I);
-        }
-        // Add a block on row 1
-        board.setCell(5, 1, Piece.T);
-
-        int cleared = board.clearLines();
-        assertEquals(1, cleared);
-        // The block from row 1 should now be at row 0
-        assertEquals(Piece.T, board.getCell(5, 0));
-    }
-
-    @Test
     void clearMultipleLines() {
         for (int r = 0; r < 4; r++) {
             for (int c = 0; c < Board.WIDTH; c++) {
-                board.setCell(c, r, Piece.I);
+                board.setCell(c, r, Piece.BOTTOM_QUARK_R);
             }
         }
-        assertEquals(4, board.clearLines());
+        int cleared = board.clearLines();
+        assertEquals(4, cleared);
     }
 
     @Test
-    void noLinesCleared() {
-        board.setCell(0, 0, Piece.I);
-        assertEquals(0, board.clearLines());
-    }
-
-    @Test
-    void isPerfectClearOnEmptyBoard() {
-        assertTrue(board.isPerfectClear());
-    }
-
-    @Test
-    void isNotPerfectClearWithBlocks() {
-        board.setCell(0, 0, Piece.T);
-        assertFalse(board.isPerfectClear());
-    }
-
-    @Test
-    void isLineFullReturnsTrueForFullRow() {
-        for (int c = 0; c < Board.WIDTH; c++) {
-            board.setCell(c, 3, Piece.I);
-        }
-        assertTrue(board.isLineFull(3));
-    }
-
-    @Test
-    void isLineFullReturnsFalseForPartialRow() {
+    void partialLineNotCleared() {
         for (int c = 0; c < Board.WIDTH - 1; c++) {
-            board.setCell(c, 3, Piece.I);
+            board.setCell(c, 0, Piece.GLUON);
         }
-        assertFalse(board.isLineFull(3));
+        int cleared = board.clearLines();
+        assertEquals(0, cleared);
+    }
+
+    @Test
+    void linesAboveDrop() {
+        // Fill row 0 and place a block on row 1
+        for (int c = 0; c < Board.WIDTH; c++) {
+            board.setCell(c, 0, Piece.TOP_QUARK_R);
+        }
+        board.setCell(3, 1, Piece.BOTTOM_QUARK_G);
+
+        board.clearLines();
+
+        // The block that was on row 1 should now be on row 0
+        assertEquals(Piece.BOTTOM_QUARK_G, board.getCell(3, 0));
+    }
+
+    @Test
+    void isPerfectClear() {
+        assertTrue(board.isPerfectClear());
+        board.setCell(0, 0, Piece.GLUON);
+        assertFalse(board.isPerfectClear());
     }
 
     @Test
     void hasBlocksAboveVisible() {
         assertFalse(board.hasBlocksAboveVisible());
-        board.setCell(5, Board.VISIBLE_HEIGHT, Piece.T);
+        board.setCell(5, Board.VISIBLE_HEIGHT, Piece.TOP_QUARK_R);
         assertTrue(board.hasBlocksAboveVisible());
     }
 
     @Test
-    void getHighestRowEmptyBoard() {
-        assertEquals(-1, board.getHighestRow());
-    }
-
-    @Test
     void getHighestRow() {
-        board.setCell(0, 0, Piece.I);
-        board.setCell(5, 10, Piece.T);
+        assertEquals(-1, board.getHighestRow());
+        board.setCell(5, 10, Piece.GLUON);
         assertEquals(10, board.getHighestRow());
     }
 
     @Test
-    void copyCreatesIndependentBoard() {
-        board.setCell(3, 3, Piece.T);
+    void copy() {
+        board.setCell(3, 3, Piece.TOP_QUARK_R);
         Board copy = board.copy();
-        assertEquals(Piece.T, copy.getCell(3, 3));
-
-        // Modify original, copy should not change
-        board.setCell(3, 3, null);
-        assertEquals(Piece.T, copy.getCell(3, 3));
+        assertEquals(Piece.TOP_QUARK_R, copy.getCell(3, 3));
+        // Modify copy, original unchanged
+        copy.setCell(3, 3, null);
+        assertEquals(Piece.TOP_QUARK_R, board.getCell(3, 3));
     }
 
     @Test

@@ -103,7 +103,7 @@ public class TetrisApp extends Application {
         };
         gameLoop.start();
 
-        primaryStage.setTitle("Modern Tetris");
+        primaryStage.setTitle("Particle Tetris — Quark Forge");
         primaryStage.setScene(scene);
         primaryStage.setResizable(false);
         primaryStage.show();

@@ -86,6 +86,10 @@ public final class WallKickData {
     /**
      * Gets the wall kick offsets for a rotation transition.
      *
+     * <p>Uses the I-piece kick data for Bottom Quark Blue (the I-shape),
+     * and JLSTZ data for all other quarks (T, S, Z, J, L shapes).
+     * Gluon (O-shape) doesn't rotate.</p>
+     *
      * @param piece        the piece being rotated
      * @param fromRotation the current rotation state (0-3)
      * @param toRotation   the target rotation state (0-3)
@@ -98,13 +102,15 @@ public final class WallKickData {
         if (fromRotation == toRotation) {
             return new int[][] {{0, 0}};
         }
-        if (piece == Piece.I) {
+        // Bottom Quark Blue uses 4×4 bounding box (I-piece equivalent)
+        if (piece == Piece.BOTTOM_QUARK_B) {
             return I_KICKS[fromRotation][toRotation];
         }
-        if (piece == Piece.O) {
-            // O-piece doesn't actually rotate visibly, but if called, no kicks needed
+        // Gluon (O-shape) doesn't rotate
+        if (piece == Piece.GLUON) {
             return new int[][] {{0, 0}};
         }
+        // All other quarks use JLSTZ kicks
         return JLSTZ_KICKS[fromRotation][toRotation];
     }
 }

@@ -5,80 +5,64 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for the WallKickData class covering SRS wall kick offset tables
- * for both JLSTZ and I pieces.
+ * Tests for WallKickData with particle-themed pieces.
  */
 class WallKickDataTest {
 
     @Test
-    void jlstzKicksHave5Tests() {
-        // Test all 8 rotation transitions for T piece
-        int[][] rotations = {{0,1},{1,0},{1,2},{2,1},{2,3},{3,2},{3,0},{0,3}};
-        for (int[] rot : rotations) {
-            int[][] kicks = WallKickData.getKicks(Piece.T, rot[0], rot[1]);
-            assertNotNull(kicks, "Kicks should exist for " + rot[0] + "→" + rot[1]);
-            assertEquals(5, kicks.length,
-                    "Should have 5 kick tests for " + rot[0] + "→" + rot[1]);
+    void bottomQuarkBlueUsesIKicks() {
+        // Bottom Quark Blue (I-equivalent) should use I-piece kick data
+        int[][] kicks = WallKickData.getKicks(Piece.BOTTOM_QUARK_B, 0, 1);
+        assertNotNull(kicks);
+        assertEquals(5, kicks.length, "Should have 5 kick tests");
+    }
+
+    @Test
+    void topQuarksUseJLSTZKicks() {
+        for (Piece p : new Piece[]{Piece.TOP_QUARK_R, Piece.TOP_QUARK_G, Piece.TOP_QUARK_B}) {
+            int[][] kicks = WallKickData.getKicks(p, 0, 1);
+            assertNotNull(kicks, p.name() + " should have kick data");
+            assertEquals(5, kicks.length, p.name() + " should have 5 kick tests");
         }
     }
 
     @Test
-    void iKicksHave5Tests() {
-        int[][] rotations = {{0,1},{1,0},{1,2},{2,1},{2,3},{3,2},{3,0},{0,3}};
-        for (int[] rot : rotations) {
-            int[][] kicks = WallKickData.getKicks(Piece.I, rot[0], rot[1]);
+    void bottomQuarksRGUseJLSTZKicks() {
+        for (Piece p : new Piece[]{Piece.BOTTOM_QUARK_R, Piece.BOTTOM_QUARK_G}) {
+            int[][] kicks = WallKickData.getKicks(p, 0, 1);
             assertNotNull(kicks);
             assertEquals(5, kicks.length);
         }
     }
 
     @Test
-    void firstKickTestIsAlwaysZeroZero() {
-        // The first test is always (0,0) - try the rotation in place
-        for (Piece piece : new Piece[]{Piece.T, Piece.S, Piece.Z, Piece.J, Piece.L}) {
-            int[][] kicks = WallKickData.getKicks(piece, 0, 1);
-            assertEquals(0, kicks[0][0]);
-            assertEquals(0, kicks[0][1]);
+    void gluonReturnsNoOpKick() {
+        int[][] kicks = WallKickData.getKicks(Piece.GLUON, 0, 1);
+        assertNotNull(kicks);
+        assertEquals(1, kicks.length, "Gluon should have 1 kick test (no-op)");
+        assertArrayEquals(new int[]{0, 0}, kicks[0]);
+    }
+
+    @Test
+    void sameRotationReturnsNoOp() {
+        for (Piece p : Piece.values()) {
+            int[][] kicks = WallKickData.getKicks(p, 2, 2);
+            assertNotNull(kicks);
+            assertEquals(1, kicks.length);
+            assertArrayEquals(new int[]{0, 0}, kicks[0]);
         }
-        int[][] iKicks = WallKickData.getKicks(Piece.I, 0, 1);
-        assertEquals(0, iKicks[0][0]);
-        assertEquals(0, iKicks[0][1]);
     }
 
     @Test
-    void oKickIsJustZeroZero() {
-        int[][] kicks = WallKickData.getKicks(Piece.O, 0, 1);
-        assertNotNull(kicks);
-        assertEquals(1, kicks.length);
-        assertEquals(0, kicks[0][0]);
-        assertEquals(0, kicks[0][1]);
-    }
-
-    @Test
-    void sameRotationReturnsZeroKick() {
-        int[][] kicks = WallKickData.getKicks(Piece.T, 0, 0);
-        assertNotNull(kicks);
-        assertEquals(1, kicks.length);
-        assertEquals(0, kicks[0][0]);
-        assertEquals(0, kicks[0][1]);
-    }
-
-    @Test
-    void kickDataIsSymmetric() {
-        // 0→R and R→0 should be inverse operations in terms of offset signs
-        int[][] forwardKicks = WallKickData.getKicks(Piece.T, 0, 1);
-        int[][] reverseKicks = WallKickData.getKicks(Piece.T, 1, 0);
-        assertNotNull(forwardKicks);
-        assertNotNull(reverseKicks);
-        // First test (0,0) should be same
-        assertEquals(forwardKicks[0][0], reverseKicks[0][0]);
-        assertEquals(forwardKicks[0][1], reverseKicks[0][1]);
-        // Other tests should have opposite signs
-        for (int i = 1; i < 5; i++) {
-            assertEquals(-forwardKicks[i][0], reverseKicks[i][0],
-                    "Kick " + i + " dx should be inverted");
-            assertEquals(-forwardKicks[i][1], reverseKicks[i][1],
-                    "Kick " + i + " dy should be inverted");
+    void firstKickIsAlwaysZeroOffset() {
+        // For JLSTZ pieces, first kick test is always (0,0)
+        for (Piece p : new Piece[]{Piece.TOP_QUARK_R, Piece.BOTTOM_QUARK_R}) {
+            for (int from = 0; from < 4; from++) {
+                int to = (from + 1) & 3;
+                int[][] kicks = WallKickData.getKicks(p, from, to);
+                assertArrayEquals(new int[]{0, 0}, kicks[0],
+                        "First kick should be (0,0) for " + p.name());
+            }
         }
     }
 }

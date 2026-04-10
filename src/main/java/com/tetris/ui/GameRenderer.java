@@ -2,6 +2,7 @@ package com.tetris.ui;
 
 import com.tetris.model.Board;
 import com.tetris.model.GameState;
+import com.tetris.model.Hadron;
 import com.tetris.model.Piece;
 
 import javafx.scene.canvas.Canvas;
@@ -11,30 +12,28 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.TextAlignment;
 
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Renders the Tetris game onto a JavaFX Canvas.
+ * Renders the Particle Tetris game onto a JavaFX Canvas.
  *
  * <p>The renderer draws:</p>
  * <ul>
- *   <li>The playfield grid with placed blocks</li>
- *   <li>The active falling piece</li>
- *   <li>The ghost piece (translucent preview of where piece will land)</li>
+ *   <li>The playfield grid with placed particle blocks (pixel art style)</li>
+ *   <li>The active falling piece with particle icon</li>
+ *   <li>The ghost piece</li>
  *   <li>The hold piece box</li>
  *   <li>The next pieces preview queue</li>
- *   <li>Score, level, and lines information</li>
- *   <li>Action text (e.g. "Tetris", "T-Spin Double")</li>
- *   <li>Game over and pause overlays</li>
+ *   <li>Discovered hadrons panel with pixel art icons</li>
+ *   <li>Action text, game over and pause overlays</li>
  * </ul>
  *
  * <h3>Layout</h3>
- * <p>The rendering area is organized as:</p>
  * <pre>
- * [Hold] [   Playfield   ] [Next Queue]
- *        [               ] [  Score   ]
- *        [               ] [  Level   ]
- *        [               ] [  Lines   ]
+ * [Hold]  [  Playfield  ]  [Next Queue]
+ * [Info]  [             ]  [Hadrons   ]
  * </pre>
  */
 public class GameRenderer {
@@ -42,16 +41,16 @@ public class GameRenderer {
     /** Size of each cell in pixels. */
     private static final int CELL_SIZE = 30;
 
-    /** Padding around the playfield. */
+    /** Padding around elements. */
     private static final int PADDING = 20;
 
-    /** Width of the side panels (hold / next). */
+    /** Width of the side panels. */
     private static final int SIDE_PANEL_WIDTH = 6 * CELL_SIZE;
 
     /** Playfield width in pixels. */
     private static final int FIELD_WIDTH = Board.WIDTH * CELL_SIZE;
 
-    /** Playfield height in pixels (visible rows only). */
+    /** Playfield height in pixels. */
     private static final int FIELD_HEIGHT = Board.VISIBLE_HEIGHT * CELL_SIZE;
 
     /** X offset where the playfield starts. */
@@ -66,58 +65,47 @@ public class GameRenderer {
     /** Total canvas height. */
     public static final int CANVAS_HEIGHT = FIELD_Y + FIELD_HEIGHT + PADDING;
 
-    /** Background color. */
-    private static final Color BG_COLOR = Color.rgb(20, 20, 30);
+    /** Background color — dark space theme. */
+    private static final Color BG_COLOR = Color.rgb(8, 8, 16);
 
     /** Grid line color. */
-    private static final Color GRID_COLOR = Color.rgb(40, 40, 60);
+    private static final Color GRID_COLOR = Color.rgb(25, 25, 45);
 
-    /** Border color. */
-    private static final Color BORDER_COLOR = Color.rgb(80, 80, 120);
+    /** Border color — subtle neon. */
+    private static final Color BORDER_COLOR = Color.rgb(60, 60, 100);
 
     /** Ghost piece opacity. */
-    private static final double GHOST_OPACITY = 0.3;
+    private static final double GHOST_OPACITY = 0.25;
 
     private final Canvas canvas;
     private final GraphicsContext gc;
 
-    /**
-     * Creates a new GameRenderer with its own Canvas.
-     */
     public GameRenderer() {
         canvas = new Canvas(CANVAS_WIDTH, CANVAS_HEIGHT);
         gc = canvas.getGraphicsContext2D();
     }
 
-    /**
-     * Returns the Canvas that this renderer draws to.
-     *
-     * @return the JavaFX Canvas
-     */
     public Canvas getCanvas() {
         return canvas;
     }
 
     /**
-     * Renders the complete game state onto the canvas.
-     *
-     * @param state the current game state to render
+     * Renders the complete game state.
      */
     public void render(GameState state) {
         // Clear background
         gc.setFill(BG_COLOR);
         gc.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-        // Draw components
         drawPlayfield(state);
         drawGhostPiece(state);
         drawCurrentPiece(state);
         drawHoldBox(state);
         drawNextQueue(state);
-        drawScorePanel(state);
+        drawInfoPanel(state);
+        drawHadronPanel(state);
         drawActionText(state);
 
-        // Draw overlays
         if (state.isGameOver()) {
             drawGameOverOverlay();
         } else if (state.isPaused()) {
@@ -125,17 +113,16 @@ public class GameRenderer {
         }
     }
 
-    /**
-     * Draws the playfield grid and all locked blocks.
-     */
+    // ==================== PLAYFIELD ====================
+
     private void drawPlayfield(GameState state) {
         Board board = state.getBoard();
 
-        // Draw playfield background
-        gc.setFill(Color.rgb(10, 10, 15));
+        // Playfield background
+        gc.setFill(Color.rgb(5, 5, 12));
         gc.fillRect(FIELD_X, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT);
 
-        // Draw grid lines
+        // Grid lines
         gc.setStroke(GRID_COLOR);
         gc.setLineWidth(0.5);
         for (int c = 0; c <= Board.WIDTH; c++) {
@@ -147,294 +134,385 @@ public class GameRenderer {
             gc.strokeLine(FIELD_X, y, FIELD_X + FIELD_WIDTH, y);
         }
 
-        // Draw locked blocks (only visible rows)
+        // Locked blocks
         Piece[][] grid = board.getGrid();
         for (int r = 0; r < Board.VISIBLE_HEIGHT; r++) {
             for (int c = 0; c < Board.WIDTH; c++) {
                 if (grid[r][c] != null) {
-                    drawCell(FIELD_X + c * CELL_SIZE,
-                             FIELD_Y + (Board.VISIBLE_HEIGHT - 1 - r) * CELL_SIZE,
-                             pieceToColor(grid[r][c]), 1.0);
+                    double x = FIELD_X + c * CELL_SIZE;
+                    double y = FIELD_Y + (Board.VISIBLE_HEIGHT - 1 - r) * CELL_SIZE;
+                    drawParticleCell(x, y, CELL_SIZE, grid[r][c], 1.0);
                 }
             }
         }
 
-        // Draw border
+        // Border
         gc.setStroke(BORDER_COLOR);
         gc.setLineWidth(2);
         gc.strokeRect(FIELD_X, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT);
     }
 
-    /**
-     * Draws the ghost piece (translucent preview of hard drop destination).
-     */
+    // ==================== GHOST PIECE ====================
+
     private void drawGhostPiece(GameState state) {
         Piece piece = state.getCurrentPiece();
         if (piece == null || state.isGameOver()) return;
 
         int ghostRow = state.getGhostRow();
-        if (ghostRow == state.getCurrentRow()) return; // Already at bottom
+        if (ghostRow == state.getCurrentRow()) return;
 
         int[][] cells = piece.getCells(state.getCurrentRotation());
-        Color color = pieceToColor(piece);
-
         for (int[] cell : cells) {
             int cx = state.getCurrentCol() + cell[0];
             int cy = ghostRow - cell[1];
             if (cy >= 0 && cy < Board.VISIBLE_HEIGHT) {
-                drawCell(FIELD_X + cx * CELL_SIZE,
-                         FIELD_Y + (Board.VISIBLE_HEIGHT - 1 - cy) * CELL_SIZE,
-                         color, GHOST_OPACITY);
+                double x = FIELD_X + cx * CELL_SIZE;
+                double y = FIELD_Y + (Board.VISIBLE_HEIGHT - 1 - cy) * CELL_SIZE;
+                drawParticleCell(x, y, CELL_SIZE, piece, GHOST_OPACITY);
             }
         }
     }
 
-    /**
-     * Draws the currently active (falling) piece.
-     */
+    // ==================== CURRENT PIECE ====================
+
     private void drawCurrentPiece(GameState state) {
         Piece piece = state.getCurrentPiece();
         if (piece == null || state.isGameOver()) return;
 
         int[][] cells = piece.getCells(state.getCurrentRotation());
-        Color color = pieceToColor(piece);
-
         for (int[] cell : cells) {
             int cx = state.getCurrentCol() + cell[0];
             int cy = state.getCurrentRow() - cell[1];
             if (cy >= 0 && cy < Board.VISIBLE_HEIGHT) {
-                drawCell(FIELD_X + cx * CELL_SIZE,
-                         FIELD_Y + (Board.VISIBLE_HEIGHT - 1 - cy) * CELL_SIZE,
-                         color, 1.0);
+                double x = FIELD_X + cx * CELL_SIZE;
+                double y = FIELD_Y + (Board.VISIBLE_HEIGHT - 1 - cy) * CELL_SIZE;
+                drawParticleCell(x, y, CELL_SIZE, piece, 1.0);
             }
         }
     }
 
-    /**
-     * Draws the hold piece box on the left side panel.
-     */
+    // ==================== HOLD BOX ====================
+
     private void drawHoldBox(GameState state) {
         double boxX = PADDING;
         double boxY = PADDING;
         double boxSize = 4.5 * CELL_SIZE;
 
         // Label
-        gc.setFill(Color.WHITE);
-        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 16));
+        gc.setFill(Color.rgb(150, 150, 200));
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 14));
         gc.setTextAlign(TextAlignment.CENTER);
         gc.fillText("HOLD", boxX + boxSize / 2, boxY - 5);
 
-        // Box background
-        gc.setFill(Color.rgb(15, 15, 25));
+        // Box
+        gc.setFill(Color.rgb(10, 10, 20));
         gc.fillRect(boxX, boxY, boxSize, boxSize);
         gc.setStroke(BORDER_COLOR);
         gc.setLineWidth(1.5);
         gc.strokeRect(boxX, boxY, boxSize, boxSize);
 
-        // Draw hold piece
         Piece hold = state.getHoldPiece();
         if (hold != null) {
-            double opacity = state.isHoldUsed() ? 0.4 : 1.0;
+            double opacity = state.isHoldUsed() ? 0.3 : 1.0;
             drawPiecePreview(hold, boxX + boxSize / 2, boxY + boxSize / 2, opacity);
         }
     }
 
-    /**
-     * Draws the next pieces preview queue on the right side panel.
-     */
+    // ==================== NEXT QUEUE ====================
+
     private void drawNextQueue(GameState state) {
         double queueX = FIELD_X + FIELD_WIDTH + PADDING;
         double queueY = PADDING;
         double boxWidth = 4.5 * CELL_SIZE;
 
         // Label
-        gc.setFill(Color.WHITE);
-        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 16));
+        gc.setFill(Color.rgb(150, 150, 200));
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 14));
         gc.setTextAlign(TextAlignment.CENTER);
         gc.fillText("NEXT", queueX + boxWidth / 2, queueY - 5);
 
         List<Piece> preview = state.getPreviewPieces();
-        double pieceSectionHeight = 3 * CELL_SIZE;
+        double sectionHeight = 3 * CELL_SIZE;
 
         for (int i = 0; i < preview.size(); i++) {
-            double py = queueY + i * pieceSectionHeight;
+            double py = queueY + i * sectionHeight;
 
-            // Box
-            gc.setFill(Color.rgb(15, 15, 25));
-            gc.fillRect(queueX, py, boxWidth, pieceSectionHeight - 5);
+            gc.setFill(Color.rgb(10, 10, 20));
+            gc.fillRect(queueX, py, boxWidth, sectionHeight - 5);
             gc.setStroke(GRID_COLOR);
             gc.setLineWidth(0.5);
-            gc.strokeRect(queueX, py, boxWidth, pieceSectionHeight - 5);
+            gc.strokeRect(queueX, py, boxWidth, sectionHeight - 5);
 
-            // Piece
-            drawPiecePreview(preview.get(i),
-                             queueX + boxWidth / 2,
-                             py + (pieceSectionHeight - 5) / 2,
-                             1.0);
+            drawPiecePreview(preview.get(i), queueX + boxWidth / 2,
+                    py + (sectionHeight - 5) / 2, 1.0);
         }
     }
 
-    /**
-     * Draws the score, level, and lines panel on the right side.
-     */
-    private void drawScorePanel(GameState state) {
-        double panelX = FIELD_X + FIELD_WIDTH + PADDING;
-        double panelY = PADDING + 5 * 3 * CELL_SIZE + 10;
+    // ==================== INFO PANEL ====================
+
+    private void drawInfoPanel(GameState state) {
+        double panelX = PADDING;
+        double panelY = PADDING + 5 * CELL_SIZE + 20;
 
         gc.setTextAlign(TextAlignment.LEFT);
-        gc.setFill(Color.rgb(150, 150, 200));
-        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 14));
+        gc.setFill(Color.rgb(100, 100, 160));
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 13));
 
-        double lineSpacing = 22;
         double y = panelY;
 
-        gc.fillText("SCORE", panelX, y);
-        y += lineSpacing;
-        gc.setFill(Color.WHITE);
-        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 20));
-        gc.fillText(String.valueOf(state.getScoring().getScore()), panelX, y);
-
-        y += lineSpacing + 10;
-        gc.setFill(Color.rgb(150, 150, 200));
-        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 14));
         gc.fillText("LEVEL", panelX, y);
-        y += lineSpacing;
+        y += 18;
         gc.setFill(Color.WHITE);
-        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 20));
-        gc.fillText(String.valueOf(state.getScoring().getLevel()), panelX, y);
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 18));
+        gc.fillText(String.valueOf(state.getLevel()), panelX, y);
 
-        y += lineSpacing + 10;
-        gc.setFill(Color.rgb(150, 150, 200));
-        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 14));
+        y += 28;
+        gc.setFill(Color.rgb(100, 100, 160));
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 13));
         gc.fillText("LINES", panelX, y);
-        y += lineSpacing;
+        y += 18;
         gc.setFill(Color.WHITE);
-        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 20));
-        gc.fillText(String.valueOf(state.getScoring().getTotalLinesCleared()), panelX, y);
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 18));
+        gc.fillText(String.valueOf(state.getTotalLinesCleared()), panelX, y);
 
-        // Combo
-        if (state.getScoring().getCombo() > 0) {
-            y += lineSpacing + 10;
-            gc.setFill(Color.YELLOW);
-            gc.setFont(Font.font("Monospace", FontWeight.BOLD, 14));
-            gc.fillText("COMBO ×" + state.getScoring().getCombo(), panelX, y);
+        y += 28;
+        gc.setFill(Color.rgb(100, 100, 160));
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 13));
+        gc.fillText("HADRONS", panelX, y);
+        y += 18;
+        gc.setFill(Color.GOLD);
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 18));
+        gc.fillText(String.valueOf(state.getDiscoveredHadrons().size()), panelX, y);
+
+        // Particle legend
+        y += 35;
+        gc.setFill(Color.rgb(80, 80, 130));
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 11));
+        gc.fillText("─ PARTICLES ─", panelX, y);
+
+        y += 18;
+        drawLegendEntry(panelX, y, Piece.TOP_QUARK_R, "Top Quark"); y += 16;
+        drawLegendEntry(panelX, y, Piece.BOTTOM_QUARK_R, "Bottom Quark"); y += 16;
+        drawLegendEntry(panelX, y, Piece.GLUON, "Gluon"); y += 24;
+
+        gc.setFill(Color.rgb(80, 80, 130));
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 11));
+        gc.fillText("─ RECIPES ─", panelX, y);
+
+        y += 16;
+        gc.setFill(Color.rgb(120, 120, 170));
+        gc.setFont(Font.font("Monospace", 10));
+        gc.fillText("Proton: 2t + 1b", panelX, y); y += 14;
+        gc.fillText("Neutron: 1t + 2b", panelX, y); y += 14;
+        gc.fillText("π⁺: top + gluon", panelX, y); y += 14;
+        gc.fillText("π⁻: bot + gluon", panelX, y); y += 14;
+        gc.fillText("π⁰: 2same + gluon", panelX, y);
+    }
+
+    private void drawLegendEntry(double x, double y, Piece piece, String label) {
+        double size = 12;
+        drawParticleCell(x, y - size + 2, size, piece, 1.0);
+        gc.setFill(Color.rgb(180, 180, 210));
+        gc.setFont(Font.font("Monospace", 10));
+        gc.fillText(label, x + size + 4, y);
+    }
+
+    // ==================== HADRON DISCOVERY PANEL ====================
+
+    private void drawHadronPanel(GameState state) {
+        double panelX = FIELD_X + FIELD_WIDTH + PADDING;
+        double panelY = PADDING + 5 * 3 * CELL_SIZE + 10;
+        double panelWidth = SIDE_PANEL_WIDTH;
+
+        gc.setTextAlign(TextAlignment.LEFT);
+        gc.setFill(Color.rgb(100, 100, 160));
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 13));
+        gc.fillText("DISCOVERED", panelX, panelY);
+
+        // Count hadrons by type
+        Map<Hadron, Integer> counts = new EnumMap<>(Hadron.class);
+        for (Hadron h : state.getDiscoveredHadrons()) {
+            counts.merge(h, 1, Integer::sum);
         }
 
-        // Back-to-Back indicator
-        if (state.getScoring().isBackToBack()) {
-            y += lineSpacing;
-            gc.setFill(Color.CYAN);
-            gc.setFont(Font.font("Monospace", FontWeight.BOLD, 12));
-            gc.fillText("BACK-TO-BACK", panelX, y);
+        double y = panelY + 18;
+        double iconSize = 32;
+        double pixelSize = iconSize / 8.0;
+
+        for (Hadron hadron : Hadron.values()) {
+            int count = counts.getOrDefault(hadron, 0);
+
+            // Draw pixel art icon
+            drawHadronPixelArt(panelX, y, pixelSize, hadron, count > 0 ? 1.0 : 0.2);
+
+            // Label and count
+            gc.setFill(count > 0 ? Color.WHITE : Color.rgb(60, 60, 80));
+            gc.setFont(Font.font("Monospace", FontWeight.BOLD, 11));
+            gc.fillText(hadron.getDisplayName(), panelX + iconSize + 6, y + iconSize / 2 - 3);
+
+            if (count > 0) {
+                gc.setFill(Color.GOLD);
+                gc.setFont(Font.font("Monospace", FontWeight.BOLD, 12));
+                gc.fillText("×" + count, panelX + iconSize + 6, y + iconSize / 2 + 11);
+            } else {
+                gc.setFill(Color.rgb(50, 50, 70));
+                gc.setFont(Font.font("Monospace", 10));
+                gc.fillText(hadron.getQuarkNotation(), panelX + iconSize + 6, y + iconSize / 2 + 11);
+            }
+
+            y += iconSize + 8;
         }
     }
 
     /**
-     * Draws the action text (e.g. "Tetris", "T-Spin Double") in the center.
+     * Draws an 8×8 pixel art icon for a hadron.
      */
+    private void drawHadronPixelArt(double x, double y, double pixelSize,
+                                     Hadron hadron, double opacity) {
+        Color color = Color.web(hadron.getColorHex(), opacity);
+        Color dark = Color.color(color.getRed() * 0.4, color.getGreen() * 0.4,
+                color.getBlue() * 0.4, opacity);
+
+        String[] art = hadron.getPixelArt();
+        for (int row = 0; row < art.length; row++) {
+            for (int col = 0; col < art[row].length(); col++) {
+                if (art[row].charAt(col) == '#') {
+                    double px = x + col * pixelSize;
+                    double py = y + row * pixelSize;
+                    gc.setFill(color);
+                    gc.fillRect(px, py, pixelSize, pixelSize);
+                    // Subtle shadow
+                    gc.setFill(dark);
+                    gc.fillRect(px + pixelSize * 0.75, py + pixelSize * 0.75,
+                            pixelSize * 0.25, pixelSize * 0.25);
+                }
+            }
+        }
+    }
+
+    // ==================== ACTION TEXT ====================
+
     private void drawActionText(GameState state) {
         String text = state.getActionText();
         if (text == null || text.isEmpty()) return;
 
         gc.setTextAlign(TextAlignment.CENTER);
-        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 24));
-        gc.setFill(Color.YELLOW);
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 22));
+
+        // Glow effect
+        gc.setFill(Color.rgb(255, 200, 50, 0.3));
+        gc.fillText(text, FIELD_X + FIELD_WIDTH / 2.0 + 1,
+                FIELD_Y + FIELD_HEIGHT / 2.0 + 1);
+        gc.setFill(Color.GOLD);
         gc.fillText(text, FIELD_X + FIELD_WIDTH / 2.0, FIELD_Y + FIELD_HEIGHT / 2.0);
     }
 
-    /**
-     * Draws the game over overlay.
-     */
+    // ==================== OVERLAYS ====================
+
     private void drawGameOverOverlay() {
-        // Semi-transparent overlay
-        gc.setFill(Color.rgb(0, 0, 0, 0.7));
+        gc.setFill(Color.rgb(0, 0, 0, 0.75));
         gc.fillRect(FIELD_X, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT);
 
-        // Text
         gc.setTextAlign(TextAlignment.CENTER);
-        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 32));
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 28));
         gc.setFill(Color.RED);
-        gc.fillText("GAME OVER", FIELD_X + FIELD_WIDTH / 2.0,
-                     FIELD_Y + FIELD_HEIGHT / 2.0 - 20);
+        gc.fillText("CONTAINMENT", FIELD_X + FIELD_WIDTH / 2.0,
+                FIELD_Y + FIELD_HEIGHT / 2.0 - 30);
+        gc.fillText("BREACH", FIELD_X + FIELD_WIDTH / 2.0,
+                FIELD_Y + FIELD_HEIGHT / 2.0);
 
-        gc.setFont(Font.font("Monospace", FontWeight.NORMAL, 16));
-        gc.setFill(Color.WHITE);
+        gc.setFont(Font.font("Monospace", FontWeight.NORMAL, 14));
+        gc.setFill(Color.rgb(180, 180, 200));
         gc.fillText("Press R to restart", FIELD_X + FIELD_WIDTH / 2.0,
-                     FIELD_Y + FIELD_HEIGHT / 2.0 + 20);
+                FIELD_Y + FIELD_HEIGHT / 2.0 + 30);
     }
 
-    /**
-     * Draws the pause overlay.
-     */
     private void drawPauseOverlay() {
         gc.setFill(Color.rgb(0, 0, 0, 0.5));
         gc.fillRect(FIELD_X, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT);
 
         gc.setTextAlign(TextAlignment.CENTER);
-        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 32));
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 28));
         gc.setFill(Color.WHITE);
         gc.fillText("PAUSED", FIELD_X + FIELD_WIDTH / 2.0,
-                     FIELD_Y + FIELD_HEIGHT / 2.0);
+                FIELD_Y + FIELD_HEIGHT / 2.0);
 
-        gc.setFont(Font.font("Monospace", FontWeight.NORMAL, 16));
+        gc.setFont(Font.font("Monospace", FontWeight.NORMAL, 14));
         gc.fillText("Press ESC to resume", FIELD_X + FIELD_WIDTH / 2.0,
-                     FIELD_Y + FIELD_HEIGHT / 2.0 + 30);
+                FIELD_Y + FIELD_HEIGHT / 2.0 + 28);
     }
 
-    // ==================== HELPER METHODS ====================
+    // ==================== CELL RENDERING (PIXEL ART STYLE) ====================
 
     /**
-     * Draws a single cell with 3D-effect styling.
+     * Draws a single particle cell with pixel-art styling.
      *
-     * @param x       the x pixel coordinate
-     * @param y       the y pixel coordinate
-     * @param color   the base color
-     * @param opacity the opacity (1.0 = fully opaque)
+     * <p>Each cell shows the particle's color with a pixel-art icon inside.
+     * The style is intentionally blocky and retro, with a 1-pixel inner border
+     * and a small icon drawn from the piece's pixel art data.</p>
      */
-    private void drawCell(double x, double y, Color color, double opacity) {
-        Color fill = Color.color(color.getRed(), color.getGreen(), color.getBlue(), opacity);
+    private void drawParticleCell(double x, double y, double size,
+                                   Piece piece, double opacity) {
+        Color base = Color.web(piece.getColorHex(), opacity);
         Color light = Color.color(
-                Math.min(1.0, color.getRed() + 0.3),
-                Math.min(1.0, color.getGreen() + 0.3),
-                Math.min(1.0, color.getBlue() + 0.3),
+                Math.min(1.0, base.getRed() + 0.25),
+                Math.min(1.0, base.getGreen() + 0.25),
+                Math.min(1.0, base.getBlue() + 0.25),
                 opacity);
         Color dark = Color.color(
-                color.getRed() * 0.5,
-                color.getGreen() * 0.5,
-                color.getBlue() * 0.5,
+                base.getRed() * 0.4,
+                base.getGreen() * 0.4,
+                base.getBlue() * 0.4,
+                opacity);
+        Color inner = Color.color(
+                base.getRed() * 0.7,
+                base.getGreen() * 0.7,
+                base.getBlue() * 0.7,
                 opacity);
 
-        double s = CELL_SIZE;
-        double border = 2;
+        double b = 2; // border thickness
 
-        // Main fill
-        gc.setFill(fill);
-        gc.fillRect(x + border, y + border, s - border * 2, s - border * 2);
+        // Outer filled rect
+        gc.setFill(base);
+        gc.fillRect(x, y, size, size);
 
-        // Top/left highlight
+        // Top + left highlight
         gc.setFill(light);
-        gc.fillRect(x, y, s, border);           // top
-        gc.fillRect(x, y, border, s);            // left
+        gc.fillRect(x, y, size, b);
+        gc.fillRect(x, y, b, size);
 
-        // Bottom/right shadow
+        // Bottom + right shadow
         gc.setFill(dark);
-        gc.fillRect(x, y + s - border, s, border);  // bottom
-        gc.fillRect(x + s - border, y, border, s);   // right
+        gc.fillRect(x, y + size - b, size, b);
+        gc.fillRect(x + size - b, y, b, size);
+
+        // Inner area with pixel art icon
+        double innerX = x + b + 1;
+        double innerY = y + b + 1;
+        double innerSize = size - 2 * b - 2;
+
+        // Draw the 4x4 pixel art icon inside the cell
+        String[] art = piece.getPixelArt();
+        double pixelW = innerSize / 4.0;
+        double pixelH = innerSize / 4.0;
+
+        for (int row = 0; row < Math.min(art.length, 4); row++) {
+            for (int col = 0; col < Math.min(art[row].length(), 4); col++) {
+                if (art[row].charAt(col) == '#') {
+                    gc.setFill(inner);
+                    gc.fillRect(innerX + col * pixelW, innerY + row * pixelH,
+                            pixelW, pixelH);
+                }
+            }
+        }
     }
 
     /**
      * Draws a piece preview (centered) at the given position.
-     *
-     * @param piece   the piece to draw
-     * @param centerX the center X coordinate
-     * @param centerY the center Y coordinate
-     * @param opacity the opacity
      */
     private void drawPiecePreview(Piece piece, double centerX, double centerY, double opacity) {
-        int[][] cells = piece.getCells(0); // Always show spawn rotation
-        Color color = pieceToColor(piece);
+        int[][] cells = piece.getCells(0);
 
-        // Calculate bounding box of the piece cells for centering
         int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
         int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
         for (int[] cell : cells) {
@@ -444,7 +522,7 @@ public class GameRenderer {
             maxY = Math.max(maxY, cell[1]);
         }
 
-        double previewCellSize = CELL_SIZE * 0.75;
+        double previewCellSize = CELL_SIZE * 0.7;
         double pieceWidth = (maxX - minX + 1) * previewCellSize;
         double pieceHeight = (maxY - minY + 1) * previewCellSize;
         double offsetX = centerX - pieceWidth / 2;
@@ -453,47 +531,14 @@ public class GameRenderer {
         for (int[] cell : cells) {
             double cx = offsetX + (cell[0] - minX) * previewCellSize;
             double cy = offsetY + (cell[1] - minY) * previewCellSize;
-            drawPreviewCell(cx, cy, previewCellSize, color, opacity);
+            drawParticleCell(cx, cy, previewCellSize, piece, opacity);
         }
-    }
 
-    /**
-     * Draws a single cell for preview areas (smaller size).
-     */
-    private void drawPreviewCell(double x, double y, double size, Color color, double opacity) {
-        Color fill = Color.color(color.getRed(), color.getGreen(), color.getBlue(), opacity);
-        Color light = Color.color(
-                Math.min(1.0, color.getRed() + 0.3),
-                Math.min(1.0, color.getGreen() + 0.3),
-                Math.min(1.0, color.getBlue() + 0.3),
-                opacity);
-        Color dark = Color.color(
-                color.getRed() * 0.5,
-                color.getGreen() * 0.5,
-                color.getBlue() * 0.5,
-                opacity);
-
-        double border = 1.5;
-
-        gc.setFill(fill);
-        gc.fillRect(x + border, y + border, size - border * 2, size - border * 2);
-
-        gc.setFill(light);
-        gc.fillRect(x, y, size, border);
-        gc.fillRect(x, y, border, size);
-
-        gc.setFill(dark);
-        gc.fillRect(x, y + size - border, size, border);
-        gc.fillRect(x + size - border, y, border, size);
-    }
-
-    /**
-     * Converts a Piece enum to its JavaFX Color.
-     *
-     * @param piece the piece type
-     * @return the corresponding color
-     */
-    private Color pieceToColor(Piece piece) {
-        return Color.web(piece.getColorHex());
+        // Draw particle label below the preview
+        gc.setTextAlign(TextAlignment.CENTER);
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 9));
+        gc.setFill(Color.color(1, 1, 1, opacity * 0.6));
+        gc.fillText(piece.getLabel().toUpperCase(), centerX,
+                offsetY + pieceHeight + 10);
     }
 }

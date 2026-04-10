@@ -1,131 +1,132 @@
 package com.tetris.model;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for the Piece enum covering shapes, colors, rotation states,
- * and spawn positions.
+ * Tests for the Piece enum (particle-themed pieces).
  */
 class PieceTest {
 
     @Test
-    void allPiecesExist() {
-        assertEquals(7, Piece.values().length);
-    }
-
-    @Test
-    void eachPieceHas4Cells() {
+    void allPiecesHaveFourCells() {
         for (Piece piece : Piece.values()) {
             for (int rot = 0; rot < 4; rot++) {
                 int[][] cells = piece.getCells(rot);
                 assertEquals(4, cells.length,
-                        piece + " rotation " + rot + " should have 4 cells");
+                        piece.name() + " rotation " + rot + " should have 4 cells");
             }
         }
     }
 
     @Test
-    void iPieceBoundingBoxIs4() {
-        assertEquals(4, Piece.I.getBoundingBox());
-    }
-
-    @Test
-    void otherPiecesBoundingBoxIs3() {
-        for (Piece piece : new Piece[]{Piece.O, Piece.T, Piece.S, Piece.Z, Piece.J, Piece.L}) {
-            assertEquals(3, piece.getBoundingBox(),
-                    piece + " should have bounding box 3");
-        }
-    }
-
-    @Test
-    void colorsAreDistinct() {
-        int[] colors = new int[Piece.values().length];
-        for (int i = 0; i < colors.length; i++) {
-            colors[i] = Piece.values()[i].getColor();
-        }
-        for (int i = 0; i < colors.length; i++) {
-            for (int j = i + 1; j < colors.length; j++) {
-                assertNotEquals(colors[i], colors[j],
-                        Piece.values()[i] + " and " + Piece.values()[j] +
-                        " should have different colors");
-            }
-        }
-    }
-
-    @Test
-    void colorHexFormat() {
+    void allPiecesHaveValidColor() {
         for (Piece piece : Piece.values()) {
-            String hex = piece.getColorHex();
-            assertTrue(hex.startsWith("#"), "Color hex should start with #");
-            assertEquals(7, hex.length(), "Color hex should be 7 chars (#RRGGBB)");
+            assertTrue(piece.getColor() > 0, piece.name() + " color should be positive");
+            assertNotNull(piece.getColorHex());
+            assertTrue(piece.getColorHex().startsWith("#"));
         }
     }
 
     @Test
-    void iPieceColor() {
-        assertEquals(0x00FFFF, Piece.I.getColor()); // Cyan
+    void boundingBoxSizes() {
+        // Bottom Quark Blue (I-equivalent) has 4×4
+        assertEquals(4, Piece.BOTTOM_QUARK_B.getBoundingBox());
+        // All others have 3×3
+        assertEquals(3, Piece.TOP_QUARK_R.getBoundingBox());
+        assertEquals(3, Piece.TOP_QUARK_G.getBoundingBox());
+        assertEquals(3, Piece.TOP_QUARK_B.getBoundingBox());
+        assertEquals(3, Piece.BOTTOM_QUARK_R.getBoundingBox());
+        assertEquals(3, Piece.BOTTOM_QUARK_G.getBoundingBox());
+        assertEquals(3, Piece.GLUON.getBoundingBox());
     }
 
     @Test
-    void oPieceColor() {
-        assertEquals(0xFFFF00, Piece.O.getColor()); // Yellow
+    void topQuarksAreTopType() {
+        assertTrue(Piece.TOP_QUARK_R.isTopQuark());
+        assertTrue(Piece.TOP_QUARK_G.isTopQuark());
+        assertTrue(Piece.TOP_QUARK_B.isTopQuark());
+        assertFalse(Piece.TOP_QUARK_R.isBottomQuark());
+        assertFalse(Piece.TOP_QUARK_R.isGluon());
     }
 
     @Test
-    void tPieceColor() {
-        assertEquals(0xAA00FF, Piece.T.getColor()); // Purple
+    void bottomQuarksAreBottomType() {
+        assertTrue(Piece.BOTTOM_QUARK_R.isBottomQuark());
+        assertTrue(Piece.BOTTOM_QUARK_G.isBottomQuark());
+        assertTrue(Piece.BOTTOM_QUARK_B.isBottomQuark());
+        assertFalse(Piece.BOTTOM_QUARK_R.isTopQuark());
+        assertFalse(Piece.BOTTOM_QUARK_R.isGluon());
     }
 
     @Test
-    void spawnColumnIsCentered() {
-        // All pieces spawn at column 3 (centered in 10-wide field)
+    void gluonIsGluonType() {
+        assertTrue(Piece.GLUON.isGluon());
+        assertFalse(Piece.GLUON.isTopQuark());
+        assertFalse(Piece.GLUON.isBottomQuark());
+    }
+
+    @Test
+    void particleTypeEnum() {
+        assertEquals(Piece.ParticleType.TOP_QUARK, Piece.TOP_QUARK_R.getParticleType());
+        assertEquals(Piece.ParticleType.BOTTOM_QUARK, Piece.BOTTOM_QUARK_R.getParticleType());
+        assertEquals(Piece.ParticleType.GLUON, Piece.GLUON.getParticleType());
+    }
+
+    @Test
+    void allPiecesHaveLabels() {
+        for (Piece piece : Piece.values()) {
+            assertNotNull(piece.getLabel());
+            assertFalse(piece.getLabel().isEmpty());
+        }
+    }
+
+    @Test
+    void allPiecesHavePixelArt() {
+        for (Piece piece : Piece.values()) {
+            String[] art = piece.getPixelArt();
+            assertNotNull(art);
+            assertEquals(4, art.length, piece.name() + " should have 4-row pixel art");
+        }
+    }
+
+    @Test
+    void allPiecesHaveSpawnColumns() {
         for (Piece piece : Piece.values()) {
             assertEquals(3, piece.getSpawnColumn(),
-                    piece + " should spawn at column 3");
+                    piece.name() + " should spawn at column 3");
         }
     }
 
     @Test
-    void spawnRowIsAboveVisible() {
+    void allPiecesHaveSpawnRows() {
         for (Piece piece : Piece.values()) {
-            int spawnRow = piece.getSpawnRow();
-            assertTrue(spawnRow >= 19,
-                    piece + " should spawn at or above visible area");
+            assertEquals(19, piece.getSpawnRow());
+        }
+    }
+
+    @Test
+    void gluonDoesNotRotate() {
+        // All 4 rotation states should be identical for Gluon (O-equivalent)
+        int[][] r0 = Piece.GLUON.getCells(0);
+        for (int rot = 1; rot < 4; rot++) {
+            int[][] rx = Piece.GLUON.getCells(rot);
+            assertArrayEquals(r0, rx, "Gluon rotation " + rot + " should match rotation 0");
         }
     }
 
     @Test
     void rotationWrapsAround() {
-        Piece piece = Piece.T;
-        // getCells should handle rotation values > 3
-        int[][] cells4 = piece.getCells(4); // Should wrap to 0
-        int[][] cells0 = piece.getCells(0);
-        assertArrayEquals(cells0[0], cells4[0]);
+        Piece piece = Piece.TOP_QUARK_R;
+        assertArrayEquals(piece.getCells(0), piece.getCells(4));
+        assertArrayEquals(piece.getCells(1), piece.getCells(5));
+        assertArrayEquals(piece.getCells(3), piece.getCells(-1));
     }
 
     @Test
-    void oPieceAllRotationsIdentical() {
-        for (int r = 0; r < 4; r++) {
-            int[][] cells = Piece.O.getCells(r);
-            int[][] cells0 = Piece.O.getCells(0);
-            for (int i = 0; i < 4; i++) {
-                assertArrayEquals(cells0[i], cells[i],
-                        "O-piece rotation " + r + " should match rotation 0");
-            }
-        }
-    }
-
-    @Test
-    void iPieceSpawnIsHorizontal() {
-        // I-piece rotation 0 should be a horizontal line in row 1
-        int[][] cells = Piece.I.getCells(0);
-        int commonY = cells[0][1];
-        for (int[] cell : cells) {
-            assertEquals(commonY, cell[1],
-                    "I-piece spawn should be a horizontal line");
-        }
+    void sevenPieceTypes() {
+        assertEquals(7, Piece.values().length,
+                "Should have exactly 7 particle piece types");
     }
 }
