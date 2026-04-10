@@ -63,13 +63,13 @@ class GameStateTest {
     }
 
     @Test
-    void holdCanOnlyBeUsedOnce() {
+    void holdIsFreelyReusable() {
         state.hold();
         Piece secondPiece = state.getCurrentPiece();
-        assertTrue(state.isHoldUsed());
+        // Unlike standard Tetris, hold can be used again immediately
         state.hold();
-        assertEquals(secondPiece, state.getCurrentPiece(),
-                "Second hold should be blocked");
+        assertNotEquals(secondPiece, state.getCurrentPiece(),
+                "Hold should swap back — it's freely reusable");
     }
 
     @Test
@@ -107,9 +107,7 @@ class GameStateTest {
 
     @Test
     void gluonCanRotate() {
-        // Gluon is now a domino that can rotate between horizontal/vertical
         GameState s = new GameState();
-        // Run multiple game states until we get a gluon piece
         for (int attempt = 0; attempt < 20; attempt++) {
             if (s.getCurrentPiece() == Piece.GLUON) {
                 int oldRot = s.getCurrentRotation();
@@ -117,11 +115,10 @@ class GameStateTest {
                 if (rotated) {
                     assertEquals((oldRot + 1) & 3, s.getCurrentRotation());
                 }
-                return; // test done
+                return;
             }
             s = new GameState();
         }
-        // If we never got a gluon in 20 tries, that's OK — test is non-deterministic
     }
 
     @Test
@@ -132,6 +129,11 @@ class GameStateTest {
     @Test
     void previewPiecesAvailable() {
         assertEquals(GameState.PREVIEW_COUNT, state.getPreviewPieces().size());
+    }
+
+    @Test
+    void previewCountIsThree() {
+        assertEquals(3, GameState.PREVIEW_COUNT);
     }
 
     @Test
@@ -162,13 +164,28 @@ class GameStateTest {
     }
 
     @Test
-    void linesClearedStartsAtZero() {
-        assertEquals(0, state.getTotalLinesCleared());
+    void scoreStartsAtZero() {
+        assertEquals(0, state.getScore());
+    }
+
+    @Test
+    void particlesContainedStartsAtZero() {
+        assertEquals(0, state.getTotalParticlesContained());
     }
 
     @Test
     void discoveredHadronsStartsEmpty() {
         assertTrue(state.getDiscoveredHadrons().isEmpty());
+    }
+
+    @Test
+    void maxLockResetsIsEight() {
+        assertEquals(8, GameState.MAX_LOCK_RESETS);
+    }
+
+    @Test
+    void undosRemainStartsAtTwo() {
+        assertEquals(GameState.MAX_UNDOS, state.getUndosRemaining());
     }
 
     @Test
@@ -191,5 +208,10 @@ class GameStateTest {
     @Test
     void boardIsAccessible() {
         assertNotNull(state.getBoard());
+    }
+
+    @Test
+    void scoreSystemIsAccessible() {
+        assertNotNull(state.getScoreSystem());
     }
 }

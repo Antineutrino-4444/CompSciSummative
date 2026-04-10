@@ -253,8 +253,7 @@ public class GameRenderer {
 
         Piece hold = state.getHoldPiece();
         if (hold != null) {
-            double opacity = state.isHoldUsed() ? 0.3 : 1.0;
-            drawPiecePreview(hold, boxX + boxSize / 2, boxY + boxSize / 2, opacity);
+            drawPiecePreview(hold, boxX + boxSize / 2, boxY + boxSize / 2, 1.0);
         }
 
         gc.restore();
@@ -316,11 +315,20 @@ public class GameRenderer {
         y += 28;
         gc.setFill(Color.rgb(100, 100, 160));
         gc.setFont(Font.font("Monospace", FontWeight.BOLD, 13));
-        gc.fillText("LINES", panelX, y);
+        gc.fillText("SCORE", panelX, y);
         y += 18;
         gc.setFill(Color.WHITE);
         gc.setFont(Font.font("Monospace", FontWeight.BOLD, 18));
-        gc.fillText(String.valueOf(state.getTotalLinesCleared()), panelX, y);
+        gc.fillText(String.valueOf(state.getScore()), panelX, y);
+
+        y += 28;
+        gc.setFill(Color.rgb(100, 100, 160));
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 13));
+        gc.fillText("PARTICLES", panelX, y);
+        y += 18;
+        gc.setFill(Color.WHITE);
+        gc.setFont(Font.font("Monospace", FontWeight.BOLD, 18));
+        gc.fillText(String.valueOf(state.getTotalParticlesContained()), panelX, y);
 
         y += 28;
         gc.setFill(Color.rgb(100, 100, 160));

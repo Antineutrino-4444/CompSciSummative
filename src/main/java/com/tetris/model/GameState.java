@@ -8,21 +8,27 @@ import java.util.List;
  * The core game state and logic engine for Particle Tetris.
  *
  * <p>Manages piece spawning, movement, rotation, locking, gravity,
- * DAS/ARR, lock delay, hold piece, ghost piece, line clearing,
- * hadron detection, and game over detection.</p>
+ * DAS/ARR, lock delay, hold piece, ghost piece, hadron detection
+ * with cascade combos, scoring, and game over detection.</p>
+ *
+ * <p>Line clears are removed — the only way to clear cells from the board
+ * is by forming hadrons. This unifies the game's core loop around particle
+ * physics rather than having two competing objectives.</p>
  */
 public class GameState {
 
     public static final double LOCK_DELAY = 0.5;
-    public static final int MAX_LOCK_RESETS = 15;
+    public static final int MAX_LOCK_RESETS = 8;
     public static final double DAS = 0.167;
     public static final double ARR = 0.033;
-    public static final int PREVIEW_COUNT = 5;
-    private static final int LINES_PER_LEVEL = 10;
+    public static final int PREVIEW_COUNT = 3;
+    private static final int PARTICLES_PER_LEVEL = 5;
+    public static final int MAX_UNDOS = 2;
 
     private final Board board;
     private final BagRandomizer bag;
     private final HadronDetector hadronDetector;
+    private final ScoreSystem scoreSystem;
 
     private Piece currentPiece;
     private int currentRotation;
@@ -30,12 +36,10 @@ public class GameState {
     private int currentRow;
 
     private Piece holdPiece;
-    private boolean holdUsed;
 
     private double lockTimer;
     private boolean onSurface;
     private int lockResets;
-    private int lowestRow;
 
     private double gravityAccumulator;
 
@@ -47,15 +51,18 @@ public class GameState {
     private boolean gameOver;
     private boolean paused;
 
-    private int totalLinesCleared;
     private final List<Hadron> discoveredHadrons = new ArrayList<>();
     private List<Hadron> lastDiscoveredHadrons = Collections.emptyList();
     private List<HadronFormation> lastFormations = Collections.emptyList();
     private double hadronAnimTimer;
     public static final double HADRON_ANIM_DURATION = 0.6;
-    private int lastLinesCleared;
     private String actionText = "";
     private double actionTextTimer;
+    private int lastComboCount;
+
+    // Undo system: snapshots of board state, capped at MAX_UNDOS per game
+    private final List<Board> undoSnapshots = new ArrayList<>();
+    private int undosRemaining;
 
     public GameState() {
         this(1);
@@ -65,15 +72,15 @@ public class GameState {
         this.board = new Board();
         this.bag = new BagRandomizer(PREVIEW_COUNT);
         this.hadronDetector = new HadronDetector();
+        this.scoreSystem = new ScoreSystem();
         this.gameOver = false;
         this.paused = false;
         this.holdPiece = null;
-        this.holdUsed = false;
         this.dasDirection = 0;
         this.dasTimer = 0;
         this.arrTimer = 0;
         this.dasCharged = false;
-        this.totalLinesCleared = 0;
+        this.undosRemaining = MAX_UNDOS;
 
         spawnNextPiece();
     }
@@ -96,8 +103,6 @@ public class GameState {
                 gameOver = true;
             }
         }
-
-        lowestRow = getGhostRow();
     }
 
     // ==================== MOVEMENT ====================
@@ -176,10 +181,13 @@ public class GameState {
 
     // ==================== HOLD ====================
 
+    /**
+     * Swaps the current piece with the hold piece. Unlike standard Tetris,
+     * hold is freely reusable — no once-per-piece restriction.
+     */
     public void hold() {
-        if (gameOver || paused || currentPiece == null || holdUsed) return;
+        if (gameOver || paused || currentPiece == null) return;
 
-        holdUsed = true;
         Piece temp = holdPiece;
         holdPiece = currentPiece;
 
@@ -192,7 +200,6 @@ public class GameState {
             lockResets = 0;
             onSurface = false;
             gravityAccumulator = 0;
-            lowestRow = getGhostRow();
 
             if (board.collides(currentPiece, currentRotation, currentCol, currentRow)) {
                 gameOver = true;
@@ -204,23 +211,38 @@ public class GameState {
 
     // ==================== LOCK DELAY ====================
 
+    /**
+     * Resets the lock timer when the piece moves/rotates on a surface.
+     * Limited to MAX_LOCK_RESETS — no infinite-manipulation exception.
+     */
     private void onLockReset() {
         if (onSurface && lockResets < MAX_LOCK_RESETS) {
             lockTimer = 0;
             lockResets++;
         }
-        int ghostRow = getGhostRow();
-        if (ghostRow < lowestRow) {
-            lowestRow = ghostRow;
-            lockResets = 0;
-            lockTimer = 0;
-        }
     }
 
     // ==================== PIECE LOCKING ====================
 
+    /**
+     * Locks the current piece and triggers the cascade detection loop.
+     *
+     * <p>After locking, hadron detection runs in a loop: detect → consume →
+     * sticky gravity → detect again, until no more hadrons form. Each iteration
+     * increments the combo counter, multiplying the score.</p>
+     *
+     * <p>Line clears are removed — hadrons are the only way to remove cells.</p>
+     */
     private void lockPiece() {
         if (currentPiece == null) return;
+
+        // Snapshot board state for undo (before placing)
+        if (undosRemaining > 0) {
+            if (undoSnapshots.size() >= MAX_UNDOS) {
+                undoSnapshots.remove(0);
+            }
+            undoSnapshots.add(board.copy());
+        }
 
         board.placePiece(currentPiece, currentRotation, currentCol, currentRow);
 
@@ -239,40 +261,76 @@ public class GameState {
             return;
         }
 
-        // Detect hadrons
-        List<HadronFormation> formations = hadronDetector.detect(board, currentPiece, currentRotation,
-                currentCol, currentRow);
-        List<Hadron> hadrons = formations.stream().map(HadronFormation::getHadron).toList();
-        lastDiscoveredHadrons = hadrons;
-        lastFormations = formations;
-        discoveredHadrons.addAll(hadrons);
-        if (!formations.isEmpty()) {
+        // Cascade detection loop: detect hadrons → sticky gravity → repeat
+        List<HadronFormation> allFormations = new ArrayList<>();
+        List<Hadron> allHadrons = new ArrayList<>();
+        int comboCount = 0;
+
+        // First detection uses the placed piece info
+        Piece detectPiece = currentPiece;
+        int detectRotation = currentRotation;
+        int detectCol = currentCol;
+        int detectRow = currentRow;
+
+        while (true) {
+            List<HadronFormation> formations = hadronDetector.detect(board, detectPiece,
+                    detectRotation, detectCol, detectRow);
+
+            if (formations.isEmpty()) break;
+
+            for (HadronFormation f : formations) {
+                scoreSystem.award(f.getHadron(), comboCount);
+                allFormations.add(f);
+                allHadrons.add(f.getHadron());
+            }
+            comboCount++;
+
+            // For subsequent cascade iterations, we need to re-scan the whole board.
+            // Use a dummy scan from (0,0) — detect() only looks at seed cells near the
+            // piece, so we need to re-trigger detection broadly. Since sticky gravity
+            // may have moved cells, use a full-board scan approach.
+            // Actually, detect() already applies gravity internally, so after the first
+            // call the board has changed. We break and let the outer loop re-detect
+            // from any new gluon cluster.
+            detectPiece = Piece.GLUON; // dummy — we'll scan near existing gluon clusters
+            detectCol = 0;
+            detectRow = 0;
+            detectRotation = 0;
+
+            // Re-scan: find any gluon on the board to seed from
+            boolean foundGluon = false;
+            for (int r = 0; r < Board.HEIGHT && !foundGluon; r++) {
+                for (int c = 0; c < Board.WIDTH && !foundGluon; c++) {
+                    Piece p = board.getCell(c, r);
+                    if (p != null && p.isGluon()) {
+                        detectCol = c;
+                        detectRow = r;
+                        foundGluon = true;
+                    }
+                }
+            }
+            if (!foundGluon) break;
+        }
+
+        lastDiscoveredHadrons = allHadrons;
+        lastFormations = allFormations;
+        lastComboCount = comboCount;
+        discoveredHadrons.addAll(allHadrons);
+        if (!allFormations.isEmpty()) {
             hadronAnimTimer = HADRON_ANIM_DURATION;
         }
 
-        // Clear lines
-        int linesCleared = board.clearLines();
-        lastLinesCleared = linesCleared;
-        totalLinesCleared += linesCleared;
-
         // Build action text
         StringBuilder sb = new StringBuilder();
-        if (!hadrons.isEmpty()) {
-            for (Hadron h : hadrons) {
+        if (!allHadrons.isEmpty()) {
+            for (Hadron h : allHadrons) {
                 if (sb.length() > 0) sb.append(" + ");
                 sb.append(h.getDisplayName());
             }
             sb.append("!");
-        }
-        if (linesCleared > 0) {
-            if (sb.length() > 0) sb.append(" ");
-            sb.append(switch (linesCleared) {
-                case 1 -> "Single!";
-                case 2 -> "Double!";
-                case 3 -> "Triple!";
-                case 4 -> "Quad!";
-                default -> linesCleared + " Lines!";
-            });
+            if (comboCount > 1) {
+                sb.append(" ×").append(comboCount).append(" Combo!");
+            }
         }
         if (sb.length() > 0) {
             actionText = sb.toString();
@@ -280,7 +338,6 @@ public class GameState {
         }
 
         spawnNextPiece();
-        holdUsed = false;
     }
 
     // ==================== GHOST PIECE ====================
@@ -336,12 +393,12 @@ public class GameState {
     }
 
     public double getGravityInterval() {
-        int level = (totalLinesCleared / LINES_PER_LEVEL) + 1;
+        int level = getLevel();
         return Math.pow(0.8 - (level - 1) * 0.007, level - 1);
     }
 
     public int getLevel() {
-        return (totalLinesCleared / LINES_PER_LEVEL) + 1;
+        return (scoreSystem.getTotalParticlesContained() / PARTICLES_PER_LEVEL) + 1;
     }
 
     private void updateDAS(double deltaTime) {
@@ -394,19 +451,50 @@ public class GameState {
     public int getCurrentCol() { return currentCol; }
     public int getCurrentRow() { return currentRow; }
     public Piece getHoldPiece() { return holdPiece; }
-    public boolean isHoldUsed() { return holdUsed; }
     public boolean isGameOver() { return gameOver; }
     public boolean isPaused() { return paused; }
     public String getActionText() { return actionText; }
-    public int getLastLinesCleared() { return lastLinesCleared; }
-    public int getTotalLinesCleared() { return totalLinesCleared; }
+    public int getScore() { return scoreSystem.getScore(); }
+    public int getTotalParticlesContained() { return scoreSystem.getTotalParticlesContained(); }
+    public ScoreSystem getScoreSystem() { return scoreSystem; }
+    public int getLastComboCount() { return lastComboCount; }
     public List<Hadron> getDiscoveredHadrons() { return Collections.unmodifiableList(discoveredHadrons); }
     public List<Hadron> getLastDiscoveredHadrons() { return lastDiscoveredHadrons; }
     public List<HadronFormation> getLastFormations() { return lastFormations; }
     public double getHadronAnimTimer() { return hadronAnimTimer; }
+    public int getUndosRemaining() { return undosRemaining; }
 
     public List<Piece> getPreviewPieces() {
         return bag.peekNext(PREVIEW_COUNT);
+    }
+
+    // ==================== UNDO ====================
+
+    /**
+     * Undoes the last piece placement by restoring the board snapshot.
+     * Limited to MAX_UNDOS per game. Returns true if undo was performed.
+     */
+    public boolean undo() {
+        if (gameOver || paused || undoSnapshots.isEmpty() || undosRemaining <= 0) {
+            return false;
+        }
+        Board snapshot = undoSnapshots.remove(undoSnapshots.size() - 1);
+        // Restore board state
+        for (int r = 0; r < Board.HEIGHT; r++) {
+            for (int c = 0; c < Board.WIDTH; c++) {
+                board.setCell(c, r, snapshot.getCell(c, r));
+            }
+        }
+        undosRemaining--;
+        // Re-spawn current piece at spawn position
+        currentRotation = 0;
+        currentCol = currentPiece.getSpawnColumn();
+        currentRow = currentPiece.getSpawnRow();
+        lockTimer = 0;
+        lockResets = 0;
+        onSurface = false;
+        gravityAccumulator = 0;
+        return true;
     }
 
     public void togglePause() {

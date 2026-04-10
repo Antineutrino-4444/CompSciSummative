@@ -10,30 +10,41 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for BagRandomizer.
+ * Tests for BagRandomizer (weighted 7-piece bag).
  */
 class BagRandomizerTest {
 
     @Test
-    void firstBagContainsAllTypes() {
-        BagRandomizer bag = new BagRandomizer(5);
-        Set<Piece> seen = EnumSet.noneOf(Piece.class);
-        for (int i = 0; i < Piece.values().length; i++) {
-            seen.add(bag.next());
+    void bagContainsCorrectParticleDistribution() {
+        BagRandomizer bag = new BagRandomizer(5, new Random(42));
+        int topCount = 0, bottomCount = 0, gluonCount = 0;
+        for (int i = 0; i < BagRandomizer.BAG_SIZE; i++) {
+            Piece p = bag.next();
+            if (p.isTopQuark()) topCount++;
+            else if (p.isBottomQuark()) bottomCount++;
+            else if (p.isGluon()) gluonCount++;
         }
-        assertEquals(Piece.values().length, seen.size(),
-                "First bag should include all " + Piece.values().length + " piece types");
+        assertEquals(2, topCount, "Each bag should have 2 top quarks");
+        assertEquals(2, bottomCount, "Each bag should have 2 bottom quarks");
+        assertEquals(3, gluonCount, "Each bag should have 3 gluons");
     }
 
     @Test
-    void secondBagAlsoContainsAllTypes() {
-        BagRandomizer bag = new BagRandomizer(5);
-        for (int i = 0; i < Piece.values().length; i++) bag.next();
-        Set<Piece> seen = EnumSet.noneOf(Piece.class);
-        for (int i = 0; i < Piece.values().length; i++) {
-            seen.add(bag.next());
+    void secondBagAlsoHasCorrectDistribution() {
+        BagRandomizer bag = new BagRandomizer(5, new Random(99));
+        // Consume first bag
+        for (int i = 0; i < BagRandomizer.BAG_SIZE; i++) bag.next();
+        // Check second bag
+        int topCount = 0, bottomCount = 0, gluonCount = 0;
+        for (int i = 0; i < BagRandomizer.BAG_SIZE; i++) {
+            Piece p = bag.next();
+            if (p.isTopQuark()) topCount++;
+            else if (p.isBottomQuark()) bottomCount++;
+            else if (p.isGluon()) gluonCount++;
         }
-        assertEquals(Piece.values().length, seen.size());
+        assertEquals(2, topCount);
+        assertEquals(2, bottomCount);
+        assertEquals(3, gluonCount);
     }
 
     @Test
@@ -71,23 +82,16 @@ class BagRandomizerTest {
     }
 
     @Test
-    void maxGapIsReasonable() {
-        BagRandomizer bag = new BagRandomizer(5);
-        int[] lastSeen = new int[Piece.values().length];
-        java.util.Arrays.fill(lastSeen, -1);
-        int maxGap = 0;
-
-        for (int i = 0; i < 50; i++) {
-            Piece p = bag.next();
-            int idx = p.ordinal();
-            if (lastSeen[idx] >= 0) {
-                maxGap = Math.max(maxGap, i - lastSeen[idx] - 1);
-            }
-            lastSeen[idx] = i;
+    void gluonFrequencyIsRoughly43Percent() {
+        BagRandomizer bag = new BagRandomizer(5, new Random(123));
+        int gluonCount = 0;
+        int total = BagRandomizer.BAG_SIZE * 10; // 10 bags
+        for (int i = 0; i < total; i++) {
+            if (bag.next().isGluon()) gluonCount++;
         }
-
-        // With 5-bag, max gap between same piece is (5-1) + (5-1) = 8
-        assertTrue(maxGap <= 8,
-                "Maximum gap between same piece should be reasonable, was " + maxGap);
+        double ratio = (double) gluonCount / total;
+        // Expected: 3/7 ≈ 0.4286
+        assertTrue(ratio > 0.40 && ratio < 0.46,
+                "Gluon frequency should be ~43%, was " + (ratio * 100) + "%");
     }
 }

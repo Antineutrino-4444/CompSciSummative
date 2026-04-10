@@ -40,6 +40,7 @@ public enum Piece {
 
     /**
      * Top Quark B — straight tromino (line of 3).
+     * Same particle identity as Top Quark A (red, "u") — different shape only.
      */
     TOP_QUARK_B(new int[][][] {
         // rot 0: ###     rot 1: #
@@ -49,7 +50,7 @@ public enum Piece {
         {{0,0},{0,1},{0,2}},  // rot 1: vertical
         {{0,0},{1,0},{2,0}},  // rot 2: horizontal (same as 0)
         {{0,0},{0,1},{0,2}}   // rot 3: vertical (same as 1)
-    }, 0x5588FF, 3, ParticleType.TOP_QUARK, "u"),
+    }, 0xFF4444, 3, ParticleType.TOP_QUARK, "u"),
 
     // ==================== BOTTOM QUARKS (down-type, charge -1/3) ====================
 
@@ -67,13 +68,14 @@ public enum Piece {
 
     /**
      * Bottom Quark B — straight tromino (line of 3).
+     * Same particle identity as Bottom Quark A (green, "d") — different shape only.
      */
     BOTTOM_QUARK_B(new int[][][] {
         {{0,0},{1,0},{2,0}},  // rot 0: horizontal
         {{0,0},{0,1},{0,2}},  // rot 1: vertical
         {{0,0},{1,0},{2,0}},  // rot 2: horizontal
         {{0,0},{0,1},{0,2}}   // rot 3: vertical
-    }, 0xBB66FF, 3, ParticleType.BOTTOM_QUARK, "d"),
+    }, 0x44CC44, 3, ParticleType.BOTTOM_QUARK, "d"),
 
     // ==================== GLUON (force carrier) ====================
 

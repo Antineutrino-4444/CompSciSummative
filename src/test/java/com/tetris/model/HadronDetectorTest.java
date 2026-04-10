@@ -187,7 +187,7 @@ class HadronDetectorTest {
     }
 
     @Test
-    void gravityAppliesAfterConsumption() {
+    void stickyGravityAppliesAfterConsumption() {
         // Layout: gluon pair with quarks, plus an uninvolved piece above
         // Row 0: TOP_QUARK_A(3,0), GLUON(4,0), BOTTOM_QUARK_A(5,0)
         // Row 1: unrelated piece at (3,1)
@@ -198,9 +198,10 @@ class HadronDetectorTest {
 
         detectHadronsNearCell(board, 4, 0);
 
-        // After pion consumes row 0 cells under (3,0), BOTTOM_QUARK_B at (3,1) should drop to (3,0)
+        // After pion consumes cells at (3,0), (4,0), (5,0):
+        // BOTTOM_QUARK_B at (3,1) is now floating — sticky gravity drops it to (3,0)
         assertEquals(Piece.BOTTOM_QUARK_B, board.getCell(3, 0),
-                "Remaining piece should drop down after gravity");
+                "Floating piece should drop down after sticky gravity");
         assertNull(board.getCell(3, 1),
                 "Original position should be empty after gravity");
     }
@@ -235,30 +236,33 @@ class HadronDetectorTest {
                 "L-shaped gluon bridge should connect quarks for pion");
     }
 
-    // ==================== PIECE-DROP QUARK CHAIN TESTS ====================
-    // These tests simulate dropping a multi-cell quark piece onto a gluon network.
-    // Phase 3 extends through the placed piece's cells only.
+    // ==================== PIECE-DROP QUARK ADJACENCY TESTS ====================
+    // After Phase 3 removal, only quark cells individually adjacent to a gluon
+    // participate. Multi-cell quark pieces do NOT contribute all cells greedily.
 
     @Test
-    void neutronWhenDroppingBottomQuarkPieceOntoGluonNetwork() {
+    void onlyGluonAdjacentCellOfDroppedPieceParticipates() {
         // Pre-existing: 2 gluons + 1 top quark
         board.setCell(3, 0, Piece.GLUON);
         board.setCell(4, 0, Piece.GLUON);
         board.setCell(3, 1, Piece.TOP_QUARK_A);
 
         // Simulate dropping BOTTOM_QUARK_B (line-tromino: {0,0},{1,0},{2,0}) at col=5, row=0
-        // Board cells: (5,0), (6,0), (7,0) — cell (5,0) is adjacent to gluon(4,0)
+        // Board cells: (5,0), (6,0), (7,0) — only (5,0) is adjacent to gluon(4,0)
         board.setCell(5, 0, Piece.BOTTOM_QUARK_B);
         board.setCell(6, 0, Piece.BOTTOM_QUARK_B);
         board.setCell(7, 0, Piece.BOTTOM_QUARK_B);
 
         List<Hadron> hadrons = detectHadrons(board, Piece.BOTTOM_QUARK_B, 0, 5, 0);
-        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.NEUTRON),
-                "Dropping bottom quark piece near gluon network should form neutron");
+        // Only 1 bottom quark cell (5,0) participates → pion (1t+1b+1g), NOT neutron
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
+                "Only gluon-adjacent cell should participate, forming pion");
+        assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.NEUTRON),
+                "Should NOT form neutron — non-adjacent cells don't participate");
     }
 
     @Test
-    void protonWhenDroppingTopQuarkPieceOntoGluonNetwork() {
+    void onlyGluonAdjacentCellOfDroppedTopQuarkParticipates() {
         // Pre-existing: 2 gluons + 1 bottom quark
         board.setCell(3, 0, Piece.GLUON);
         board.setCell(4, 0, Piece.GLUON);
@@ -270,8 +274,11 @@ class HadronDetectorTest {
         board.setCell(7, 0, Piece.TOP_QUARK_B);
 
         List<Hadron> hadrons = detectHadrons(board, Piece.TOP_QUARK_B, 0, 5, 0);
-        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PROTON),
-                "Dropping top quark piece near gluon network should form proton");
+        // Only 1 top quark cell (5,0) participates → pion (1t+1b+1g), NOT proton
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
+                "Only gluon-adjacent cell should participate, forming pion");
+        assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.PROTON),
+                "Should NOT form proton — non-adjacent cells don't participate");
     }
 
     @Test
@@ -349,6 +356,58 @@ class HadronDetectorTest {
                 "Should consume the bridging (bottom) gluon at (4,0)");
         assertFalse(consumed.contains(topGluon),
                 "Should NOT consume the non-bridging (top) gluon at (4,1)");
+    }
+
+    // ==================== PREVIEW FORMATION TESTS ====================
+
+    @Test
+    void previewFormationDoesNotModifyBoard() {
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
+
+        Board copy = board.copy();
+        List<HadronFormation> preview = detector.previewFormation(board, Piece.GLUON, 0, 4, 0);
+
+        // Board should be unchanged
+        assertEquals(Piece.TOP_QUARK_A, board.getCell(3, 0), "Board should not be modified");
+        assertEquals(Piece.GLUON, board.getCell(4, 0), "Board should not be modified");
+        assertEquals(Piece.BOTTOM_QUARK_A, board.getCell(5, 0), "Board should not be modified");
+    }
+
+    @Test
+    void previewFormationDetectsPion() {
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.GLUON);
+
+        // Preview placing bottom quark at (5,0) — should detect pion
+        List<HadronFormation> preview = detector.previewFormation(board, Piece.BOTTOM_QUARK_A, 0, 5, 0);
+        assertFalse(preview.isEmpty(), "Preview should detect formation");
+        assertEquals(Hadron.PION, preview.get(0).getHadron());
+    }
+
+    // ==================== STICKY GRAVITY TESTS ====================
+
+    @Test
+    void stickyGravityKeepsConnectedGroupsTogether() {
+        // Setup: a 2-cell horizontal group floating above a gap
+        // Row 2: cells at (3,2) and (4,2) connected
+        // Row 1: empty
+        // Row 0: pion ingredients that will be consumed
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
+        board.setCell(3, 2, Piece.TOP_QUARK_B);
+        board.setCell(4, 2, Piece.BOTTOM_QUARK_B);
+
+        detectHadronsNearCell(board, 4, 0);
+
+        // After consumption and sticky gravity, the group (3,2)+(4,2) should
+        // drop together to row 0
+        assertEquals(Piece.TOP_QUARK_B, board.getCell(3, 0));
+        assertEquals(Piece.BOTTOM_QUARK_B, board.getCell(4, 0));
+        assertNull(board.getCell(3, 2));
+        assertNull(board.getCell(4, 2));
     }
 
     // ==================== HELPERS ====================

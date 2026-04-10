@@ -8,17 +8,26 @@ import java.util.Queue;
 import java.util.Random;
 
 /**
- * Implements a bag randomizer for the 5 particle piece types.
+ * Implements a weighted 7-piece bag randomizer for particle piece types.
  *
- * <p>The bag system ensures fair piece distribution by placing all 5 piece
- * types into a "bag", shuffling them, and dispensing them one at a time.
- * When the bag is empty, a new bag is generated. This guarantees that the
- * maximum gap between any two of the same piece type is 8.</p>
+ * <p>Each bag contains 7 pieces: 2 top-quarks, 2 bottom-quarks, and 3 gluons
+ * (~43% gluons). This weighting ensures gluons — the connective tissue every
+ * hadron recipe needs — are the most common piece. Shape variants (A vs B) for
+ * quarks are chosen randomly when each quark slot is dispensed.</p>
  *
  * <p>A preview queue is maintained to allow showing upcoming pieces to the
- * player (typically 5 or 6 pieces ahead).</p>
+ * player.</p>
  */
 public class BagRandomizer {
+
+    /** Number of pieces in each bag. */
+    static final int BAG_SIZE = 7;
+
+    /** Top-quark shape variants, chosen randomly per slot. */
+    private static final Piece[] TOP_VARIANTS = { Piece.TOP_QUARK_A, Piece.TOP_QUARK_B };
+
+    /** Bottom-quark shape variants, chosen randomly per slot. */
+    private static final Piece[] BOTTOM_VARIANTS = { Piece.BOTTOM_QUARK_A, Piece.BOTTOM_QUARK_B };
 
     /** The internal queue of upcoming pieces. */
     private final Queue<Piece> queue = new LinkedList<>();
@@ -52,13 +61,25 @@ public class BagRandomizer {
         fillQueue();
     }
 
+    // TODO: accelerator meter — let the player choose their next piece type
+
     /**
      * Ensures the queue has enough pieces to serve the next piece plus
      * all preview pieces.
+     *
+     * <p>Each bag is: 2 top-quarks (random shape), 2 bottom-quarks (random shape),
+     * 3 gluons — shuffled together.</p>
      */
     private void fillQueue() {
         while (queue.size() <= previewSize) {
-            List<Piece> bag = new ArrayList<>(List.of(Piece.values()));
+            List<Piece> bag = new ArrayList<>(BAG_SIZE);
+            bag.add(TOP_VARIANTS[random.nextInt(TOP_VARIANTS.length)]);
+            bag.add(TOP_VARIANTS[random.nextInt(TOP_VARIANTS.length)]);
+            bag.add(BOTTOM_VARIANTS[random.nextInt(BOTTOM_VARIANTS.length)]);
+            bag.add(BOTTOM_VARIANTS[random.nextInt(BOTTOM_VARIANTS.length)]);
+            bag.add(Piece.GLUON);
+            bag.add(Piece.GLUON);
+            bag.add(Piece.GLUON);
             Collections.shuffle(bag, random);
             queue.addAll(bag);
         }

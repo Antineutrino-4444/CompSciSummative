@@ -20,28 +20,24 @@ import java.util.Set;
  *   <li>After a piece locks, find all gluon cells near the placed piece</li>
  *   <li>For each gluon, BFS outward through adjacent gluons to find
  *       the connected gluon cluster</li>
- *   <li>Collect quarks directly adjacent to any gluon in the cluster</li>
- *   <li>For quarks that are part of the <b>just-placed piece</b>, extend through
- *       quark-quark adjacency within that piece's cells. This ensures multi-cell
- *       quark pieces contribute all their cells when dropped onto a gluon network,
- *       preferring larger hadrons. Previously-placed quarks are NOT pulled in
- *       through quark chains — only the dropped piece extends.</li>
+ *   <li>Collect quarks directly adjacent to any gluon in the cluster.
+ *       <b>Only</b> quark cells individually touching a gluon participate —
+ *       no quark-to-quark chaining is allowed.</li>
  *   <li>Check if any hadron recipe matches (Proton &gt; Neutron &gt; Pion priority)</li>
  *   <li>Consume the minimum cells needed for the hadron</li>
  * </ol>
  *
  * <h3>Design Implication</h3>
- * <p>Dropping a multi-cell quark piece onto a gluon network includes all cells of
- * that piece, preferring larger hadrons. But previously-placed quarks sitting
- * adjacent to the gluon network only contribute their directly gluon-adjacent cells.
- * To deliberately form a <b>pion</b>, ensure only 1 top + 1 bottom + 1 gluon
- * are connected.</p>
+ * <p>Each participating quark cell must itself touch a gluon in the cluster. This
+ * gives the player precise control — dropping a 3-cell quark where only the tip
+ * touches the gluon network consumes only that tip. The choice of pion vs proton
+ * is deliberate, not accidental.</p>
  *
  * <h3>What counts as "gluon-linked"</h3>
  * <p>A quark is part of a gluon network if it is orthogonally adjacent to at least
  * one gluon cell. Two quarks are gluon-linked if there exists a path of cells
  * between them that passes through at least one gluon. Quark-to-quark adjacency
- * WITHOUT an intervening gluon does NOT count (except within the just-placed piece).</p>
+ * WITHOUT an intervening gluon does NOT count.</p>
  */
 public class HadronDetector {
 
@@ -61,15 +57,13 @@ public class HadronDetector {
     public List<HadronFormation> detect(Board board, Piece piece, int rotation, int col, int row) {
         List<HadronFormation> found = new ArrayList<>();
 
-        // Compute cells belonging to the just-placed piece
-        Set<Long> placedPieceCells = new HashSet<>();
+        // Compute seed area: cells belonging to the just-placed piece and their neighbors
         Set<Long> seedCells = new HashSet<>();
         int[][] cells = piece.getCells(rotation);
         for (int[] cell : cells) {
             int cx = col + cell[0];
             int cy = row - cell[1];
             long packed = pack(cx, cy);
-            placedPieceCells.add(packed);
             seedCells.add(packed);
             // Also add neighbors
             for (int[] n : NEIGHBORS) {
@@ -94,8 +88,7 @@ public class HadronDetector {
 
             // Start BFS from gluon cells to find gluon-linked groups
             if (sp.isGluon()) {
-                GluonGroup group = buildGluonGroup(board, sx, sy, visited, allConsumed,
-                        placedPieceCells);
+                GluonGroup group = buildGluonGroup(board, sx, sy, visited, allConsumed);
                 List<HadronFormation> groupHadrons = matchRecipes(group, allConsumed);
                 found.addAll(groupHadrons);
             }
@@ -106,12 +99,33 @@ public class HadronDetector {
             board.setCell(unpackCol(packed), unpackRow(packed), null);
         }
 
-        // Apply gravity if cells were consumed
+        // Apply sticky gravity if cells were consumed
         if (!allConsumed.isEmpty()) {
-            applyGravity(board);
+            applyStickyGravity(board);
         }
 
         return found;
+    }
+
+    /**
+     * Previews what hadron formations would occur if the given piece were locked
+     * at the specified position. Does NOT modify the board — runs detection on a copy.
+     *
+     * <p>Useful for ghost-piece highlighting: shows which cells would be consumed
+     * and which recipe would fire before the player commits to the placement.</p>
+     *
+     * @param board    the game board (not modified)
+     * @param piece    the piece to preview
+     * @param rotation the rotation of the piece
+     * @param col      the column of the piece
+     * @param row      the row of the piece
+     * @return list of formations that would occur (may be empty)
+     */
+    public List<HadronFormation> previewFormation(Board board, Piece piece, int rotation,
+                                                    int col, int row) {
+        Board copy = board.copy();
+        copy.placePiece(piece, rotation, col, row);
+        return detect(copy, piece, rotation, col, row);
     }
 
     /**
@@ -119,15 +133,12 @@ public class HadronDetector {
      * A gluon-linked group consists of:
      * - All gluon cells connected to the starting gluon (through other gluons)
      * - All quark cells that are directly adjacent to at least one gluon in the group
-     * - Additional quark cells of the just-placed piece reachable through quark-quark
-     *   adjacency from any quark already in the group
      *
-     * Quarks from previously-placed pieces that only touch other quarks (not gluons)
-     * are NOT included — only the just-placed piece extends through quark chains.
+     * Only quark cells individually touching a gluon participate — no quark-to-quark
+     * chaining. This gives the player precise control over which cells are consumed.
      */
     private GluonGroup buildGluonGroup(Board board, int startCol, int startRow,
-                                        Set<Long> globalVisited, Set<Long> consumed,
-                                        Set<Long> placedPieceCells) {
+                                        Set<Long> globalVisited, Set<Long> consumed) {
         GluonGroup group = new GluonGroup();
         Queue<Long> gluonQueue = new LinkedList<>();
         Set<Long> localVisited = new HashSet<>();
@@ -170,7 +181,6 @@ public class HadronDetector {
         }
 
         // Phase 2: Collect quarks that are adjacent to ANY gluon in the group
-        Queue<Long> quarkBfsQueue = new LinkedList<>();
         for (long gluonPacked : group.gluons) {
             int gx = unpackCol(gluonPacked);
             int gy = unpackRow(gluonPacked);
@@ -182,38 +192,6 @@ public class HadronDetector {
                     Piece neighbor = board.getCell(nx, ny);
                     if (neighbor != null && neighbor.isQuark()) {
                         group.allCells.add(np);
-                        quarkBfsQueue.add(np);
-                        if (neighbor.isTopQuark()) {
-                            group.topQuarks.add(np);
-                        } else {
-                            group.bottomQuarks.add(np);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Phase 3: BFS through quark cells that belong to the just-placed piece.
-        // If a quark from the placed piece touches the gluon network, extend to
-        // other cells of the same placed piece. This ensures multi-cell quark pieces
-        // contribute all their cells when dropped, preferring larger hadrons.
-        // Previously-placed quarks are NOT pulled in through quark chains.
-        while (!quarkBfsQueue.isEmpty()) {
-            long current = quarkBfsQueue.poll();
-            // Only extend from quarks that belong to the just-placed piece
-            if (!placedPieceCells.contains(current)) continue;
-            int cx = unpackCol(current);
-            int cy = unpackRow(current);
-            for (int[] n : NEIGHBORS) {
-                int nx = cx + n[0];
-                int ny = cy + n[1];
-                long np = pack(nx, ny);
-                if (inBounds(nx, ny) && !consumed.contains(np) && !group.allCells.contains(np)
-                        && placedPieceCells.contains(np)) {
-                    Piece neighbor = board.getCell(nx, ny);
-                    if (neighbor != null && neighbor.isQuark()) {
-                        group.allCells.add(np);
-                        quarkBfsQueue.add(np);
                         if (neighbor.isTopQuark()) {
                             group.topQuarks.add(np);
                         } else {
@@ -299,22 +277,127 @@ public class HadronDetector {
     }
 
     /**
-     * Applies column gravity after cells are consumed.
+     * Applies sticky (connected-component) gravity after cells are consumed.
+     * Cells that are still touching each other fall as a rigid group, preserving
+     * built structures. Groups are processed bottom-up to avoid mid-fall collisions.
      */
-    private void applyGravity(Board board) {
-        for (int c = 0; c < Board.WIDTH; c++) {
-            int writeRow = 0;
+    private void applyStickyGravity(Board board) {
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            // Find all connected components
+            boolean[][] visited = new boolean[Board.HEIGHT][Board.WIDTH];
+            List<List<long[]>> floatingGroups = new ArrayList<>();
+
             for (int r = 0; r < Board.HEIGHT; r++) {
-                Piece p = board.getCell(c, r);
-                if (p != null) {
-                    if (writeRow != r) {
-                        board.setCell(c, writeRow, p);
-                        board.setCell(c, r, null);
+                for (int c = 0; c < Board.WIDTH; c++) {
+                    if (board.getCell(c, r) != null && !visited[r][c]) {
+                        List<long[]> component = new ArrayList<>();
+                        boolean grounded = floodFillComponent(board, c, r, visited, component);
+                        if (!grounded) {
+                            floatingGroups.add(component);
+                        }
                     }
-                    writeRow++;
+                }
+            }
+
+            // Sort groups by their lowest row (ascending) so we drop bottom groups first
+            floatingGroups.sort((a, b) -> {
+                int minA = Integer.MAX_VALUE, minB = Integer.MAX_VALUE;
+                for (long[] cell : a) minA = Math.min(minA, (int) cell[1]);
+                for (long[] cell : b) minB = Math.min(minB, (int) cell[1]);
+                return Integer.compare(minA, minB);
+            });
+
+            for (List<long[]> group : floatingGroups) {
+                // Determine how far this group can drop
+                int dropDist = computeDropDistance(board, group);
+                if (dropDist > 0) {
+                    changed = true;
+                    // Sort cells top-to-bottom so we move lower rows first (avoid overwriting)
+                    group.sort((a, b) -> Long.compare(a[1], b[1]));
+                    // Clear old positions
+                    Piece[] pieces = new Piece[group.size()];
+                    for (int i = 0; i < group.size(); i++) {
+                        long[] cell = group.get(i);
+                        pieces[i] = board.getCell((int) cell[0], (int) cell[1]);
+                        board.setCell((int) cell[0], (int) cell[1], null);
+                    }
+                    // Place at new positions
+                    for (int i = 0; i < group.size(); i++) {
+                        long[] cell = group.get(i);
+                        board.setCell((int) cell[0], (int) cell[1] - dropDist, pieces[i]);
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Flood-fills from (startCol, startRow) to find a connected component.
+     * Returns true if the component is "grounded" (touches row 0 or sits on
+     * a non-empty cell below any of its cells).
+     */
+    private boolean floodFillComponent(Board board, int startCol, int startRow,
+                                        boolean[][] visited, List<long[]> component) {
+        Queue<long[]> queue = new LinkedList<>();
+        queue.add(new long[]{startCol, startRow});
+        visited[startRow][startCol] = true;
+        boolean grounded = false;
+
+        while (!queue.isEmpty()) {
+            long[] current = queue.poll();
+            int cx = (int) current[0];
+            int cy = (int) current[1];
+            component.add(current);
+
+            if (cy == 0) grounded = true;
+
+            for (int[] n : NEIGHBORS) {
+                int nx = cx + n[0];
+                int ny = cy + n[1];
+                if (inBounds(nx, ny) && !visited[ny][nx] && board.getCell(nx, ny) != null) {
+                    visited[ny][nx] = true;
+                    queue.add(new long[]{nx, ny});
+                }
+            }
+        }
+
+        return grounded;
+    }
+
+    /**
+     * Computes how far a floating group can drop before hitting the floor
+     * or another settled cell.
+     */
+    private int computeDropDistance(Board board, List<long[]> group) {
+        Set<Long> groupSet = new HashSet<>();
+        for (long[] cell : group) {
+            groupSet.add(pack((int) cell[0], (int) cell[1]));
+        }
+
+        int minDrop = Integer.MAX_VALUE;
+        for (long[] cell : group) {
+            int cx = (int) cell[0];
+            int cy = (int) cell[1];
+            int drop = 0;
+            for (int testY = cy - 1; testY >= 0; testY--) {
+                long below = pack(cx, testY);
+                if (!groupSet.contains(below) && board.getCell(cx, testY) != null) {
+                    break;
+                }
+                if (!groupSet.contains(below)) {
+                    drop++;
+                } else {
+                    break;
+                }
+            }
+            // If no obstruction found, drop = distance to floor
+            if (cy - drop < 0) drop = cy;
+            minDrop = Math.min(minDrop, drop);
+        }
+
+        return minDrop;
     }
 
     private boolean inBounds(int col, int row) {
