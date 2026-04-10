@@ -1,0 +1,174 @@
+# Particle Tetris — Full Gameplay Rundown
+
+## The Concept
+
+This is Tetris re-skinned as a **particle physics simulation**. Instead of standard tetrominoes (I, O, T, S, Z, L, J), you play with **quarks** and **gluons** — the subatomic particles that make up protons and neutrons. The core twist beyond regular Tetris is a **hadron formation mechanic**: you're not just clearing lines, you're building composite particles by strategically connecting quarks through gluon bridges.
+
+---
+
+## The Pieces (5 Types)
+
+There are exactly **5 piece types** drawn from a shuffled bag (standard Tetris bag randomizer guarantees all 5 appear before any repeats):
+
+| Piece | Shape | Size | Color | Label |
+|-------|-------|------|-------|-------|
+| **Top Quark A** | L-tromino (like a small L) | 3 cells, 2×2 bounding box | Red (`#FF4444`) | "u" |
+| **Top Quark B** | Straight tromino (line of 3) | 3 cells, 3×1 bounding box | Blue (`#5588FF`) | "u" |
+| **Bottom Quark A** | J-tromino (mirror-L) | 3 cells, 2×2 bounding box | Green (`#44CC44`) | "d" |
+| **Bottom Quark B** | Straight tromino (line of 3) | 3 cells, 3×1 bounding box | Purple (`#BB66FF`) | "d" |
+| **Gluon** | Domino (2 cells) | 2 cells, rotates horizontal↔vertical | Gold (`#FFCC00`) | "g" |
+
+All pieces are **smaller than normal Tetris pieces** — quarks are 3-cell trominoes and gluons are 2-cell dominoes. This makes the 10-wide board feel more spacious and gives more room for strategic placement.
+
+Each piece is drawn as a **colored sphere/ball** with a letter label ("u", "d", or "g") inside, rendered on a dark space-themed background.
+
+---
+
+## Controls (Standard Modern Tetris)
+
+| Action | Keys |
+|--------|------|
+| Move left | Left Arrow / A |
+| Move right | Right Arrow / D |
+| Soft drop | Down Arrow / S (held = 20 cells/sec) |
+| Hard drop | Space |
+| Rotate CW | Up Arrow / X |
+| Rotate CCW | Z / Control |
+| Hold | C / Shift |
+| Pause | Escape / F1 |
+| Restart | R (game over only) |
+
+---
+
+## Core Tetris Mechanics
+
+All standard modern Tetris mechanics are implemented:
+
+1. **Gravity**: Pieces fall at a speed determined by level. The formula is `(0.8 − (level−1) × 0.007)^(level−1)` seconds per row — same as guideline Tetris. Level 1 starts at ~1 second/row, getting faster each level.
+
+2. **DAS/ARR (Delayed Auto-Shift / Auto-Repeat Rate)**: When you hold left/right, there's a 167ms delay before auto-repeat kicks in, then the piece moves at 33ms intervals (about 30 cells/second). This matches competitive Tetris feel.
+
+3. **Lock Delay**: When a piece lands on a surface, you have **500ms** to move/rotate it before it locks. Each move/rotation resets this timer (up to **15 resets max**). If the piece drops to a new lowest row, the reset counter resets to 0 — meaning creative downward stacking gives infinite manipulation time.
+
+4. **Wall Kicks**: Rotation uses simplified SRS (Super Rotation System) wall kicks. L/J trominoes try 5 offsets (center, left, right, up, down). Line trominoes and gluons try 6 offsets. If a rotation would cause a collision, the system tries these alternative positions before giving up.
+
+5. **Hold Piece**: You can hold one piece (C or Shift). Swaps your current piece with the held piece, or stores the current and draws from the bag if hold was empty. You can only hold **once per piece** — after holding, you must lock a piece before holding again. The held piece is visually dimmed when "used."
+
+6. **Ghost Piece**: A transparent preview shows where your piece would land if you hard-dropped right now.
+
+7. **Next Queue**: Shows the upcoming **5 pieces** in the right panel.
+
+8. **Bag Randomizer**: All 5 piece types go into a bag, get shuffled, then dispensed one at a time. Maximum gap between any two of the same piece is 8 pieces.
+
+---
+
+## Line Clearing
+
+Standard Tetris line clearing is present — when an entire row of 10 cells is filled, it's cleared and everything above drops down. Action text appears:
+- **Single!** (1 line)
+- **Double!** (2 lines)
+- **Triple!** (3 lines)
+- **Quad!** (4 lines)
+
+---
+
+## The Hadron Formation Mechanic (The Unique Part)
+
+This is where the game diverges from normal Tetris. After every piece locks, the game scans for **hadron formations** — composite particles made by combining quarks through gluon bridges.
+
+**The key rule: quarks adjacent to each other do NOT automatically combine. They MUST be connected THROUGH gluon cells.**
+
+### The Three Hadron Recipes
+
+| Hadron | Recipe | Color |
+|--------|--------|-------|
+| **Proton** (uud) | 2 Top quarks + 1 Bottom quark + at least 2 gluons connecting them | Red (`#FF4444`) |
+| **Neutron** (udd) | 1 Top quark + 2 Bottom quarks + at least 2 gluons connecting them | Blue (`#4488FF`) |
+| **Pion** (ud̄) | 1 Top quark + 1 Bottom quark + 1 gluon between them | Orange (`#FFAA00`) |
+
+The detector tries **larger recipes first** (Proton > Neutron > Pion), so if you have enough quarks connected, the game prefers to form protons/neutrons over pions.
+
+### How Detection Works (Step by Step)
+
+When a piece locks:
+
+1. **Find gluon clusters**: Starting from gluon cells near the placed piece, BFS (breadth-first search) to find all connected gluon cells (gluons touching gluons form a continuous gluon network).
+
+2. **Collect adjacent quarks**: Any quark cell that is orthogonally adjacent to any gluon in the cluster is included.
+
+3. **Extend through the just-placed piece**: If a quark from the piece you just dropped touches the gluon network, ALL other cells of that same dropped piece are included. This means dropping a 3-cell quark piece where even one cell touches a gluon pulls in all 3 cells — favoring larger hadrons. **However**, previously-placed quarks are NOT extended this way; only their directly gluon-adjacent cells count.
+
+4. **Match recipes**: Check if the collected quarks match any hadron recipe. Gluons are sorted by adjacency to quarks so the "bridging" gluon (the one actually between quarks) is consumed first.
+
+5. **Consume cells**: All participating quark and gluon cells are removed from the board.
+
+6. **Column gravity**: After cells are consumed, remaining cells above the gaps fall down column-by-column (not row-based like line clears — this is true column gravity).
+
+### Strategic Implications
+
+- **Pion is the easiest**: Place one "u" quark, one "d" quark, and one gluon between them. Just 3 cells consumed.
+- **Proton/Neutron are harder**: You need 5+ cells arranged with gluon bridges connecting all quarks.
+- **Gluons are the critical piece**: Without gluons, quarks sitting next to each other do nothing. The gluon is the "glue" that makes everything work.
+- **Planning is key**: You can place quarks first, leaving gaps, then drop gluons into the gaps to complete the bridge and trigger hadron formation.
+- **Multi-cell quarks are greedy**: Dropping a 3-cell quark piece onto a gluon network pulls in all 3 cells, which can accidentally form a proton when you wanted a pion.
+- To form a **pion deliberately**, make sure only 1 isolated quark cell touches the gluon — don't drop a multi-cell quark piece directly onto the network.
+
+---
+
+## The Formation Animation
+
+When a hadron forms, a **0.6-second two-phase animation** plays on the consumed cells:
+
+- **Phase 1 (0–0.3s)**: Expanding glow rings and bright white/colored flashes appear on each consumed cell position, drawing attention to which cells are being consumed.
+- **Phase 2 (0.3–0.6s)**: The glowing particles converge toward the center of the formation, shrinking and fading. A growing burst of the hadron's color appears at the center point.
+
+The animation is overlaid on the playfield and uses the hadron's signature color (red for proton, blue for neutron, orange for pion).
+
+---
+
+## Visual Connections: Gluon Bridges
+
+On the board, whenever a gluon cell is orthogonally adjacent to a quark or another gluon, a **gold connecting line** is drawn between their centers. This gives a visual indicator of which particles are "bound" — you can see the strong force connections forming as you build.
+
+- Gluon-to-quark bridges: brighter gold lines (60% opacity)
+- Gluon-to-gluon bridges: slightly dimmer (40% opacity)
+
+---
+
+## UI Layout
+
+The screen layout:
+- **Left panel**: Hold box (top-left), then below it: Level number, Lines cleared, Hadrons formed count, a particle legend (showing what u/d/g look like), and recipe hints.
+- **Center**: The 10×20 playfield with dark-space background and subtle grid lines.
+- **Right panel**: Next queue (5 upcoming pieces), then below: "Discovered" hadron panel showing Proton, Neutron, and Pion with their icons, how many you've formed, and recipe descriptions.
+
+The hadron discovery panel shows each hadron type with a **composite icon** (small balls arranged to show the quark composition with bridge lines between them). Undiscovered hadrons are dimmed to 20% opacity as a teaser. Once you form one, it lights up with a golden "×N" count.
+
+---
+
+## Game Over
+
+The game ends (**"Containment Breach"**) in two ways:
+1. **Block out**: A new piece spawns and immediately collides — the board is too full.
+2. **Lock out**: A piece locks entirely above the visible 20-row playfield (all cells in the buffer zone).
+
+A dark overlay appears with "CONTAINMENT BREACH" in red and "Press R to restart."
+
+---
+
+## Leveling
+
+- Every **10 lines cleared** advances you one level.
+- Higher levels = faster gravity (pieces fall quicker).
+- Level is displayed in the left panel.
+- There is no score system — the game tracks **lines cleared** and **hadrons discovered** as your metrics.
+
+---
+
+## Summary: What Makes This Different From Normal Tetris
+
+1. **Smaller pieces** (2-3 cells instead of 4) = more granular placement, denser strategies.
+2. **Gluon bridge mechanic** = a second dimension of play beyond line clearing. You're simultaneously trying to clear lines AND set up particle physics recipes.
+3. **Three hadron types** to discover with increasing difficulty (Pion → Neutron/Proton).
+4. **Column gravity** after hadron consumption (not row gravity) = cells can shift independently per column, creating interesting board states.
+5. **Visual theme** — particles as glowing spheres with connecting bridge lines, dark space aesthetic, physics-themed nomenclature.
