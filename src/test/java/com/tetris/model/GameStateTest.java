@@ -64,12 +64,16 @@ class GameStateTest {
 
     @Test
     void holdIsFreelyReusable() {
+        Piece firstPiece = state.getCurrentPiece();
         state.hold();
+        // After first hold: firstPiece is in hold, a new piece from bag is current
+        assertEquals(firstPiece, state.getHoldPiece());
         Piece secondPiece = state.getCurrentPiece();
-        // Unlike standard Tetris, hold can be used again immediately
+        // Second hold should swap back — it's freely reusable (no once-per-piece restriction)
         state.hold();
-        assertNotEquals(secondPiece, state.getCurrentPiece(),
-                "Hold should swap back — it's freely reusable");
+        assertEquals(secondPiece, state.getHoldPiece());
+        assertEquals(firstPiece, state.getCurrentPiece(),
+                "Hold should swap back to the original piece");
     }
 
     @Test
