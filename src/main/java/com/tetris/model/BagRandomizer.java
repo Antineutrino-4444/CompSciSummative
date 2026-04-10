@@ -8,12 +8,12 @@ import java.util.Queue;
 import java.util.Random;
 
 /**
- * Implements the 7-bag randomizer as specified by the Tetris Guideline.
+ * Implements a bag randomizer for the 5 particle piece types.
  *
- * <p>The 7-bag system ensures fair piece distribution by placing all 7 piece
+ * <p>The bag system ensures fair piece distribution by placing all 5 piece
  * types into a "bag", shuffling them, and dispensing them one at a time.
  * When the bag is empty, a new bag is generated. This guarantees that the
- * maximum gap between any two of the same piece type is 12.</p>
+ * maximum gap between any two of the same piece type is 8.</p>
  *
  * <p>A preview queue is maintained to allow showing upcoming pieces to the
  * player (typically 5 or 6 pieces ahead).</p>
