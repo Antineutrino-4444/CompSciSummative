@@ -11,7 +11,7 @@ import java.util.Map;
  *       Red and blue color charges.</li>
  *   <li><b>Bottom Quarks</b> — 3-cell trominoes (J-shape and line variants).
  *       Green and purple color charges.</li>
- *   <li><b>Gluon</b> — Single cell. The force carrier that binds quarks.
+ *   <li><b>Gluon</b> — 2-cell domino. The force carrier that binds quarks.
  *       Must be placed between quarks to enable hadron formation.</li>
  * </ul>
  *
@@ -27,15 +27,15 @@ public enum Piece {
 
     /**
      * Top Quark A — L-tromino shape.
-     * 3 cells in an L pattern.
+     * 3 cells in an L pattern. Proper CW rotation sequence.
      */
     TOP_QUARK_A(new int[][][] {
-        // rot 0: ##    rot 1: #     rot 2:  #    rot 3: ##
-        //         #           ##           ##           #
-        {{0,0},{1,0},{1,1}},  // rot 0
-        {{0,0},{0,1},{1,1}},  // rot 1
-        {{0,1},{1,0},{1,1}},  // rot 2 (mirror flip effectively)
-        {{0,0},{1,0},{0,1}}   // rot 3
+        // rot 0: .#    rot 1: ##    rot 2: #.    rot 3: ##
+        //        ##           .#           ##           #.
+        {{0,0},{1,0},{1,1}},  // rot 0: ## bottom, .# top
+        {{1,0},{0,1},{1,1}},  // rot 1: .# bottom, ## top
+        {{0,0},{0,1},{1,1}},  // rot 2: #. bottom, ## top
+        {{0,0},{1,0},{0,1}}   // rot 3: ## bottom, #. top
     }, 0xFF4444, 2, ParticleType.TOP_QUARK, "u"),
 
     /**
@@ -54,15 +54,15 @@ public enum Piece {
     // ==================== BOTTOM QUARKS (down-type, charge -1/3) ====================
 
     /**
-     * Bottom Quark A — J-tromino shape (mirror of L).
+     * Bottom Quark A — J-tromino shape (mirror of L). Proper CW rotation sequence.
      */
     BOTTOM_QUARK_A(new int[][][] {
-        // rot 0: ##    rot 1: ##    rot 2: #     rot 3:  #
-        //        #            #           ##          ##
-        {{0,0},{1,0},{0,1}},  // rot 0
-        {{0,0},{0,1},{1,0}},  // rot 1 (same as rot 0 for J)
-        {{0,0},{1,1},{0,1}},  // rot 2
-        {{1,0},{0,1},{1,1}}   // rot 3
+        // rot 0: #.    rot 1: .#    rot 2: ##    rot 3: ##
+        //        ##           ##           #.           .#
+        {{0,0},{1,0},{0,1}},  // rot 0: ## bottom, #. top
+        {{0,0},{1,0},{1,1}},  // rot 1: ## bottom, .# top
+        {{1,0},{0,1},{1,1}},  // rot 2: .# bottom, ## top
+        {{0,0},{0,1},{1,1}}   // rot 3: #. bottom, ## top
     }, 0x44CC44, 2, ParticleType.BOTTOM_QUARK, "d"),
 
     /**
@@ -78,16 +78,16 @@ public enum Piece {
     // ==================== GLUON (force carrier) ====================
 
     /**
-     * Gluon — single cell. The force carrier that binds quarks together.
+     * Gluon — 2-cell domino. The force carrier that binds quarks together.
      * Place between quarks to create bridges for hadron formation.
-     * Does not rotate (single cell has no orientation).
+     * Rotates between horizontal and vertical orientations.
      */
     GLUON(new int[][][] {
-        {{0,0}},  // rot 0
-        {{0,0}},  // rot 1
-        {{0,0}},  // rot 2
-        {{0,0}}   // rot 3
-    }, 0xFFCC00, 1, ParticleType.GLUON, "g");
+        {{0,0},{1,0}},  // rot 0: horizontal ##
+        {{0,0},{0,1}},  // rot 1: vertical (stacked)
+        {{0,0},{1,0}},  // rot 2: horizontal (same as 0)
+        {{0,0},{0,1}}   // rot 3: vertical (same as 1)
+    }, 0xFFCC00, 2, ParticleType.GLUON, "g");
 
     /**
      * Categorizes pieces into particle families for hadron detection.

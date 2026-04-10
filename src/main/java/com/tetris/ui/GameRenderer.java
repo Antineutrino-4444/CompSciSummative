@@ -83,6 +83,8 @@ public class GameRenderer {
     private void drawPlayfield(GameState state) {
         Board board = state.getBoard();
 
+        gc.save();
+
         gc.setFill(Color.rgb(5, 5, 12));
         gc.fillRect(FIELD_X, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT);
 
@@ -98,6 +100,11 @@ public class GameRenderer {
             gc.strokeLine(FIELD_X, y, FIELD_X + FIELD_WIDTH, y);
         }
 
+        // Clip to playfield so particles don't bleed outside
+        gc.beginPath();
+        gc.rect(FIELD_X, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT);
+        gc.clip();
+
         // Draw locked particles as circles
         Piece[][] grid = board.getGrid();
         for (int r = 0; r < Board.VISIBLE_HEIGHT; r++) {
@@ -110,6 +117,9 @@ public class GameRenderer {
             }
         }
 
+        gc.restore();
+
+        // Draw border on top (outside clip)
         gc.setStroke(BORDER_COLOR);
         gc.setLineWidth(2);
         gc.strokeRect(FIELD_X, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT);
@@ -124,6 +134,13 @@ public class GameRenderer {
     private void drawGluonBridges(GameState state) {
         Board board = state.getBoard();
         Piece[][] grid = board.getGrid();
+
+        gc.save();
+
+        // Clip to playfield
+        gc.beginPath();
+        gc.rect(FIELD_X, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT);
+        gc.clip();
 
         gc.setLineWidth(3);
 
@@ -155,6 +172,8 @@ public class GameRenderer {
                 }
             }
         }
+
+        gc.restore();
     }
 
     // ==================== GHOST PIECE ====================
@@ -166,6 +185,11 @@ public class GameRenderer {
         int ghostRow = state.getGhostRow();
         if (ghostRow == state.getCurrentRow()) return;
 
+        gc.save();
+        gc.beginPath();
+        gc.rect(FIELD_X, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT);
+        gc.clip();
+
         int[][] cells = piece.getCells(state.getCurrentRotation());
         for (int[] cell : cells) {
             int cx = state.getCurrentCol() + cell[0];
@@ -176,6 +200,8 @@ public class GameRenderer {
                 drawParticleBall(x, y, CELL_SIZE, piece, GHOST_OPACITY);
             }
         }
+
+        gc.restore();
     }
 
     // ==================== CURRENT PIECE ====================
@@ -183,6 +209,11 @@ public class GameRenderer {
     private void drawCurrentPiece(GameState state) {
         Piece piece = state.getCurrentPiece();
         if (piece == null || state.isGameOver()) return;
+
+        gc.save();
+        gc.beginPath();
+        gc.rect(FIELD_X, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT);
+        gc.clip();
 
         int[][] cells = piece.getCells(state.getCurrentRotation());
         for (int[] cell : cells) {
@@ -194,11 +225,15 @@ public class GameRenderer {
                 drawParticleBall(x, y, CELL_SIZE, piece, 1.0);
             }
         }
+
+        gc.restore();
     }
 
     // ==================== HOLD BOX ====================
 
     private void drawHoldBox(GameState state) {
+        gc.save();
+
         double boxX = PADDING;
         double boxY = PADDING;
         double boxSize = 4.5 * CELL_SIZE;
@@ -219,11 +254,15 @@ public class GameRenderer {
             double opacity = state.isHoldUsed() ? 0.3 : 1.0;
             drawPiecePreview(hold, boxX + boxSize / 2, boxY + boxSize / 2, opacity);
         }
+
+        gc.restore();
     }
 
     // ==================== NEXT QUEUE ====================
 
     private void drawNextQueue(GameState state) {
+        gc.save();
+
         double queueX = FIELD_X + FIELD_WIDTH + PADDING;
         double queueY = PADDING;
         double boxWidth = 4.5 * CELL_SIZE;
@@ -248,11 +287,15 @@ public class GameRenderer {
             drawPiecePreview(preview.get(i), queueX + boxWidth / 2,
                     py + (sectionHeight - 5) / 2, 1.0);
         }
+
+        gc.restore();
     }
 
     // ==================== INFO PANEL ====================
 
     private void drawInfoPanel(GameState state) {
+        gc.save();
+
         double panelX = PADDING;
         double panelY = PADDING + 5 * CELL_SIZE + 20;
 
@@ -311,6 +354,8 @@ public class GameRenderer {
         gc.fillText("Proton: 2u+1d+2g", panelX, y); y += 13;
         gc.fillText("Neutron: 1u+2d+2g", panelX, y); y += 13;
         gc.fillText("Pion: 1u+1d+1g", panelX, y);
+
+        gc.restore();
     }
 
     private void drawLegendBall(double x, double y, Piece piece, String label) {
@@ -324,6 +369,8 @@ public class GameRenderer {
     // ==================== HADRON PANEL ====================
 
     private void drawHadronPanel(GameState state) {
+        gc.save();
+
         double panelX = FIELD_X + FIELD_WIDTH + PADDING;
         double panelY = PADDING + 5 * 2.5 * CELL_SIZE + 10;
 
@@ -362,6 +409,8 @@ public class GameRenderer {
 
             y += iconSize + 12;
         }
+
+        gc.restore();
     }
 
     /**

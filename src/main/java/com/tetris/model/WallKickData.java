@@ -64,9 +64,9 @@ public final class WallKickData {
             return new int[][] {{0, 0}};
         }
 
-        // Gluon (single cell) doesn't need rotation
+        // Gluon domino — same kicks as line tromino (horizontal ↔ vertical)
         if (piece == Piece.GLUON) {
-            return new int[][] {{0, 0}};
+            return TROMINO_LINE_KICKS[fromRotation][toRotation];
         }
 
         // Line trominoes (TOP_QUARK_B, BOTTOM_QUARK_B) — 3×1 / 1×3

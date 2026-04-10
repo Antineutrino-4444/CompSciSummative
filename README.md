@@ -8,10 +8,10 @@ Instead of traditional tetrominoes, you play with **Top Quarks**, **Bottom Quark
 
 ### The Gluon Mechanic
 
-**Gluons are the heart of the strategy.** They are single-cell pieces that you place strategically between quarks to create bridges. Simply stacking quarks next to each other does nothing — you need gluons to mediate the strong force:
+**Gluons are the heart of the strategy.** They are 2-cell domino pieces that you place strategically between quarks to create bridges. Simply stacking quarks next to each other does nothing — you need gluons to mediate the strong force:
 
 1. Place quarks on the board (3-cell trominoes)
-2. Place gluons between them (single-cell pieces)
+2. Place gluons between them (2-cell dominos, rotatable)
 3. When the right quark recipe is connected through a gluon network → hadron forms!
 
 ## Particles (Falling Pieces)
@@ -22,7 +22,7 @@ Instead of traditional tetrominoes, you play with **Top Quarks**, **Bottom Quark
 | Top Quark B | Line tromino (3 cells) | Up-type quark | Blue |
 | Bottom Quark A | J-tromino (3 cells) | Down-type quark | Green |
 | Bottom Quark B | Line tromino (3 cells) | Down-type quark | Purple |
-| Gluon | Single cell | Force Carrier | Gold |
+| Gluon | Domino (2 cells) | Force Carrier | Gold |
 
 Each particle is rendered as a colored circle with a letter label (u/d/g).
 
@@ -123,7 +123,7 @@ src/main/java/com/tetris/
 ## Architecture
 
 ### Model Layer
-All game logic is UI-independent and fully testable (92 unit tests). The key mechanic is `HadronDetector`, which uses BFS through gluon cells to find connected particle groups.
+All game logic is UI-independent and fully testable (94 unit tests). The key mechanic is `HadronDetector`, which uses BFS through gluon cells to find connected particle groups.
 
 ### Gluon-Bridge Detection Algorithm
 1. After a piece locks, collect cells of the placed piece + neighbors
@@ -135,8 +135,9 @@ All game logic is UI-independent and fully testable (92 unit tests). The key mec
 7. Apply column gravity
 
 ### Why Gluons Make It Tactical
-- Single-cell gluons are easy to place but use up board space
+- Domino gluons (2 cells) cover more ground but must be positioned carefully
 - You need to plan where to build your gluon bridges
-- Baryons (Proton/Neutron) need 2 gluons — expensive!
+- Gluons rotate (horizontal/vertical) for precise placement
+- Baryons (Proton/Neutron) need 2 gluons — 4 cells of bridge space!
 - Line clears can disrupt your bridge network
 - Selective consumption means unused quarks stay for future combinations

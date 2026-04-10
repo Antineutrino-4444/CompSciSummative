@@ -153,7 +153,6 @@ public class GameState {
 
     private boolean rotate(int newRotation) {
         if (gameOver || paused || currentPiece == null) return false;
-        if (currentPiece == Piece.GLUON) return false;
 
         int[][] kicks = WallKickData.getKicks(currentPiece, currentRotation, newRotation);
         if (kicks == null) return false;

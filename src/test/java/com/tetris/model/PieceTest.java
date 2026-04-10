@@ -17,8 +17,8 @@ class PieceTest {
         // Top/Bottom quark B: 3 cells (line tromino)
         assertEquals(3, Piece.TOP_QUARK_B.getCellCount());
         assertEquals(3, Piece.BOTTOM_QUARK_B.getCellCount());
-        // Gluon: 1 cell
-        assertEquals(1, Piece.GLUON.getCellCount());
+        // Gluon: 2 cells (domino)
+        assertEquals(2, Piece.GLUON.getCellCount());
     }
 
     @Test
@@ -47,7 +47,7 @@ class PieceTest {
         assertEquals(3, Piece.TOP_QUARK_B.getBoundingBox());
         assertEquals(2, Piece.BOTTOM_QUARK_A.getBoundingBox());
         assertEquals(3, Piece.BOTTOM_QUARK_B.getBoundingBox());
-        assertEquals(1, Piece.GLUON.getBoundingBox());
+        assertEquals(2, Piece.GLUON.getBoundingBox());
     }
 
     @Test
@@ -116,12 +116,17 @@ class PieceTest {
     }
 
     @Test
-    void gluonDoesNotRotate() {
+    void gluonHasTwoRotations() {
+        // Gluon is a domino: horizontal and vertical orientations
         int[][] r0 = Piece.GLUON.getCells(0);
-        for (int rot = 1; rot < 4; rot++) {
-            int[][] rx = Piece.GLUON.getCells(rot);
-            assertArrayEquals(r0, rx, "Gluon rotation " + rot + " should match rotation 0");
-        }
+        int[][] r1 = Piece.GLUON.getCells(1);
+        // Rot 0 should be horizontal, rot 1 should be vertical (different)
+        assertFalse(java.util.Arrays.deepEquals(r0, r1),
+                "Gluon horizontal and vertical rotations should differ");
+        // Rot 0 and rot 2 should be the same (horizontal)
+        assertArrayEquals(Piece.GLUON.getCells(0), Piece.GLUON.getCells(2));
+        // Rot 1 and rot 3 should be the same (vertical)
+        assertArrayEquals(Piece.GLUON.getCells(1), Piece.GLUON.getCells(3));
     }
 
     @Test
@@ -130,6 +135,34 @@ class PieceTest {
         assertArrayEquals(piece.getCells(0), piece.getCells(4));
         assertArrayEquals(piece.getCells(1), piece.getCells(5));
         assertArrayEquals(piece.getCells(3), piece.getCells(-1));
+    }
+
+    @Test
+    void lTriominoHasFourDistinctRotations() {
+        // TOP_QUARK_A (L-tromino) should have 4 distinct rotation states
+        for (int i = 0; i < 4; i++) {
+            for (int j = i + 1; j < 4; j++) {
+                assertFalse(
+                        java.util.Arrays.deepEquals(
+                                Piece.TOP_QUARK_A.getCells(i),
+                                Piece.TOP_QUARK_A.getCells(j)),
+                        "TOP_QUARK_A rot " + i + " and " + j + " should differ");
+            }
+        }
+    }
+
+    @Test
+    void jTriominoHasFourDistinctRotations() {
+        // BOTTOM_QUARK_A (J-tromino) should have 4 distinct rotation states
+        for (int i = 0; i < 4; i++) {
+            for (int j = i + 1; j < 4; j++) {
+                assertFalse(
+                        java.util.Arrays.deepEquals(
+                                Piece.BOTTOM_QUARK_A.getCells(i),
+                                Piece.BOTTOM_QUARK_A.getCells(j)),
+                        "BOTTOM_QUARK_A rot " + i + " and " + j + " should differ");
+            }
+        }
     }
 
     @Test

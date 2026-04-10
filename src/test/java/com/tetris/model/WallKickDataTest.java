@@ -28,11 +28,11 @@ class WallKickDataTest {
     }
 
     @Test
-    void gluonReturnsNoOpKick() {
+    void gluonUsesLineKicks() {
         int[][] kicks = WallKickData.getKicks(Piece.GLUON, 0, 1);
-        assertNotNull(kicks);
-        assertEquals(1, kicks.length, "Gluon should have 1 kick test (no-op)");
-        assertArrayEquals(new int[]{0, 0}, kicks[0]);
+        assertNotNull(kicks, "Gluon domino should have kick data");
+        assertTrue(kicks.length >= 3, "Gluon domino should have multiple kick tests");
+        assertArrayEquals(new int[]{0, 0}, kicks[0], "First gluon kick should be (0,0)");
     }
 
     @Test
