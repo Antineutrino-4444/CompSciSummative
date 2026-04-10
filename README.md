@@ -123,7 +123,7 @@ src/main/java/com/tetris/
 ## Architecture
 
 ### Model Layer
-All game logic is UI-independent and fully testable (94 unit tests). The key mechanic is `HadronDetector`, which uses BFS through gluon cells to find connected particle groups.
+All game logic is UI-independent and fully testable (99 unit tests). The key mechanic is `HadronDetector`, which uses BFS through gluon cells to find connected particle groups.
 
 ### Gluon-Bridge Detection Algorithm
 1. After a piece locks, collect cells of the placed piece + neighbors

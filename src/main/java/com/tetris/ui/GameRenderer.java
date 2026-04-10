@@ -499,7 +499,9 @@ public class GameRenderer {
 
     /**
      * Draws a merge animation over cells that were consumed by a hadron formation.
-     * Shows an expanding glow ring + flash that fades out over HADRON_ANIM_DURATION.
+     * Shows an expanding glow ring + flash that fades out over HADRON_ANIM_DURATION (0.6s).
+     * Phase 1 (first half, 0–0.3s): bright flash + expanding glow ring on each cell.
+     * Phase 2 (second half, 0.3–0.6s): particles converge toward center with burst.
      */
     private void drawHadronAnimation(GameState state) {
         double timer = state.getHadronAnimTimer();
@@ -542,8 +544,7 @@ public class GameRenderer {
                 double cellX = FIELD_X + col * CELL_SIZE + CELL_SIZE / 2.0;
                 double cellY = FIELD_Y + (Board.VISIBLE_HEIGHT - 1 - row) * CELL_SIZE + CELL_SIZE / 2.0;
 
-                // Phase 1 (0→0.5): bright flash on each cell
-                // Phase 2 (0.5→1.0): particles converge toward center and fade
+                // Phase 1 (progress 0→0.5, time 0→0.3s): bright flash on each cell
                 if (progress < 0.5) {
                     double phase1 = progress / 0.5; // 0→1
 
@@ -572,6 +573,7 @@ public class GameRenderer {
                     gc.fillOval(cellX - glowSize / 2, cellY - glowSize / 2,
                             glowSize, glowSize);
                 } else {
+                    // Phase 2 (progress 0.5→1.0, time 0.3→0.6s): converge toward center
                     double phase2 = (progress - 0.5) / 0.5; // 0→1
 
                     // Converge toward center
