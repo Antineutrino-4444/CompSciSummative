@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -324,6 +325,32 @@ class HadronDetectorTest {
         assertEquals(3, f.getConsumedCells().size(), "Pion should consume 3 cells");
     }
 
+    @Test
+    void verticalGluonDominoConsumesBridgingGluon() {
+        // Scenario: u at (3,0), d at (5,0), vertical gluon domino dropped at col=4
+        // Board: u(3,0) g(4,0) g(4,1) d(5,0)
+        // The bottom gluon (4,0) bridges u and d; the top gluon (4,1) does not.
+        // Pion should consume the bottom gluon (4,0), NOT the top (4,1).
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
+        board.setCell(4, 0, Piece.GLUON);  // bottom gluon — adjacent to both quarks
+        board.setCell(4, 1, Piece.GLUON);  // top gluon — adjacent to nothing useful
+
+        // Detect using the vertical gluon domino placement (rot 1 at col=4, row=1)
+        List<HadronFormation> formations = detector.detect(board, Piece.GLUON, 1, 4, 1);
+        assertEquals(1, formations.size(), "Should form exactly one pion");
+        assertEquals(Hadron.PION, formations.get(0).getHadron());
+
+        // The consumed cells should include the bottom gluon (4,0), not the top (4,1)
+        Set<Long> consumed = formations.get(0).getConsumedCells();
+        long bottomGluon = packForTest(4, 0);
+        long topGluon = packForTest(4, 1);
+        assertTrue(consumed.contains(bottomGluon),
+                "Should consume the bridging (bottom) gluon at (4,0)");
+        assertFalse(consumed.contains(topGluon),
+                "Should NOT consume the non-bridging (top) gluon at (4,1)");
+    }
+
     // ==================== HELPERS ====================
 
     /** Detect near a cell using the cell's piece as the "placed piece". */
@@ -343,5 +370,10 @@ class HadronDetectorTest {
     private List<Hadron> detectHadrons(Board board, Piece piece, int rotation, int col, int row) {
         return detector.detect(board, piece, rotation, col, row).stream()
                 .map(HadronFormation::getHadron).toList();
+    }
+
+    /** Pack col/row into the same format used by HadronFormation. */
+    private long packForTest(int col, int row) {
+        return ((long) col << 32) | (row & 0xFFFFFFFFL);
     }
 }

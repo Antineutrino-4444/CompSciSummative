@@ -232,6 +232,10 @@ public class HadronDetector {
      * Tries larger recipes first (Proton/Neutron need 3 quarks),
      * then smaller ones (Pion needs 2 quarks).
      *
+     * <p>Gluons are sorted so that those with the most adjacent quarks are consumed
+     * first. This ensures the "bridging" gluon (the one actually between the quarks)
+     * is consumed rather than an unrelated gluon in the cluster.</p>
+     *
      * Returns HadronFormation objects that include the consumed cell positions.
      * Also adds consumed cells to the global consumed set.
      */
@@ -241,7 +245,18 @@ public class HadronDetector {
         // Make consumable iterators from the sets
         List<Long> availableTop = new ArrayList<>(group.topQuarks);
         List<Long> availableBottom = new ArrayList<>(group.bottomQuarks);
+
+        // Sort gluons so those most connected to quarks are at the END of the list
+        // (removed first by remove(size-1)). This ensures bridging gluons are consumed
+        // before isolated gluons in the same cluster.
+        Set<Long> allQuarks = new HashSet<>(group.topQuarks);
+        allQuarks.addAll(group.bottomQuarks);
         List<Long> availableGluons = new ArrayList<>(group.gluons);
+        availableGluons.sort((a, b) -> {
+            int adjA = countAdjacentInSet(a, allQuarks);
+            int adjB = countAdjacentInSet(b, allQuarks);
+            return Integer.compare(adjA, adjB); // ascending: most-connected at end
+        });
 
         // Proton: 2 top + 1 bottom + 2 gluons
         while (availableTop.size() >= 2 && availableBottom.size() >= 1
@@ -304,6 +319,21 @@ public class HadronDetector {
 
     private boolean inBounds(int col, int row) {
         return col >= 0 && col < Board.WIDTH && row >= 0 && row < Board.HEIGHT;
+    }
+
+    /**
+     * Counts how many cells in the given set are orthogonally adjacent to the packed cell.
+     */
+    private int countAdjacentInSet(long packed, Set<Long> cells) {
+        int cx = unpackCol(packed);
+        int cy = unpackRow(packed);
+        int count = 0;
+        for (int[] n : NEIGHBORS) {
+            if (cells.contains(pack(cx + n[0], cy + n[1]))) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private long pack(int col, int row) {
