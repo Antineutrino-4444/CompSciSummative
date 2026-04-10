@@ -383,14 +383,13 @@ public class HadronDetector {
             int drop = 0;
             for (int testY = cy - 1; testY >= 0; testY--) {
                 long below = pack(cx, testY);
-                if (!groupSet.contains(below) && board.getCell(cx, testY) != null) {
-                    break;
+                if (groupSet.contains(below)) {
+                    continue; // skip group's own cells
                 }
-                if (!groupSet.contains(below)) {
-                    drop++;
-                } else {
-                    break;
+                if (board.getCell(cx, testY) != null) {
+                    break; // hit another settled cell
                 }
+                drop++;
             }
             // If no obstruction found, drop = distance to floor
             if (cy - drop < 0) drop = cy;
