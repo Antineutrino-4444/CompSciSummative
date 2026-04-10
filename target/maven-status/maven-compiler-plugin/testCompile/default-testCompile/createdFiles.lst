@@ -1,0 +1,6 @@
+com/tetris/model/WallKickDataTest.class
+com/tetris/model/BagRandomizerTest.class
+com/tetris/model/GameStateTest.class
+com/tetris/model/PieceTest.class
+com/tetris/model/BoardTest.class
+com/tetris/model/ScoreSystemTest.class
