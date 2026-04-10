@@ -410,7 +410,9 @@ public class GameState {
         if (currentPiece == Piece.T && lastMoveWasRotation) {
             isTSpin = detectTSpin();
             if (isTSpin && lastKickIndex != 4) {
-                // Could be a mini T-Spin if not kick test 5
+                // Wall kick test 5 (index 4) always produces a full T-Spin.
+                // For other kick tests, check the front corners to determine
+                // whether this is a Mini T-Spin or a full T-Spin.
                 isMiniTSpin = detectMiniTSpin();
                 if (isMiniTSpin) {
                     isTSpin = false; // It's a mini, not a full T-Spin
