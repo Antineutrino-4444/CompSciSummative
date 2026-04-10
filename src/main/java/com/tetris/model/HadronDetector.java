@@ -21,25 +21,27 @@ import java.util.Set;
  *   <li>For each gluon, BFS outward through adjacent gluons to find
  *       the connected gluon cluster</li>
  *   <li>Collect quarks directly adjacent to any gluon in the cluster</li>
- *   <li>Extend the quark set through quark-quark adjacency (BFS):
- *       if a quark touches the gluon network and other quarks are adjacent
- *       to it, they all participate. This ensures multi-cell quark pieces
- *       contribute all their cells, preferring larger hadrons.</li>
+ *   <li>For quarks that are part of the <b>just-placed piece</b>, extend through
+ *       quark-quark adjacency within that piece's cells. This ensures multi-cell
+ *       quark pieces contribute all their cells when dropped onto a gluon network,
+ *       preferring larger hadrons. Previously-placed quarks are NOT pulled in
+ *       through quark chains — only the dropped piece extends.</li>
  *   <li>Check if any hadron recipe matches (Proton &gt; Neutron &gt; Pion priority)</li>
  *   <li>Consume the minimum cells needed for the hadron</li>
  * </ol>
  *
  * <h3>Design Implication</h3>
- * <p>Because quarks chain through quark-quark adjacency, dropping a multi-cell
- * quark piece onto a gluon network will include all connected quark cells.
- * To deliberately form a <b>pion</b> (the smallest hadron), the player must
- * attach only a single isolated quark cell to the gluon network.</p>
+ * <p>Dropping a multi-cell quark piece onto a gluon network includes all cells of
+ * that piece, preferring larger hadrons. But previously-placed quarks sitting
+ * adjacent to the gluon network only contribute their directly gluon-adjacent cells.
+ * To deliberately form a <b>pion</b>, ensure only 1 top + 1 bottom + 1 gluon
+ * are connected.</p>
  *
  * <h3>What counts as "gluon-linked"</h3>
  * <p>A quark is part of a gluon network if it is orthogonally adjacent to at least
  * one gluon cell. Two quarks are gluon-linked if there exists a path of cells
  * between them that passes through at least one gluon. Quark-to-quark adjacency
- * WITHOUT an intervening gluon does NOT count.</p>
+ * WITHOUT an intervening gluon does NOT count (except within the just-placed piece).</p>
  */
 public class HadronDetector {
 
@@ -53,18 +55,22 @@ public class HadronDetector {
      * @param rotation the rotation of the placed piece
      * @param col      the column of the placed piece
      * @param row      the row of the placed piece
-     * @return list of hadrons detected (may be empty)
+     * @return list of hadron formations detected (may be empty), each containing
+     *         the hadron type and the board cells that were consumed
      */
-    public List<Hadron> detect(Board board, Piece piece, int rotation, int col, int row) {
-        List<Hadron> found = new ArrayList<>();
+    public List<HadronFormation> detect(Board board, Piece piece, int rotation, int col, int row) {
+        List<HadronFormation> found = new ArrayList<>();
 
-        // Collect cells belonging to the just-placed piece and their neighbors
+        // Compute cells belonging to the just-placed piece
+        Set<Long> placedPieceCells = new HashSet<>();
         Set<Long> seedCells = new HashSet<>();
         int[][] cells = piece.getCells(rotation);
         for (int[] cell : cells) {
             int cx = col + cell[0];
             int cy = row - cell[1];
-            seedCells.add(pack(cx, cy));
+            long packed = pack(cx, cy);
+            placedPieceCells.add(packed);
+            seedCells.add(packed);
             // Also add neighbors
             for (int[] n : NEIGHBORS) {
                 int nx = cx + n[0];
@@ -88,8 +94,9 @@ public class HadronDetector {
 
             // Start BFS from gluon cells to find gluon-linked groups
             if (sp.isGluon()) {
-                GluonGroup group = buildGluonGroup(board, sx, sy, visited, allConsumed);
-                List<Hadron> groupHadrons = matchRecipes(group, allConsumed);
+                GluonGroup group = buildGluonGroup(board, sx, sy, visited, allConsumed,
+                        placedPieceCells);
+                List<HadronFormation> groupHadrons = matchRecipes(group, allConsumed);
                 found.addAll(groupHadrons);
             }
         }
@@ -112,11 +119,15 @@ public class HadronDetector {
      * A gluon-linked group consists of:
      * - All gluon cells connected to the starting gluon (through other gluons)
      * - All quark cells that are directly adjacent to at least one gluon in the group
+     * - Additional quark cells of the just-placed piece reachable through quark-quark
+     *   adjacency from any quark already in the group
      *
-     * Quarks that only touch other quarks (not gluons) are NOT included.
+     * Quarks from previously-placed pieces that only touch other quarks (not gluons)
+     * are NOT included — only the just-placed piece extends through quark chains.
      */
     private GluonGroup buildGluonGroup(Board board, int startCol, int startRow,
-                                        Set<Long> globalVisited, Set<Long> consumed) {
+                                        Set<Long> globalVisited, Set<Long> consumed,
+                                        Set<Long> placedPieceCells) {
         GluonGroup group = new GluonGroup();
         Queue<Long> gluonQueue = new LinkedList<>();
         Set<Long> localVisited = new HashSet<>();
@@ -182,20 +193,23 @@ public class HadronDetector {
             }
         }
 
-        // Phase 3: BFS through quark cells to include connected quarks.
-        // If a quark touches the gluon network and other quarks are adjacent to it,
-        // they all participate — so dropping a multi-cell quark piece prefers larger
-        // hadrons (e.g. neutron over pion). To form a pion the player must
-        // purposefully attach only a single quark cell to the gluon network.
+        // Phase 3: BFS through quark cells that belong to the just-placed piece.
+        // If a quark from the placed piece touches the gluon network, extend to
+        // other cells of the same placed piece. This ensures multi-cell quark pieces
+        // contribute all their cells when dropped, preferring larger hadrons.
+        // Previously-placed quarks are NOT pulled in through quark chains.
         while (!quarkBfsQueue.isEmpty()) {
             long current = quarkBfsQueue.poll();
+            // Only extend from quarks that belong to the just-placed piece
+            if (!placedPieceCells.contains(current)) continue;
             int cx = unpackCol(current);
             int cy = unpackRow(current);
             for (int[] n : NEIGHBORS) {
                 int nx = cx + n[0];
                 int ny = cy + n[1];
                 long np = pack(nx, ny);
-                if (inBounds(nx, ny) && !consumed.contains(np) && !group.allCells.contains(np)) {
+                if (inBounds(nx, ny) && !consumed.contains(np) && !group.allCells.contains(np)
+                        && placedPieceCells.contains(np)) {
                     Piece neighbor = board.getCell(nx, ny);
                     if (neighbor != null && neighbor.isQuark()) {
                         group.allCells.add(np);
@@ -218,10 +232,11 @@ public class HadronDetector {
      * Tries larger recipes first (Proton/Neutron need 3 quarks),
      * then smaller ones (Pion needs 2 quarks).
      *
-     * Adds only the cells actually used to the consumed set.
+     * Returns HadronFormation objects that include the consumed cell positions.
+     * Also adds consumed cells to the global consumed set.
      */
-    private List<Hadron> matchRecipes(GluonGroup group, Set<Long> consumed) {
-        List<Hadron> results = new ArrayList<>();
+    private List<HadronFormation> matchRecipes(GluonGroup group, Set<Long> consumed) {
+        List<HadronFormation> results = new ArrayList<>();
 
         // Make consumable iterators from the sets
         List<Long> availableTop = new ArrayList<>(group.topQuarks);
@@ -231,32 +246,38 @@ public class HadronDetector {
         // Proton: 2 top + 1 bottom + 2 gluons
         while (availableTop.size() >= 2 && availableBottom.size() >= 1
                 && availableGluons.size() >= 2) {
-            results.add(Hadron.PROTON);
-            consumed.add(availableTop.remove(availableTop.size() - 1));
-            consumed.add(availableTop.remove(availableTop.size() - 1));
-            consumed.add(availableBottom.remove(availableBottom.size() - 1));
-            consumed.add(availableGluons.remove(availableGluons.size() - 1));
-            consumed.add(availableGluons.remove(availableGluons.size() - 1));
+            Set<Long> cells = new HashSet<>();
+            cells.add(availableTop.remove(availableTop.size() - 1));
+            cells.add(availableTop.remove(availableTop.size() - 1));
+            cells.add(availableBottom.remove(availableBottom.size() - 1));
+            cells.add(availableGluons.remove(availableGluons.size() - 1));
+            cells.add(availableGluons.remove(availableGluons.size() - 1));
+            consumed.addAll(cells);
+            results.add(new HadronFormation(Hadron.PROTON, cells));
         }
 
         // Neutron: 1 top + 2 bottom + 2 gluons
         while (availableTop.size() >= 1 && availableBottom.size() >= 2
                 && availableGluons.size() >= 2) {
-            results.add(Hadron.NEUTRON);
-            consumed.add(availableTop.remove(availableTop.size() - 1));
-            consumed.add(availableBottom.remove(availableBottom.size() - 1));
-            consumed.add(availableBottom.remove(availableBottom.size() - 1));
-            consumed.add(availableGluons.remove(availableGluons.size() - 1));
-            consumed.add(availableGluons.remove(availableGluons.size() - 1));
+            Set<Long> cells = new HashSet<>();
+            cells.add(availableTop.remove(availableTop.size() - 1));
+            cells.add(availableBottom.remove(availableBottom.size() - 1));
+            cells.add(availableBottom.remove(availableBottom.size() - 1));
+            cells.add(availableGluons.remove(availableGluons.size() - 1));
+            cells.add(availableGluons.remove(availableGluons.size() - 1));
+            consumed.addAll(cells);
+            results.add(new HadronFormation(Hadron.NEUTRON, cells));
         }
 
         // Pion: 1 top + 1 bottom + 1 gluon
         while (availableTop.size() >= 1 && availableBottom.size() >= 1
                 && availableGluons.size() >= 1) {
-            results.add(Hadron.PION);
-            consumed.add(availableTop.remove(availableTop.size() - 1));
-            consumed.add(availableBottom.remove(availableBottom.size() - 1));
-            consumed.add(availableGluons.remove(availableGluons.size() - 1));
+            Set<Long> cells = new HashSet<>();
+            cells.add(availableTop.remove(availableTop.size() - 1));
+            cells.add(availableBottom.remove(availableBottom.size() - 1));
+            cells.add(availableGluons.remove(availableGluons.size() - 1));
+            consumed.addAll(cells);
+            results.add(new HadronFormation(Hadron.PION, cells));
         }
 
         return results;

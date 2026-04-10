@@ -30,7 +30,7 @@ class HadronDetectorTest {
         board.setCell(4, 0, Piece.GLUON);
         board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
 
-        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 4, 0);
         assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
                 "Should detect a pion from top quark + gluon + bottom quark");
     }
@@ -41,7 +41,7 @@ class HadronDetectorTest {
         board.setCell(3, 0, Piece.TOP_QUARK_A);
         board.setCell(4, 0, Piece.BOTTOM_QUARK_A);
 
-        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 4, 0);
         assertTrue(hadrons.isEmpty(),
                 "Quarks touching without gluon should NOT form a pion");
     }
@@ -53,7 +53,7 @@ class HadronDetectorTest {
         board.setCell(4, 0, Piece.GLUON);
         board.setCell(5, 0, Piece.TOP_QUARK_B);
 
-        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 4, 0);
         assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.PION),
                 "2 top quarks + gluon should NOT form a pion");
     }
@@ -65,7 +65,7 @@ class HadronDetectorTest {
         board.setCell(5, 1, Piece.GLUON);
         board.setCell(5, 2, Piece.BOTTOM_QUARK_B);
 
-        List<Hadron> hadrons = detectNearCell(board, 5, 1);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 5, 1);
         assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
                 "Vertical quark-gluon-quark should form a pion");
     }
@@ -84,7 +84,7 @@ class HadronDetectorTest {
         board.setCell(4, 1, Piece.TOP_QUARK_B);
         board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
 
-        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 3, 0);
         assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PROTON),
                 "Should detect proton from 2 top + 1 bottom + 2 connected gluons");
     }
@@ -97,7 +97,7 @@ class HadronDetectorTest {
         board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
         board.setCell(6, 0, Piece.TOP_QUARK_B);
 
-        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 4, 0);
         // Should form a pion (1t+1b+1g) but NOT a proton
         assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.PROTON),
                 "Should not form proton with only 1 gluon");
@@ -110,7 +110,7 @@ class HadronDetectorTest {
         board.setCell(4, 0, Piece.TOP_QUARK_B);
         board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
 
-        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 4, 0);
         assertTrue(hadrons.isEmpty(),
                 "Quarks without gluon bridges should not form any hadron");
     }
@@ -129,7 +129,7 @@ class HadronDetectorTest {
         board.setCell(4, 1, Piece.TOP_QUARK_A);
         board.setCell(5, 0, Piece.BOTTOM_QUARK_B);
 
-        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 3, 0);
         assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.NEUTRON),
                 "Should detect neutron from 1 top + 2 bottom + 2 connected gluons");
     }
@@ -142,7 +142,7 @@ class HadronDetectorTest {
         board.setCell(5, 0, Piece.TOP_QUARK_A);
         board.setCell(6, 0, Piece.BOTTOM_QUARK_B);
 
-        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 4, 0);
         assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.NEUTRON),
                 "Should not form neutron with only 1 gluon");
     }
@@ -154,7 +154,7 @@ class HadronDetectorTest {
         board.setCell(0, 0, Piece.TOP_QUARK_A);
         board.setCell(9, 0, Piece.GLUON);
 
-        List<Hadron> hadrons = detectNearCell(board, 9, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 9, 0);
         assertTrue(hadrons.isEmpty(),
                 "Disconnected pieces should not form hadrons");
     }
@@ -165,7 +165,7 @@ class HadronDetectorTest {
         board.setCell(4, 0, Piece.GLUON);
         board.setCell(5, 0, Piece.GLUON);
 
-        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 4, 0);
         assertTrue(hadrons.isEmpty(),
                 "Gluons alone should not form hadrons");
     }
@@ -178,7 +178,7 @@ class HadronDetectorTest {
         board.setCell(4, 0, Piece.GLUON);
         board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
 
-        detectNearCell(board, 4, 0);
+        detectHadronsNearCell(board, 4, 0);
 
         assertNull(board.getCell(3, 0), "Top quark cell should be consumed");
         assertNull(board.getCell(4, 0), "Gluon cell should be consumed");
@@ -195,10 +195,7 @@ class HadronDetectorTest {
         board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
         board.setCell(3, 1, Piece.BOTTOM_QUARK_B); // sitting above top quark
 
-        // Detect pion from gluon at (4,0) — consumes (3,0), (4,0), (5,0) — err,
-        // actually the gluon group from (4,0) connects top(3,0) and bottom(5,0).
-        // Pion will consume 1 top + 1 bottom + 1 gluon = (3,0) + (5,0) + (4,0)
-        detectNearCell(board, 4, 0);
+        detectHadronsNearCell(board, 4, 0);
 
         // After pion consumes row 0 cells under (3,0), BOTTOM_QUARK_B at (3,1) should drop to (3,0)
         assertEquals(Piece.BOTTOM_QUARK_B, board.getCell(3, 0),
@@ -217,7 +214,7 @@ class HadronDetectorTest {
         board.setCell(4, 0, Piece.GLUON);
         board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
 
-        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 3, 0);
         assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
                 "Quarks linked through gluon chain should form a pion");
     }
@@ -226,89 +223,125 @@ class HadronDetectorTest {
     void lShapedGluonBridge() {
         // Gluon at (4,0) and (4,1) forming an L
         // Top quark at (3,0) touches gluon at (4,0)
-        // Bottom quark at (5,1) touches gluon at (4,1)  (wait, that's adjacent to (4,1))
-        // Actually: (4,1) is above (4,0)
+        // Bottom quark at (5,1) touches gluon at (4,1)
         board.setCell(3, 0, Piece.TOP_QUARK_A);
         board.setCell(4, 0, Piece.GLUON);
         board.setCell(4, 1, Piece.GLUON);
         board.setCell(5, 1, Piece.BOTTOM_QUARK_A);
 
-        List<Hadron> hadrons = detectNearCell(board, 4, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 4, 0);
         assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
                 "L-shaped gluon bridge should connect quarks for pion");
     }
 
-    // ==================== QUARK CHAIN INCLUSION (prefer larger hadrons) ====================
+    // ==================== PIECE-DROP QUARK CHAIN TESTS ====================
+    // These tests simulate dropping a multi-cell quark piece onto a gluon network.
+    // Phase 3 extends through the placed piece's cells only.
 
     @Test
-    void neutronWhenMultipleBottomQuarksChainToGluon() {
-        // Scenario: up quark already connected to 2 gluons, player drops bottom quark piece
-        // where one cell touches gluon and others chain through quark adjacency.
-        // Should form NEUTRON (1t+2b+2g), not PION.
-        //
-        // Layout:  top(3,1)
-        //          gluon(3,0) gluon(4,0) bottom(5,0) bottom(6,0)
-        //
-        // bottom(5,0) is adjacent to gluon(4,0) → included
-        // bottom(6,0) is adjacent to bottom(5,0) → included via quark chain
-        // Group: 2 gluons + 1 top + 2 bottom → Neutron
+    void neutronWhenDroppingBottomQuarkPieceOntoGluonNetwork() {
+        // Pre-existing: 2 gluons + 1 top quark
         board.setCell(3, 0, Piece.GLUON);
         board.setCell(4, 0, Piece.GLUON);
         board.setCell(3, 1, Piece.TOP_QUARK_A);
-        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
-        board.setCell(6, 0, Piece.BOTTOM_QUARK_A);
 
-        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        // Simulate dropping BOTTOM_QUARK_B (line-tromino: {0,0},{1,0},{2,0}) at col=5, row=0
+        // Board cells: (5,0), (6,0), (7,0) — cell (5,0) is adjacent to gluon(4,0)
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_B);
+        board.setCell(6, 0, Piece.BOTTOM_QUARK_B);
+        board.setCell(7, 0, Piece.BOTTOM_QUARK_B);
+
+        List<Hadron> hadrons = detectHadrons(board, Piece.BOTTOM_QUARK_B, 0, 5, 0);
         assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.NEUTRON),
-                "Bottom quarks chained together adjacent to gluon should form neutron");
-        assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.PION),
-                "Should prefer neutron over pion when enough quarks chain to gluons");
+                "Dropping bottom quark piece near gluon network should form neutron");
     }
 
     @Test
-    void protonWhenMultipleTopQuarksChainToGluon() {
-        // Scenario: bottom quark connected to 2 gluons, 2 top quarks chained
-        // Layout:  bottom(3,1)
-        //          gluon(3,0) gluon(4,0) top(5,0) top(6,0)
-        //
-        // top(5,0) adjacent to gluon(4,0), top(6,0) chains via top(5,0)
-        // Group: 2 gluons + 2 top + 1 bottom → Proton
+    void protonWhenDroppingTopQuarkPieceOntoGluonNetwork() {
+        // Pre-existing: 2 gluons + 1 bottom quark
         board.setCell(3, 0, Piece.GLUON);
         board.setCell(4, 0, Piece.GLUON);
         board.setCell(3, 1, Piece.BOTTOM_QUARK_A);
-        board.setCell(5, 0, Piece.TOP_QUARK_A);
-        board.setCell(6, 0, Piece.TOP_QUARK_A);
 
-        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        // Simulate dropping TOP_QUARK_B (line-tromino: {0,0},{1,0},{2,0}) at col=5, row=0
+        board.setCell(5, 0, Piece.TOP_QUARK_B);
+        board.setCell(6, 0, Piece.TOP_QUARK_B);
+        board.setCell(7, 0, Piece.TOP_QUARK_B);
+
+        List<Hadron> hadrons = detectHadrons(board, Piece.TOP_QUARK_B, 0, 5, 0);
         assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PROTON),
-                "Top quarks chained together adjacent to gluon should form proton");
+                "Dropping top quark piece near gluon network should form proton");
+    }
+
+    @Test
+    void previouslyPlacedQuarksDontChainThroughQuarkAdjacency() {
+        // Pre-existing: 2 gluons + 1 top quark + 2 separate bottom quarks
+        // that happen to be adjacent to each other but NOT part of the placed piece.
+        // Should NOT form neutron — only quarks adjacent to gluons participate.
+        board.setCell(3, 0, Piece.GLUON);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(3, 1, Piece.TOP_QUARK_A);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);  // adjacent to gluon(4,0)
+        board.setCell(6, 0, Piece.BOTTOM_QUARK_A);  // adjacent to bottom(5,0) only
+
+        // Place a gluon piece — so placed piece is the gluon, not the quarks
+        List<Hadron> hadrons = detectHadronsNearCell(board, 3, 0);
+        // Only bottom(5,0) should be included (adjacent to gluon), not bottom(6,0)
+        // Group: 2g + 1t + 1b → pion, NOT neutron
+        assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.NEUTRON),
+                "Previously placed quarks should not chain through quark adjacency");
+        assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
+                "Should still form pion from directly gluon-adjacent quarks");
     }
 
     @Test
     void isolatedSingleQuarkFormsPion() {
-        // To purposefully form a pion, the player attaches exactly 1 quark
-        // cell to the gluon network without any adjacent quark cells.
-        // Layout:  top(3,1)
-        //          gluon(3,0)  bottom(4,0)    <-- isolated single bottom quark
-        //
-        // bottom(4,0) is adjacent to gluon(3,0), no other quarks adjacent to bottom(4,0)
-        // Group: 1 gluon + 1 top + 1 bottom → Pion
+        // To purposefully form a pion, attach exactly 1 quark to the gluon network
         board.setCell(3, 0, Piece.GLUON);
         board.setCell(3, 1, Piece.TOP_QUARK_A);
         board.setCell(4, 0, Piece.BOTTOM_QUARK_A);
 
-        List<Hadron> hadrons = detectNearCell(board, 3, 0);
+        List<Hadron> hadrons = detectHadronsNearCell(board, 3, 0);
         assertTrue(hadrons.stream().anyMatch(h -> h == Hadron.PION),
                 "Isolated single quark should form pion");
         assertTrue(hadrons.stream().noneMatch(h -> h == Hadron.NEUTRON),
                 "Single bottom quark should not form neutron");
     }
 
-    // ==================== HELPER ====================
+    // ==================== FORMATION CELL TRACKING TESTS ====================
 
-    private List<Hadron> detectNearCell(Board board, int col, int row) {
+    @Test
+    void formationContainsConsumedCellPositions() {
+        board.setCell(3, 0, Piece.TOP_QUARK_A);
+        board.setCell(4, 0, Piece.GLUON);
+        board.setCell(5, 0, Piece.BOTTOM_QUARK_A);
+
+        List<HadronFormation> formations = detectNearCell(board, 4, 0);
+        assertEquals(1, formations.size(), "Should have exactly one formation");
+
+        HadronFormation f = formations.get(0);
+        assertEquals(Hadron.PION, f.getHadron());
+        assertEquals(3, f.getConsumedCells().size(), "Pion should consume 3 cells");
+    }
+
+    // ==================== HELPERS ====================
+
+    /** Detect near a cell using the cell's piece as the "placed piece". */
+    private List<HadronFormation> detectNearCell(Board board, int col, int row) {
         Piece p = board.getCell(col, row);
         if (p == null) p = Piece.GLUON;
         return detector.detect(board, p, 0, col, row);
+    }
+
+    /** Convenience: detect near cell and extract just the hadron types. */
+    private List<Hadron> detectHadronsNearCell(Board board, int col, int row) {
+        return detectNearCell(board, col, row).stream()
+                .map(HadronFormation::getHadron).toList();
+    }
+
+    /** Detect with explicit piece placement info. */
+    private List<Hadron> detectHadrons(Board board, Piece piece, int rotation, int col, int row) {
+        return detector.detect(board, piece, rotation, col, row).stream()
+                .map(HadronFormation::getHadron).toList();
     }
 }

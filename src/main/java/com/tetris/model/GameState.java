@@ -50,6 +50,9 @@ public class GameState {
     private int totalLinesCleared;
     private final List<Hadron> discoveredHadrons = new ArrayList<>();
     private List<Hadron> lastDiscoveredHadrons = Collections.emptyList();
+    private List<HadronFormation> lastFormations = Collections.emptyList();
+    private double hadronAnimTimer;
+    public static final double HADRON_ANIM_DURATION = 0.6;
     private int lastLinesCleared;
     private String actionText = "";
     private double actionTextTimer;
@@ -237,10 +240,15 @@ public class GameState {
         }
 
         // Detect hadrons
-        List<Hadron> hadrons = hadronDetector.detect(board, currentPiece, currentRotation,
+        List<HadronFormation> formations = hadronDetector.detect(board, currentPiece, currentRotation,
                 currentCol, currentRow);
+        List<Hadron> hadrons = formations.stream().map(HadronFormation::getHadron).toList();
         lastDiscoveredHadrons = hadrons;
+        lastFormations = formations;
         discoveredHadrons.addAll(hadrons);
+        if (!formations.isEmpty()) {
+            hadronAnimTimer = HADRON_ANIM_DURATION;
+        }
 
         // Clear lines
         int linesCleared = board.clearLines();
@@ -294,6 +302,14 @@ public class GameState {
         if (actionTextTimer > 0) {
             actionTextTimer -= deltaTime;
             if (actionTextTimer <= 0) actionText = "";
+        }
+
+        if (hadronAnimTimer > 0) {
+            hadronAnimTimer -= deltaTime;
+            if (hadronAnimTimer <= 0) {
+                hadronAnimTimer = 0;
+                lastFormations = Collections.emptyList();
+            }
         }
 
         updateDAS(deltaTime);
@@ -386,6 +402,8 @@ public class GameState {
     public int getTotalLinesCleared() { return totalLinesCleared; }
     public List<Hadron> getDiscoveredHadrons() { return Collections.unmodifiableList(discoveredHadrons); }
     public List<Hadron> getLastDiscoveredHadrons() { return lastDiscoveredHadrons; }
+    public List<HadronFormation> getLastFormations() { return lastFormations; }
+    public double getHadronAnimTimer() { return hadronAnimTimer; }
 
     public List<Piece> getPreviewPieces() {
         return bag.peekNext(PREVIEW_COUNT);

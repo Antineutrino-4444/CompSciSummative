@@ -3,6 +3,7 @@ package com.tetris.ui;
 import com.tetris.model.Board;
 import com.tetris.model.GameState;
 import com.tetris.model.Hadron;
+import com.tetris.model.HadronFormation;
 import com.tetris.model.Piece;
 
 import javafx.scene.canvas.Canvas;
@@ -65,6 +66,7 @@ public class GameRenderer {
         drawGluonBridges(state);
         drawGhostPiece(state);
         drawCurrentPiece(state);
+        drawHadronAnimation(state);
         drawHoldBox(state);
         drawNextQueue(state);
         drawInfoPanel(state);
@@ -491,6 +493,126 @@ public class GameRenderer {
         gc.setFont(Font.font("Monospace", FontWeight.BOLD, Math.max(7, size * 0.5)));
         gc.setTextAlign(TextAlignment.CENTER);
         gc.fillText(label, x + size / 2, y + size * 0.65);
+    }
+
+    // ==================== HADRON FORMATION ANIMATION ====================
+
+    /**
+     * Draws a merge animation over cells that were consumed by a hadron formation.
+     * Shows an expanding glow ring + flash that fades out over HADRON_ANIM_DURATION.
+     */
+    private void drawHadronAnimation(GameState state) {
+        double timer = state.getHadronAnimTimer();
+        if (timer <= 0) return;
+
+        List<HadronFormation> formations = state.getLastFormations();
+        if (formations.isEmpty()) return;
+
+        double progress = 1.0 - (timer / GameState.HADRON_ANIM_DURATION); // 0→1
+
+        gc.save();
+        gc.beginPath();
+        gc.rect(FIELD_X, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT);
+        gc.clip();
+
+        for (HadronFormation formation : formations) {
+            Color hadronColor = Color.web(formation.getHadron().getColorHex());
+
+            // Compute center of all consumed cells for the converge target
+            double sumX = 0, sumY = 0;
+            int count = 0;
+            for (long packed : formation.getConsumedCells()) {
+                int col = HadronFormation.unpackCol(packed);
+                int row = HadronFormation.unpackRow(packed);
+                if (row >= 0 && row < Board.VISIBLE_HEIGHT) {
+                    sumX += FIELD_X + col * CELL_SIZE + CELL_SIZE / 2.0;
+                    sumY += FIELD_Y + (Board.VISIBLE_HEIGHT - 1 - row) * CELL_SIZE + CELL_SIZE / 2.0;
+                    count++;
+                }
+            }
+            if (count == 0) continue;
+            double centerX = sumX / count;
+            double centerY = sumY / count;
+
+            for (long packed : formation.getConsumedCells()) {
+                int col = HadronFormation.unpackCol(packed);
+                int row = HadronFormation.unpackRow(packed);
+                if (row < 0 || row >= Board.VISIBLE_HEIGHT) continue;
+
+                double cellX = FIELD_X + col * CELL_SIZE + CELL_SIZE / 2.0;
+                double cellY = FIELD_Y + (Board.VISIBLE_HEIGHT - 1 - row) * CELL_SIZE + CELL_SIZE / 2.0;
+
+                // Phase 1 (0→0.5): bright flash on each cell
+                // Phase 2 (0.5→1.0): particles converge toward center and fade
+                if (progress < 0.5) {
+                    double phase1 = progress / 0.5; // 0→1
+
+                    // Expanding glow ring
+                    double ringRadius = CELL_SIZE * 0.3 + CELL_SIZE * 0.5 * phase1;
+                    double ringAlpha = 0.8 * (1.0 - phase1);
+                    gc.setStroke(Color.color(
+                            hadronColor.getRed(), hadronColor.getGreen(), hadronColor.getBlue(),
+                            ringAlpha));
+                    gc.setLineWidth(3 - 2 * phase1);
+                    gc.strokeOval(cellX - ringRadius, cellY - ringRadius,
+                            ringRadius * 2, ringRadius * 2);
+
+                    // Bright center flash
+                    double flashAlpha = 0.9 * (1.0 - phase1 * 0.5);
+                    double flashSize = CELL_SIZE * 0.5 * (1.0 + phase1 * 0.3);
+                    gc.setFill(Color.color(1.0, 1.0, 1.0, flashAlpha * 0.6));
+                    gc.fillOval(cellX - flashSize / 2, cellY - flashSize / 2,
+                            flashSize, flashSize);
+
+                    // Colored glow
+                    gc.setFill(Color.color(
+                            hadronColor.getRed(), hadronColor.getGreen(), hadronColor.getBlue(),
+                            flashAlpha * 0.4));
+                    double glowSize = CELL_SIZE * 0.8 * (1.0 + phase1 * 0.5);
+                    gc.fillOval(cellX - glowSize / 2, cellY - glowSize / 2,
+                            glowSize, glowSize);
+                } else {
+                    double phase2 = (progress - 0.5) / 0.5; // 0→1
+
+                    // Converge toward center
+                    double moveX = cellX + (centerX - cellX) * phase2;
+                    double moveY = cellY + (centerY - cellY) * phase2;
+                    double fadeAlpha = 0.8 * (1.0 - phase2);
+                    double shrink = CELL_SIZE * 0.4 * (1.0 - phase2 * 0.7);
+
+                    // Moving particle
+                    gc.setFill(Color.color(
+                            hadronColor.getRed(), hadronColor.getGreen(), hadronColor.getBlue(),
+                            fadeAlpha));
+                    gc.fillOval(moveX - shrink / 2, moveY - shrink / 2, shrink, shrink);
+
+                    // White core
+                    gc.setFill(Color.color(1.0, 1.0, 1.0, fadeAlpha * 0.5));
+                    double coreSize = shrink * 0.5;
+                    gc.fillOval(moveX - coreSize / 2, moveY - coreSize / 2, coreSize, coreSize);
+                }
+            }
+
+            // In phase 2, draw a growing glow at the center
+            if (progress >= 0.5) {
+                double phase2 = (progress - 0.5) / 0.5;
+                double burstAlpha = 0.7 * (phase2 < 0.5 ? phase2 * 2 : (1.0 - phase2) * 2);
+                double burstSize = CELL_SIZE * 0.5 + CELL_SIZE * 1.2 * phase2;
+
+                gc.setFill(Color.color(
+                        hadronColor.getRed(), hadronColor.getGreen(), hadronColor.getBlue(),
+                        burstAlpha * 0.5));
+                gc.fillOval(centerX - burstSize / 2, centerY - burstSize / 2,
+                        burstSize, burstSize);
+
+                gc.setFill(Color.color(1.0, 1.0, 1.0, burstAlpha * 0.4));
+                double innerSize = burstSize * 0.5;
+                gc.fillOval(centerX - innerSize / 2, centerY - innerSize / 2,
+                        innerSize, innerSize);
+            }
+        }
+
+        gc.restore();
     }
 
     // ==================== ACTION TEXT ====================
