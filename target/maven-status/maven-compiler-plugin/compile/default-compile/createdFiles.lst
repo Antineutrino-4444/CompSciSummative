@@ -1,0 +1,10 @@
+com/tetris/model/GameState.class
+com/tetris/ui/TetrisApp$1.class
+com/tetris/model/WallKickData.class
+com/tetris/model/Board.class
+com/tetris/ui/TetrisApp.class
+com/tetris/ui/TetrisApp$2.class
+com/tetris/ui/GameRenderer.class
+com/tetris/model/BagRandomizer.class
+com/tetris/model/Piece.class
+com/tetris/model/ScoreSystem.class

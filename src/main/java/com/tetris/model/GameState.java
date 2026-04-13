@@ -236,10 +236,24 @@ public class GameState {
     private void lockPiece() {
         if (currentPiece == null) return;
 
+<<<<<<< HEAD
         // Snapshot board state for undo (before placing)
         if (undosRemaining > 0) {
             if (undoSnapshots.size() >= MAX_UNDOS) {
                 undoSnapshots.remove(0);
+=======
+        // Check for T-Spin before placing
+        boolean isTSpin = false;
+        boolean isMiniTSpin = false;
+        if (currentPiece == Piece.T && lastMoveWasRotation) {
+            isTSpin = detectTSpin();
+            if (isTSpin && lastKickIndex != 4) {
+                // Could be a mini T-Spin if not kick test 5
+                isMiniTSpin = detectMiniTSpin();
+                if (isMiniTSpin) {
+                    isTSpin = false; // It's a mini, not a full T-Spin
+                }
+>>>>>>> parent of b338db7 (Add .gitignore and clarify T-spin detection comment)
             }
             undoSnapshots.add(board.copy());
         }
