@@ -244,8 +244,17 @@ public class GameState {
             int currentY = currentPiece.getBoardPosition().getY();
             if (currentY > lowestY) {
                 lowestY = currentY;
+                lockResets = 0;
             }
-            updateLockDelay();
+            // Soft drop does NOT reset lock delay — only lateral moves and rotations do.
+            // Just check if we left the ground (to deactivate lock delay).
+            Tetromino below = currentPiece.moveDown();
+            if (board.isValidPosition(below)) {
+                lockDelayActive = false;
+            } else if (!lockDelayActive) {
+                lockDelayActive = true;
+                lockDelayStart = System.currentTimeMillis();
+            }
             return true;
         }
         return false;
