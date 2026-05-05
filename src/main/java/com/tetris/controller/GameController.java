@@ -2,6 +2,7 @@ package com.tetris.controller;
 
 import com.tetris.model.GameState;
 import com.tetris.model.Settings;
+import com.tetris.view.GameView;
 import com.tetris.view.MainFrame;
 import com.tetris.view.SettingsPanel;
 
@@ -51,6 +52,7 @@ public class GameController {
 
     private GameState gameState;
     private MainFrame mainFrame;
+    private GameView gameView; // populated when started in embedded mode
     private InputHandler inputHandler;
     private Timer gameLoopTimer;
 
@@ -81,10 +83,52 @@ public class GameController {
         mainFrame = new MainFrame(gameState, inputHandler);
         mainFrame.setVisible(true);
 
+        // Stop the game loop when the window is closed so the menu can
+        // come back cleanly without a stray timer ticking forever.
+        mainFrame.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override public void windowClosed(java.awt.event.WindowEvent e) { stop(); }
+        });
+
         // Start the game loop timer
         gameLoopTimer = new Timer(FRAME_INTERVAL_MS, e -> gameLoop());
         gameLoopTimer.setRepeats(true);
         gameLoopTimer.start();
+    }
+
+    /** Stops the game loop timer. Safe to call multiple times. */
+    public void stop() {
+        if (gameLoopTimer != null) {
+            gameLoopTimer.stop();
+            gameLoopTimer = null;
+        }
+        if (gameView != null) {
+            gameView.shutdown();
+        }
+    }
+
+    /**
+     * Embedded-mode entry point: builds a {@link GameView} JPanel that the
+     * caller can drop into an existing window (e.g. the StartMenu's
+     * CardLayout) and starts the game loop. {@code onExit} is invoked
+     * when the player clicks the toolbar's Back button.
+     *
+     * @param onExit callback fired when the player wants to leave the game
+     * @return a JPanel containing the full game UI
+     */
+    public GameView startEmbedded(Runnable onExit) {
+        gameView = new GameView(gameState, inputHandler, () -> {
+            stop();
+            if (onExit != null) onExit.run();
+        });
+        gameLoopTimer = new Timer(FRAME_INTERVAL_MS, e -> gameLoop());
+        gameLoopTimer.setRepeats(true);
+        gameLoopTimer.start();
+        return gameView;
+    }
+
+    /** Exposes the main window so the launcher can listen for its close. */
+    public MainFrame getMainFrame() {
+        return mainFrame;
     }
 
     /**
@@ -145,7 +189,8 @@ public class GameController {
         }
 
         // 4. Repaint
-        mainFrame.repaint();
+        if (mainFrame != null) mainFrame.repaint();
+        if (gameView  != null) gameView.repaint();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -196,7 +241,8 @@ public class GameController {
      */
     public void restart() {
         gameState = new GameState(startLevel);
-        mainFrame.setGameState(gameState);
+        if (mainFrame != null) mainFrame.setGameState(gameState);
+        if (gameView  != null) gameView.setGameState(gameState);
     }
 
     /**
@@ -208,8 +254,12 @@ public class GameController {
         if (!wasPaused && !gameState.isGameOver()) {
             gameState.togglePause();
         }
-        SettingsPanel.showDialog(mainFrame);
-        mainFrame.requestGameFocus();
+        java.awt.Window owner = null;
+        if (mainFrame != null) owner = mainFrame;
+        else if (gameView != null) owner = javax.swing.SwingUtilities.getWindowAncestor(gameView);
+        SettingsPanel.showDialog(owner instanceof javax.swing.JFrame f ? f : null);
+        if (mainFrame != null) mainFrame.requestGameFocus();
+        if (gameView  != null) gameView.requestGameFocus();
         if (!wasPaused && !gameState.isGameOver()) {
             gameState.togglePause();
         }

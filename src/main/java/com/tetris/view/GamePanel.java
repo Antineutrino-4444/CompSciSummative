@@ -1,378 +1,509 @@
 package com.tetris.view;
 
-import com.tetris.model.*;
+import com.tetris.model.Board;
+import com.tetris.model.GameState;
+import com.tetris.model.Position;
+import com.tetris.model.Settings;
+import com.tetris.model.Tetromino;
+import com.tetris.view.theme.BlockRenderer;
+import com.tetris.view.theme.Theme;
 
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 /**
- * GamePanel.java
- * ==============
- * The main playfield rendering panel. Draws the 10×20 visible Tetris board,
- * the current falling piece, and the ghost piece.
+ * GamePanel.java — central playfield renderer.
  *
- * ═══════════════════════════════════════════════════════════════════════
- * RENDERING OVERVIEW
- * ═══════════════════════════════════════════════════════════════════════
+ * Responsibilities:
+ *   • Paint the 10×20 visible board, the locked stack, the active piece,
+ *     and the ghost / drop preview.
+ *   • Animate a TETR.IO-style line-clear effect: a brief bright pulse on
+ *     the cleared rows followed by colored shatter-shards that spray
+ *     outward and fall under gravity.
+ *   • Render a transient action splash ("TETRIS!", "T-SPIN DOUBLE",
+ *     "PERFECT CLEAR", "B2B x4 …") that fades over ~1 s.
+ *   • Render Pause / Game Over overlays as semi-transparent cards.
  *
- * The panel renders in this order (back to front):
- *   1. Background: dark fill for the entire playfield
- *   2. Grid lines: subtle lines separating cells
- *   3. Locked pieces: colored cells already on the board
- *   4. Ghost piece: translucent outline showing where the piece will land
- *   5. Current piece: the actively falling tetromino
- *   6. Border: a frame around the playfield
- *
- * ═══════════════════════════════════════════════════════════════════════
- * CELL RENDERING
- * ═══════════════════════════════════════════════════════════════════════
- * Each cell is drawn as a filled rectangle with:
- *   - A main color (the tetromino's guideline color)
- *   - A brighter highlight on the top and left edges (3D bevel effect)
- *   - A darker shadow on the bottom and right edges
- *
- * This creates the classic Tetris "raised block" look.
- *
- * ═══════════════════════════════════════════════════════════════════════
- * GHOST PIECE
- * ═══════════════════════════════════════════════════════════════════════
- * The ghost piece is drawn as a semi-transparent outline at the position
- * where the current piece would land if hard-dropped. This helps the
- * player judge where to place pieces.
- *
- * ═══════════════════════════════════════════════════════════════════════
- * COORDINATE MAPPING
- * ═══════════════════════════════════════════════════════════════════════
- * Board coordinates → pixel coordinates:
- *   pixelX = boardX + col * cellSize
- *   pixelY = boardY + (row - Board.BUFFER_HEIGHT) * cellSize
- *
- * Only rows >= BUFFER_HEIGHT are visible (rows 0–3 are hidden buffer).
- *
- * Cell size is computed dynamically to fill the panel, adapting on resize.
+ * Painting cost is kept low — fonts and colors come from {@link Theme},
+ * cells go through the shared {@link BlockRenderer}, particles are pooled
+ * in a small ArrayList and culled aggressively.
  */
 public class GamePanel extends JPanel {
 
-    /** Padding around the playfield. */
-    private static final int PADDING = 2;
+    private static final int VISIBLE_HEIGHT = Board.VISIBLE_HEIGHT;
+    private static final int WIDTH          = Board.WIDTH;
+    private static final int BUFFER         = Board.BUFFER_HEIGHT;
 
-    /** Border color around the playfield — CERN cyan accent. */
-    private static final Color BORDER_COLOR = new Color(0, 160, 180);
-
-    // ─────────────────────── Particle Network ──────────────────────
-
-    private final List<NetNode> nodes = new ArrayList<>();
-    private final Random rng = new Random();
-    private boolean nodesInitialized = false;
-    private int lastPw, lastPh;
-
-    private static final int NODE_COUNT = 80;
-    private static final double CONNECT_DIST = 150.0;
-
-    // ─────────────────────── State ──────────────────────────────
+    /** Cached strokes — reused every frame. */
+    private static final BasicStroke STROKE_GRID  = new BasicStroke(1f);
+    private static final BasicStroke STROKE_BOARD = new BasicStroke(2f);
 
     private GameState gameState;
 
-    // ─────────────────────── Constructor ─────────────────────────
+    // ── Line-clear animation ────────────────────────────────────────
+    /** Wall-clock start of the current clear flash window (ns). 0 = idle. */
+    private long clearAnimStartNs = 0;
+    /** Y-indices of rows currently flashing (in board coords). */
+    private final List<Integer> flashingRows = new ArrayList<>(4);
+    /** Active shatter shards. Pooled and pruned every frame. */
+    private final List<Shard> shards = new ArrayList<>(64);
+    /** Total length of the flash phase. */
+    private static final long FLASH_PHASE_NS    = 110_000_000L;  // 110 ms
+    /** Total length of the shatter phase (after flash). */
+    private static final long SHATTER_PHASE_NS  = 520_000_000L;  // 520 ms
+
+    private int lastTotalLinesCleared = 0;
+
+    // ── Action splash ──────────────────────────────────────────────
+    private String splashText = "";
+    private long  splashStartNs = 0;
+    private static final long SPLASH_DURATION_NS = 1_100_000_000L;   // 1.1 s
+    private String lastSplashSource = "";
 
     public GamePanel(GameState gameState) {
         this.gameState = gameState;
-        setBackground(new Color(4, 6, 14));
-        int defaultCell = 30;
-        int w = Board.WIDTH * defaultCell + PADDING * 2;
-        int h = Board.VISIBLE_HEIGHT * defaultCell + PADDING * 2;
-        setPreferredSize(new Dimension(w, h));
+        setBackground(Theme.BG_0);
+        setFocusable(true);
+        setPreferredSize(new Dimension(380, 760));
     }
 
     public void setGameState(GameState gameState) {
         this.gameState = gameState;
+        flashingRows.clear();
+        shards.clear();
+        clearAnimStartNs = 0;
+        splashText = "";
+        lastTotalLinesCleared = gameState != null
+                ? gameState.getScoreSystem().getTotalLinesCleared() : 0;
+        lastSplashSource = "";
     }
-
-    // ─────────────────────── Dynamic Sizing ─────────────────────
-
-    private int cellSize() {
-        int cw = getWidth() - PADDING * 2;
-        int ch = getHeight() - PADDING * 2;
-        return Math.max(1, Math.min(cw / Board.WIDTH, ch / Board.VISIBLE_HEIGHT));
-    }
-
-    private int boardX(int cs) { return (getWidth() - cs * Board.WIDTH) / 2; }
-    private int boardY(int cs) { return (getHeight() - cs * Board.VISIBLE_HEIGHT) / 2; }
-
-    // ─────────────────────── Rendering ──────────────────────────
 
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
 
-        int cs = cellSize();
-        int bx = boardX(cs);
-        int by = boardY(cs);
-        Settings s = Settings.get();
+        // ── Layout ──
+        int cs   = cellSize();
+        int boardW = cs * WIDTH;
+        int boardH = cs * VISIBLE_HEIGHT;
+        int bx   = (getWidth()  - boardW) / 2;
+        int by   = (getHeight() - boardH) / 2;
 
-        // 0. Background network (behind game board)
-        updateNodes();
-        drawConnections(g2);
-        drawNodes(g2);
+        // ── Background vignette ──
+        paintBackdrop(g2);
 
-        // 1. Board background
-        g2.setColor(new Color(6, 10, 22, (int) (s.getBoardOpacity() * 255)));
-        g2.fillRect(bx, by, Board.WIDTH * cs, Board.VISIBLE_HEIGHT * cs);
+        // ── Board surface ──
+        Settings settings = Settings.get();
+        float boardAlpha = (float) settings.getBoardOpacity();
+        Composite prev = g2.getComposite();
+        g2.setComposite(AlphaComposite.SrcOver.derive(boardAlpha));
+        g2.setColor(Theme.BG_1);
+        g2.fillRect(bx, by, boardW, boardH);
+        g2.setComposite(prev);
 
-        // 2. Grid lines
-        drawGrid(g2, s, cs, bx, by);
-
-        // 3. Locked pieces on the board
-        drawBoard(g2, cs, bx, by);
-
-        // 4. Ghost piece
-        drawGhostPiece(g2, s, cs, bx, by);
-
-        // 5. Current piece
-        drawCurrentPiece(g2, cs, bx, by);
-
-        // 6. Border
-        g2.setColor(BORDER_COLOR);
-        g2.setStroke(new BasicStroke(2));
-        g2.drawRect(bx, by, Board.WIDTH * cs, Board.VISIBLE_HEIGHT * cs);
-
-        // 7. Overlays (pause, game over)
-        if (gameState.isPaused()) {
-            drawOverlay(g2, "PAUSED", "Press P to resume", cs, bx, by);
-        } else if (gameState.isGameOver()) {
-            drawOverlay(g2, "GAME OVER", "Press R to restart", cs, bx, by);
+        // ── Grid lines (very faint, TETR.IO-like) ──
+        float gridAlpha = (float) settings.getGridOpacity();
+        if (gridAlpha > 0.01f) {
+            g2.setComposite(AlphaComposite.SrcOver.derive(gridAlpha));
+            g2.setColor(Theme.alpha(Theme.ACCENT_DIM, 60));
+            g2.setStroke(STROKE_GRID);
+            for (int x = 1; x < WIDTH; x++) {
+                int gx = bx + x * cs;
+                g2.drawLine(gx, by, gx, by + boardH);
+            }
+            for (int y = 1; y < VISIBLE_HEIGHT; y++) {
+                int gy = by + y * cs;
+                g2.drawLine(bx, gy, bx + boardW, gy);
+            }
+            g2.setComposite(prev);
         }
-    }
 
-    private void drawGrid(Graphics2D g2, Settings s, int cs, int bx, int by) {
-        g2.setColor(new Color(0, 140, 160, (int) (s.getGridOpacity() * 255)));
-        g2.setStroke(new BasicStroke(1));
-        for (int col = 0; col <= Board.WIDTH; col++) {
-            int x = bx + col * cs;
-            g2.drawLine(x, by, x, by + Board.VISIBLE_HEIGHT * cs);
-        }
-        for (int row = 0; row <= Board.VISIBLE_HEIGHT; row++) {
-            int y = by + row * cs;
-            g2.drawLine(bx, y, bx + Board.WIDTH * cs, y);
-        }
-    }
+        // ── Detect newly cleared lines BEFORE drawing the stack so the
+        //     flash phase paints correctly on this same frame.
+        detectAndStartClearAnim();
+        detectAndStartSplash();
 
-    private void drawBoard(Graphics2D g2, int cs, int bx, int by) {
-        Color[][] grid = gameState.getBoard().getGridCopy();
-        for (int row = Board.BUFFER_HEIGHT; row < Board.TOTAL_HEIGHT; row++) {
-            for (int col = 0; col < Board.WIDTH; col++) {
-                Color c = grid[row][col];
-                if (c != null) {
-                    drawCell(g2, col, row - Board.BUFFER_HEIGHT, c, false, cs, bx, by);
+        long now = System.nanoTime();
+        long sinceClear = now - clearAnimStartNs;
+        boolean inFlash   = clearAnimStartNs != 0 && sinceClear < FLASH_PHASE_NS;
+        boolean animating = clearAnimStartNs != 0 && sinceClear < FLASH_PHASE_NS + SHATTER_PHASE_NS;
+
+        // ── Locked stack. Rows currently flashing get a bright overlay. ──
+        Board board = gameState.getBoard();
+        for (int row = BUFFER; row < BUFFER + VISIBLE_HEIGHT; row++) {
+            boolean isFlashingRow = inFlash && flashingRows.contains(row);
+            for (int col = 0; col < WIDTH; col++) {
+                Color c = board.getCell(col, row);
+                if (c == null) continue;
+                int x = bx + col * cs;
+                int y = by + (row - BUFFER) * cs;
+                BlockRenderer.draw(g2, x, y, cs, c, BlockRenderer.Style.SOLID);
+                if (isFlashingRow) {
+                    float t = sinceClear / (float) FLASH_PHASE_NS;
+                    float a = Math.max(0f, 1f - t);
+                    g2.setComposite(AlphaComposite.SrcOver.derive(a));
+                    g2.setColor(Color.WHITE);
+                    g2.fillRect(x + 1, y + 1, cs - 2, cs - 2);
+                    g2.setComposite(prev);
                 }
+            }
+        }
+
+        // ── Flash-phase rows that have already shifted out of the grid:
+        //     paint a fading white band where they used to be. ──
+        if (inFlash) {
+            float t = sinceClear / (float) FLASH_PHASE_NS;
+            float a = Math.max(0f, 1f - t * 0.5f);
+            g2.setComposite(AlphaComposite.SrcOver.derive(a));
+            for (int row : flashingRows) {
+                if (row < BUFFER) continue;
+                int y = by + (row - BUFFER) * cs;
+                g2.setColor(Color.WHITE);
+                g2.fillRect(bx, y, boardW, cs);
+            }
+            g2.setComposite(prev);
+        }
+
+        // ── Ghost piece ──
+        if (gameState.getCurrentPiece() != null && !gameState.isGameOver()) {
+            Tetromino ghost = gameState.getGhostPiece();
+            if (ghost != null) {
+                float ghostAlpha = (float) settings.getGhostOpacity();
+                g2.setComposite(AlphaComposite.SrcOver.derive(ghostAlpha));
+                drawPiece(g2, ghost, bx, by, cs, BlockRenderer.Style.GHOST);
+                g2.setComposite(prev);
+            }
+        }
+
+        // ── Active piece ──
+        if (gameState.getCurrentPiece() != null && !gameState.isGameOver()) {
+            drawPiece(g2, gameState.getCurrentPiece(), bx, by, cs, BlockRenderer.Style.SOLID);
+        }
+
+        // ── Shatter particles (drawn over the board so they overlap
+        //     the surrounding chrome too). ──
+        if (!shards.isEmpty()) {
+            paintShards(g2, now);
+        }
+
+        // ── Border around the board ──
+        g2.setColor(Theme.ACCENT_DIM);
+        g2.setStroke(STROKE_BOARD);
+        g2.drawRect(bx, by, boardW, boardH);
+
+        // ── Action splash (TETRIS! / PERFECT CLEAR / B2B x3) ──
+        paintSplash(g2, now, bx, by, boardW, boardH);
+
+        // Keep repainting while anything is animating.
+        if (animating || !shards.isEmpty() || splashStartNs != 0) {
+            repaint();
+        }
+
+        // ── Overlays ──
+        if (gameState.isGameOver()) {
+            drawCenterOverlay(g2, "GAME OVER", "Press R to restart  •  ESC to menu", Theme.DANGER);
+        } else if (gameState.isPaused()) {
+            drawCenterOverlay(g2, "PAUSED", "Press P or ESC to resume", Theme.ACCENT);
+        }
+    }
+
+    // ───────────────────── Clear animation ──────────────────────────
+
+    private void detectAndStartClearAnim() {
+        int total = gameState.getScoreSystem().getTotalLinesCleared();
+        if (total > lastTotalLinesCleared) {
+            lastTotalLinesCleared = total;
+            startClearAnimation();
+        } else if (total < lastTotalLinesCleared) {
+            // Restart — sync silently.
+            lastTotalLinesCleared = total;
+        }
+
+        if (clearAnimStartNs != 0 &&
+                System.nanoTime() - clearAnimStartNs >= FLASH_PHASE_NS + SHATTER_PHASE_NS) {
+            clearAnimStartNs = 0;
+            flashingRows.clear();
+        }
+    }
+
+    private void startClearAnimation() {
+        Board board = gameState.getBoard();
+        List<Integer> rows = board.getLastClearedRowIndices();
+        List<Color[]> colors = board.getLastClearedRowColors();
+        if (rows == null || rows.isEmpty()) return;
+
+        flashingRows.clear();
+        flashingRows.addAll(rows);
+        clearAnimStartNs = System.nanoTime();
+
+        // Spawn shards. Each cleared cell produces 4 shards spraying
+        // outward with gravity and drag — like TETR.IO's "shatter" clear.
+        int cs = cellSize();
+        int boardW = cs * WIDTH;
+        int bx = (getWidth()  - boardW) / 2;
+        int by = (getHeight() - cs * VISIBLE_HEIGHT) / 2;
+
+        java.util.Random rng = new java.util.Random();
+        for (int i = 0; i < rows.size(); i++) {
+            int row = rows.get(i);
+            if (row < BUFFER) continue;
+            Color[] rowColors = colors.get(i);
+            int py = by + (row - BUFFER) * cs;
+            for (int col = 0; col < WIDTH; col++) {
+                Color c = rowColors[col];
+                if (c == null) continue;
+                int px = bx + col * cs;
+                spawnShardsForCell(px, py, cs, c, rng);
             }
         }
     }
 
-    private void drawGhostPiece(Graphics2D g2, Settings s, int cs, int bx, int by) {
-        Tetromino ghost = gameState.getGhostPiece();
-        if (ghost == null) return;
-        Color gc = ghost.getType().getColor();
-        int alpha = (int) (s.getGhostOpacity() * 255);
-        Color tc = new Color(gc.getRed(), gc.getGreen(), gc.getBlue(), alpha);
-        for (Position p : ghost.getAbsoluteCells()) {
-            int vr = p.getY() - Board.BUFFER_HEIGHT;
-            if (vr >= 0) drawCell(g2, p.getX(), vr, tc, true, cs, bx, by);
+    private void spawnShardsForCell(int x, int y, int cs, Color color, java.util.Random rng) {
+        int half = cs / 2;
+        for (int q = 0; q < 4; q++) {
+            int qx = q % 2;          // 0 left, 1 right
+            int qy = q / 2;          // 0 top,  1 bottom
+            float sx = x + qx * half + rng.nextFloat() * (half - 4) + 2;
+            float sy = y + qy * half + rng.nextFloat() * (half - 4) + 2;
+
+            // Velocity: outward from cell center, with an upward boost.
+            float dirX = (qx == 0 ? -1f : 1f) * (0.5f + rng.nextFloat() * 0.8f);
+            float dirY = (qy == 0 ? -1f : 1f) * (0.4f + rng.nextFloat() * 0.6f);
+            dirY -= 0.6f + rng.nextFloat() * 0.4f;
+
+            float speed = cs * (0.05f + rng.nextFloat() * 0.04f); // px/ms
+            float vx = dirX * speed;
+            float vy = dirY * speed;
+
+            float size = half * (0.45f + rng.nextFloat() * 0.45f);
+            float spin = (rng.nextFloat() - 0.5f) * 0.012f;       // rad/ms
+            shards.add(new Shard(sx, sy, vx, vy, size, color, spin,
+                    rng.nextFloat() * (float) Math.PI));
         }
     }
 
-    private void drawCurrentPiece(Graphics2D g2, int cs, int bx, int by) {
-        Tetromino cur = gameState.getCurrentPiece();
-        if (cur == null) return;
-        Color c = cur.getType().getColor();
-        for (Position p : cur.getAbsoluteCells()) {
-            int vr = p.getY() - Board.BUFFER_HEIGHT;
-            if (vr >= 0) drawCell(g2, p.getX(), vr, c, false, cs, bx, by);
+    private void paintShards(Graphics2D g2, long now) {
+        if (clearAnimStartNs == 0) {
+            shards.clear();
+            return;
+        }
+        long sinceFlashEnd = now - (clearAnimStartNs + FLASH_PHASE_NS);
+        if (sinceFlashEnd < 0) return;       // Still in flash phase — hold shards.
+        float dtMs = 16f;                    // Fixed step — repaint cadence.
+        float lifeMs = sinceFlashEnd / 1_000_000f;
+        float lifeFrac = Math.min(1f, lifeMs / (SHATTER_PHASE_NS / 1_000_000f));
+
+        Composite prev = g2.getComposite();
+        for (int i = shards.size() - 1; i >= 0; i--) {
+            Shard s = shards.get(i);
+            s.x += s.vx * dtMs;
+            s.y += s.vy * dtMs;
+            s.vy += 0.0011f * dtMs;          // gravity (px/ms²)
+            s.vx *= 0.985f;                  // air drag
+            s.angle += s.spin * dtMs;
+
+            float a = Math.max(0f, 1f - lifeFrac);
+            if (a <= 0.02f) {
+                shards.remove(i);
+                continue;
+            }
+            g2.setComposite(AlphaComposite.SrcOver.derive(a));
+            paintShard(g2, s);
+        }
+        g2.setComposite(prev);
+
+        if (lifeFrac >= 1f) shards.clear();
+    }
+
+    private void paintShard(Graphics2D g2, Shard s) {
+        java.awt.geom.AffineTransform old = g2.getTransform();
+        g2.translate(s.x, s.y);
+        g2.rotate(s.angle);
+        int half = (int) (s.size / 2f);
+        g2.setColor(s.color);
+        g2.fillRect(-half, -half, (int) s.size, (int) s.size);
+        g2.setColor(Theme.alpha(Color.WHITE, 60));
+        g2.fillRect(-half, -half, (int) s.size, 1);
+        g2.setTransform(old);
+    }
+
+    // ───────────────────── Action splash ────────────────────────────
+
+    private void detectAndStartSplash() {
+        String action = gameState.getScoreSystem().getLastAction();
+        if (action == null || action.isEmpty()) {
+            lastSplashSource = "";
+            return;
+        }
+        if (!action.equals(lastSplashSource)) {
+            lastSplashSource = action;
+            splashText = displayActionFor(action);
+            splashStartNs = System.nanoTime();
         }
     }
 
-    private void drawCell(Graphics2D g2, int col, int row, Color color,
-                           boolean isGhost, int cs, int bx, int by) {
-        int x = bx + col * cs;
-        int y = by + row * cs;
-        if (isGhost) {
-            g2.setColor(color);
-            g2.fillRect(x + 1, y + 1, cs - 2, cs - 2);
-            g2.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(),
-                    Math.min(255, color.getAlpha() * 2)));
-            g2.setStroke(new BasicStroke(1));
-            g2.drawRect(x + 1, y + 1, cs - 3, cs - 3);
-        } else {
-            g2.setColor(color);
-            g2.fillRect(x + 1, y + 1, cs - 2, cs - 2);
-            g2.setColor(color.brighter());
-            g2.fillRect(x + 1, y + 1, cs - 2, 2);
-            g2.fillRect(x + 1, y + 1, 2, cs - 2);
-            g2.setColor(color.darker());
-            g2.fillRect(x + 1, y + cs - 3, cs - 2, 2);
-            g2.fillRect(x + cs - 3, y + 1, 2, cs - 2);
+    private String displayActionFor(String full) {
+        String upper = full.toUpperCase();
+        if (upper.contains("PERFECT CLEAR")) return "PERFECT CLEAR";
+        if (upper.contains("T-SPIN TRIPLE")) return "T-SPIN TRIPLE";
+        if (upper.contains("T-SPIN DOUBLE")) return "T-SPIN DOUBLE";
+        if (upper.contains("T-SPIN SINGLE")) return "T-SPIN SINGLE";
+        if (upper.contains("T-SPIN MINI"))   return "T-SPIN MINI";
+        if (upper.contains("T-SPIN"))        return "T-SPIN";
+        if (upper.contains("TETRIS"))        return "TETRIS";
+        if (upper.contains("TRIPLE"))        return "TRIPLE";
+        if (upper.contains("DOUBLE"))        return "DOUBLE";
+        if (upper.contains("SINGLE"))        return "SINGLE";
+        return upper;
+    }
+
+    private void paintSplash(Graphics2D g2, long now, int bx, int by, int boardW, int boardH) {
+        if (splashStartNs == 0 || splashText.isEmpty()) return;
+        long elapsed = now - splashStartNs;
+        if (elapsed >= SPLASH_DURATION_NS) {
+            splashStartNs = 0;
+            return;
+        }
+        float t = elapsed / (float) SPLASH_DURATION_NS;
+        // Fade: pop in fast, hold, fade out.
+        float alpha;
+        if (t < 0.15f)      alpha = t / 0.15f;
+        else if (t < 0.65f) alpha = 1f;
+        else                alpha = 1f - (t - 0.65f) / 0.35f;
+        alpha = Math.max(0f, Math.min(1f, alpha));
+        if (alpha <= 0.01f) return;
+
+        // Scale: pop slightly past 1.0 then settle.
+        float scale;
+        if (t < 0.15f)      scale = 0.85f + 0.20f * (t / 0.15f);
+        else if (t < 0.30f) scale = 1.05f - 0.05f * ((t - 0.15f) / 0.15f);
+        else                scale = 1.0f;
+
+        Composite prev = g2.getComposite();
+        g2.setComposite(AlphaComposite.SrcOver.derive(alpha));
+
+        boolean b2b = lastSplashSource.startsWith("B2B");
+        int chain = gameState.getScoreSystem().getB2bChain();
+        int combo = gameState.getScoreSystem().getCombo();
+
+        Font main = Theme.FONT_DISPLAY.deriveFont(Font.BOLD,
+                Theme.FONT_DISPLAY.getSize2D() * scale);
+        Font sub  = Theme.FONT_MONO_BOLD;
+
+        g2.setFont(main);
+        FontMetrics fmMain = g2.getFontMetrics(main);
+        int textW = fmMain.stringWidth(splashText);
+        int cx = bx + boardW / 2 - textW / 2;
+        int cy = by + boardH / 2;
+
+        // Soft glow halo behind the text.
+        Color glow = b2b ? Theme.HIGHLIGHT : Theme.ACCENT_BRIGHT;
+        for (int r = 12; r >= 4; r -= 4) {
+            g2.setColor(Theme.alpha(glow, 22));
+            g2.fillRoundRect(cx - r - 8, cy - fmMain.getAscent() - r,
+                    textW + (r + 8) * 2, fmMain.getHeight() + r * 2, 18, 18);
+        }
+
+        // Chain qualifier above the main text.
+        g2.setFont(sub);
+        FontMetrics fmSub = g2.getFontMetrics(sub);
+        String qualifier = "";
+        if (b2b && chain >= 2) qualifier = "BACK-TO-BACK x" + chain;
+        else if (b2b)          qualifier = "BACK-TO-BACK";
+        if (combo >= 2) {
+            qualifier = qualifier.isEmpty()
+                    ? "COMBO x" + combo
+                    : qualifier + "   •   COMBO x" + combo;
+        }
+        if (!qualifier.isEmpty()) {
+            int qw = fmSub.stringWidth(qualifier);
+            g2.setColor(Theme.HIGHLIGHT);
+            g2.drawString(qualifier, bx + boardW / 2 - qw / 2,
+                    cy - fmMain.getAscent() - 6);
+        }
+
+        // Main word with subtle drop shadow.
+        g2.setFont(main);
+        g2.setColor(Theme.alpha(Color.BLACK, 180));
+        g2.drawString(splashText, cx + 2, cy + 2);
+        g2.setColor(Color.WHITE);
+        g2.drawString(splashText, cx, cy);
+
+        g2.setComposite(prev);
+    }
+
+    // ───────────────────── Helpers ──────────────────────────────────
+
+    private int cellSize() {
+        int cw = (getWidth()  - 24) / WIDTH;
+        int ch = (getHeight() - 24) / VISIBLE_HEIGHT;
+        return Math.max(8, Math.min(cw, ch));
+    }
+
+    private void paintBackdrop(Graphics2D g2) {
+        int w = getWidth(), h = getHeight();
+        g2.setPaint(new RadialGradientPaint(
+                w / 2f, h / 2f, Math.max(w, h) / 1.4f,
+                new float[]{0f, 1f},
+                new Color[]{Theme.blend(Theme.BG_0, Theme.BG_1, 0.5f), Theme.BG_0}));
+        g2.fillRect(0, 0, w, h);
+    }
+
+    private void drawPiece(Graphics2D g2, Tetromino piece, int bx, int by,
+                            int cs, BlockRenderer.Style style) {
+        Color color = piece.getType().getColor();
+        for (Position p : piece.getAbsoluteCells()) {
+            int row = p.getY();
+            int col = p.getX();
+            if (row < BUFFER) continue; // hidden in buffer
+            int x = bx + col * cs;
+            int y = by + (row - BUFFER) * cs;
+            BlockRenderer.draw(g2, x, y, cs, color, style);
         }
     }
 
-    private void drawOverlay(Graphics2D g2, String title, String subtitle,
-                              int cs, int bx, int by) {
-        int w = Board.WIDTH * cs;
-        int h = Board.VISIBLE_HEIGHT * cs;
-        g2.setColor(new Color(2, 6, 16, 200));
-        g2.fillRect(bx, by, w, h);
-        int fontSize = Math.max(14, cs * 28 / 30);
-        g2.setColor(new Color(0, 220, 240));
-        g2.setFont(new Font("Monospaced", Font.BOLD, fontSize));
+    private void drawCenterOverlay(Graphics2D g2, String title, String sub, Color accent) {
+        int w = getWidth(), h = getHeight();
+        g2.setColor(Theme.alpha(Theme.BG_0, 200));
+        g2.fillRect(0, 0, w, h);
+
+        int cardW = 360, cardH = 140;
+        int cx = (w - cardW) / 2;
+        int cy = (h - cardH) / 2;
+
+        g2.setPaint(new GradientPaint(0, cy, Theme.BG_2,
+                                       0, cy + cardH, Theme.BG_1));
+        g2.fillRoundRect(cx, cy, cardW, cardH, Theme.RADIUS_L, Theme.RADIUS_L);
+        g2.setColor(accent);
+        g2.setStroke(new BasicStroke(1.5f));
+        g2.drawRoundRect(cx, cy, cardW, cardH, Theme.RADIUS_L, Theme.RADIUS_L);
+
+        g2.setFont(Theme.FONT_TITLE);
+        g2.setColor(accent);
         FontMetrics fm = g2.getFontMetrics();
         int tw = fm.stringWidth(title);
-        g2.drawString(title, bx + (w - tw) / 2, by + h / 2 - 10);
-        int subSize = Math.max(9, cs * 14 / 30);
-        g2.setColor(new Color(80, 160, 180));
-        g2.setFont(new Font("Monospaced", Font.PLAIN, subSize));
+        g2.drawString(title, cx + (cardW - tw) / 2, cy + 60);
+
+        g2.setFont(Theme.FONT_BODY);
+        g2.setColor(Theme.TEXT_BODY);
         fm = g2.getFontMetrics();
-        int sw = fm.stringWidth(subtitle);
-        g2.drawString(subtitle, bx + (w - sw) / 2, by + h / 2 + 20);
+        int sw = fm.stringWidth(sub);
+        g2.drawString(sub, cx + (cardW - sw) / 2, cy + 92);
     }
 
-    // ═══════════════════════ Network Particle System ═══════════════════
-
-    private void updateNodes() {
-        int pw = getWidth(), ph = getHeight();
-        if (pw <= 0 || ph <= 0) return;
-
-        // First-time init
-        if (!nodesInitialized || nodes.isEmpty()) {
-            nodes.clear();
-            for (int i = 0; i < NODE_COUNT; i++) {
-                nodes.add(new NetNode(rng, pw, ph));
-            }
-            nodesInitialized = true;
-            lastPw = pw;
-            lastPh = ph;
-        }
-
-        // Rescale node positions when panel size changes
-        if (pw != lastPw || ph != lastPh) {
-            double sx = lastPw > 0 ? (double) pw / lastPw : 1;
-            double sy = lastPh > 0 ? (double) ph / lastPh : 1;
-            for (NetNode n : nodes) {
-                n.x *= sx;
-                n.y *= sy;
-            }
-            lastPw = pw;
-            lastPh = ph;
-        }
-
-        for (NetNode n : nodes) {
-            // Bounce off edges
-            if (n.x < 0 || n.x > pw) n.vx *= -1;
-            if (n.y < 0 || n.y > ph) n.vy *= -1;
-            n.x = Math.max(0, Math.min(pw, n.x + n.vx));
-            n.y = Math.max(0, Math.min(ph, n.y + n.vy));
-            // Breathing pulse
-            n.pulse += 0.02;
-        }
-    }
-
-    private void drawNodes(Graphics2D g2) {
-        for (NetNode n : nodes) {
-            float pulseScale = 1f + (float) Math.sin(n.pulse) * 0.3f;
-            float sz = n.size * pulseScale;
-
-            float r = n.cr / 255f, gr = n.cg / 255f, b = n.cb / 255f;
-            float baseAlpha = n.alpha;
-
-            // Outer radial glow
-            int glowR = (int) (sz * 5);
-            if (glowR > 2) {
-                RadialGradientPaint glow = new RadialGradientPaint(
-                        (float) n.x, (float) n.y, glowR,
-                        new float[]{0f, 0.5f, 1f},
-                        new Color[]{
-                                new Color(r, gr, b, baseAlpha * 0.55f),
-                                new Color(r, gr, b, baseAlpha * 0.2f),
-                                new Color(r, gr, b, 0f)
-                        });
-                g2.setPaint(glow);
-                g2.fillOval((int) (n.x - glowR), (int) (n.y - glowR), glowR * 2, glowR * 2);
-            }
-
-            // Core dot (bright)
-            g2.setColor(new Color(r, gr, b, Math.min(1f, baseAlpha * 1.2f)));
-            int coreSize = Math.max(2, (int) sz);
-            g2.fillOval((int) (n.x - coreSize / 2.0), (int) (n.y - coreSize / 2.0),
-                    coreSize, coreSize);
-        }
-    }
-
-    private void drawConnections(Graphics2D g2) {
-        long time = System.currentTimeMillis();
-        int sz = nodes.size();
-        for (int i = 0; i < sz; i++) {
-            NetNode a = nodes.get(i);
-            for (int j = i + 1; j < sz; j++) {
-                NetNode b = nodes.get(j);
-                double dx = a.x - b.x;
-                double dy = a.y - b.y;
-                double dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist >= CONNECT_DIST) continue;
-
-                float opacity = (float) (1.0 - dist / CONNECT_DIST) * 0.85f;
-                float thickness = 0.4f + (float) (1.0 - dist / CONNECT_DIST) * 1.1f;
-
-                // Color by distance: close=bright cyan, mid=teal, far=blue
-                Color lineColor;
-                if (dist < 50) {
-                    lineColor = new Color(0f, 0.92f, 1f, opacity);
-                } else if (dist < 100) {
-                    lineColor = new Color(0f, 0.7f, 0.85f, opacity);
-                } else {
-                    lineColor = new Color(0.2f, 0.45f, 0.85f, opacity);
-                }
-
-                g2.setColor(lineColor);
-                g2.setStroke(new BasicStroke(thickness));
-                g2.drawLine((int) a.x, (int) a.y, (int) b.x, (int) b.y);
-
-                // Midpoint oscillating dot
-                double mx = (a.x + b.x) / 2 + Math.sin(time * 0.001 + a.x) * 5;
-                double my = (a.y + b.y) / 2 + Math.cos(time * 0.001 + b.y) * 5;
-                g2.setColor(new Color(0f, 0.85f, 0.95f, opacity * 0.7f));
-                int dotSize = (int) (1.5 * thickness) + 1;
-                g2.fillOval((int) mx - dotSize / 2, (int) my - dotSize / 2, dotSize, dotSize);
-            }
-        }
-    }
-
-    // ─────────────────────── Inner Types ────────────────────────
-
-    private static class NetNode {
-        double x, y, vx, vy, pulse;
-        float size, alpha;
-        int cr, cg, cb;
-
-        NetNode(Random rng, int pw, int ph) {
-            x = rng.nextDouble() * pw;
-            y = rng.nextDouble() * ph;
-            vx = (rng.nextDouble() - 0.5) * 0.7;
-            vy = (rng.nextDouble() - 0.5) * 0.7;
-            pulse = rng.nextDouble() * Math.PI * 2;
-            size = 2f + rng.nextFloat() * 3f;
-            alpha = 0.45f + rng.nextFloat() * 0.4f;
-            // CERN color palette — vibrant
-            int type = rng.nextInt(5);
-            switch (type) {
-                case 0 -> { cr = 0;   cg = 220; cb = 240; }  // bright cyan
-                case 1 -> { cr = 0;   cg = 180; cb = 200; }  // teal
-                case 2 -> { cr = 30;  cg = 255; cb = 255; }  // electric cyan
-                case 3 -> { cr = 80;  cg = 120; cb = 230; }  // blue
-                case 4 -> { cr = 120; cg = 80;  cb = 255; }  // violet accent
-            }
+    /** A single line-clear shatter shard. */
+    private static final class Shard {
+        float x, y, vx, vy, size, angle, spin;
+        Color color;
+        Shard(float x, float y, float vx, float vy, float size, Color color, float spin, float angle) {
+            this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+            this.size = size; this.color = color; this.spin = spin; this.angle = angle;
         }
     }
 }

@@ -53,16 +53,19 @@ import java.util.Map;
  * - "Reset Defaults" restores factory defaults (still need to Save).
  * - Closing the dialog (X) is the same as Cancel.
  */
-public class SettingsPanel extends JDialog {
+public class SettingsPanel extends JPanel {
 
-    /** CERN/LHC color scheme — deep navy + electric cyan accents. */
-    private static final Color DARK_BG = new Color(8, 12, 20);
-    private static final Color PANEL_BG = new Color(14, 20, 32);
-    private static final Color TEXT_FG = new Color(180, 210, 220);
-    private static final Color ACCENT = new Color(0, 200, 220);
-    private static final Color ACCENT_DIM = new Color(0, 140, 160);
-    private static final Color BTN_BG = new Color(20, 30, 48);
-    private static final Color BTN_BORDER = new Color(0, 160, 180);
+    /** CERN/LHC color scheme — deep navy + electric cyan accents.
+     *  Tuned for high contrast on dark backgrounds. */
+    private static final Color DARK_BG     = new Color(10, 14, 22);
+    private static final Color PANEL_BG    = new Color(22, 30, 44);
+    private static final Color PANEL_BG_HI = new Color(32, 42, 60);   // selected tab / hover
+    private static final Color TEXT_FG     = new Color(228, 238, 244); // near-white body
+    private static final Color TEXT_DIM    = new Color(170, 190, 205); // secondary
+    private static final Color ACCENT      = new Color(64, 220, 240);  // brighter cyan
+    private static final Color ACCENT_DIM  = new Color(0, 150, 170);
+    private static final Color BTN_BG      = new Color(28, 40, 60);
+    private static final Color BTN_BORDER  = new Color(0, 170, 195);
 
     /** Whether the user clicked Save (vs Cancel / close). */
     private boolean saved = false;
@@ -72,6 +75,8 @@ public class SettingsPanel extends JDialog {
     private JLabel dasLabel;
     private JSlider arrSlider;
     private JLabel arrLabel;
+    private JSlider dcdSlider;
+    private JLabel dcdLabel;
     private JSlider sdfSlider;
     private JLabel sdfLabel;
 
@@ -98,52 +103,80 @@ public class SettingsPanel extends JDialog {
 
     // ─────────────────────── Constructor ─────────────────────────
 
+    /** Callback invoked when the user clicks Cancel/Back/Save. */
+    private final Runnable onClose;
+
     /**
-     * Creates and shows the settings dialog.
+     * Creates the settings form panel.
      *
-     * @param owner the parent frame
+     * @param onClose callback to invoke when the user dismisses the panel
+     *                (Cancel/Back/Save). Used by the dialog wrapper to
+     *                close the dialog, or by an embedded host (e.g. the
+     *                start menu) to navigate back to the previous view.
      */
-    public SettingsPanel(JFrame owner) {
-        super(owner, "SETTINGS // CONFIGURATION", true); // modal
-        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-        setResizable(false);
+    public SettingsPanel(Runnable onClose) {
+        this.onClose = onClose != null ? onClose : () -> {};
+        setLayout(new BorderLayout(0, 10));
+        setBackground(DARK_BG);
+        setBorder(new EmptyBorder(10, 10, 10, 10));
 
-        // Force dark tab styling via UIManager
-        UIManager.put("TabbedPane.selected", new Color(0, 200, 220, 40));
-        UIManager.put("TabbedPane.contentAreaColor", DARK_BG);
-        UIManager.put("TabbedPane.background", DARK_BG);
-        UIManager.put("TabbedPane.shadow", DARK_BG);
-        UIManager.put("TabbedPane.darkShadow", ACCENT_DIM);
-        UIManager.put("TabbedPane.light", DARK_BG);
-        UIManager.put("TabbedPane.highlight", ACCENT_DIM);
-        UIManager.put("TabbedPane.focus", ACCENT);
-        UIManager.put("TabbedPane.unselectedBackground", new Color(10, 16, 28));
-        UIManager.put("TabbedPane.selectHighlight", ACCENT_DIM);
+        // Tab styling is configured locally on this dialog's JTabbedPane
+        // below — we no longer pollute the global UIManager because doing
+        // so leaks the dark theme into every JOptionPane / JFileChooser
+        // in the rest of the application.
 
-        // Build UI
-        JPanel content = new JPanel(new BorderLayout(0, 10));
-        content.setBackground(DARK_BG);
-        content.setBorder(new EmptyBorder(10, 10, 10, 10));
-
-        // Tabbed pane
+        // Tabbed pane — force the Basic UI so our colors aren't ignored
+        // by the platform L&F (Windows in particular paints its own tab area).
         JTabbedPane tabs = new JTabbedPane();
+        tabs.setUI(new javax.swing.plaf.basic.BasicTabbedPaneUI() {
+            @Override protected void installDefaults() {
+                super.installDefaults();
+                lightHighlight = ACCENT_DIM;
+                shadow         = DARK_BG;
+                darkShadow     = DARK_BG;
+                focus          = ACCENT;
+            }
+            @Override protected void paintTabBackground(java.awt.Graphics g, int placement,
+                    int tabIndex, int x, int y, int w, int h, boolean isSelected) {
+                g.setColor(isSelected ? PANEL_BG_HI : PANEL_BG);
+                g.fillRect(x, y, w, h);
+            }
+            @Override protected void paintContentBorder(java.awt.Graphics g, int placement, int selectedIndex) {
+                g.setColor(ACCENT_DIM);
+                int w = tabPane.getWidth();
+                int h = tabPane.getHeight();
+                int top = calculateTabAreaHeight(placement, runCount, maxTabHeight);
+                g.drawLine(0, top, w - 1, top);
+                g.drawLine(0, top, 0, h - 1);
+                g.drawLine(w - 1, top, w - 1, h - 1);
+                g.drawLine(0, h - 1, w - 1, h - 1);
+            }
+        });
         tabs.setBackground(DARK_BG);
-        tabs.setForeground(ACCENT);
-        tabs.setFont(new Font("Monospaced", Font.BOLD, 12));
+        tabs.setForeground(TEXT_FG);
+        tabs.setFont(new Font("Monospaced", Font.BOLD, 14));
         tabs.setOpaque(true);
         tabs.addTab("Handling", createHandlingTab());
         tabs.addTab("Controls", createControlsTab());
         tabs.addTab("Visual", createVisualTab());
         tabs.addTab("Game", createGameplayTab());
-        content.add(tabs, BorderLayout.CENTER);
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            tabs.setBackgroundAt(i, PANEL_BG);
+            tabs.setForegroundAt(i, TEXT_FG);
+        }
+        add(tabs, BorderLayout.CENTER);
 
         // Button row
-        content.add(createButtonRow(), BorderLayout.SOUTH);
+        add(createButtonRow(), BorderLayout.SOUTH);
 
-        setContentPane(content);
         loadFromSettings();
-        pack();
-        setLocationRelativeTo(owner);
+    }
+
+    /** Backwards-compatible constructor — kept so existing call sites
+     *  that say {@code new SettingsPanel(frame)} still compile. The frame
+     *  is unused; callers should prefer {@link #showDialog(JFrame)}. */
+    public SettingsPanel(JFrame ignored) {
+        this(() -> {});
     }
 
     /** Returns true if the user clicked Save. */
@@ -174,6 +207,15 @@ public class SettingsPanel extends JDialog {
         addSliderRow(panel, "ARR (Auto Repeat Rate)", arrSlider, arrLabel, "ms",
                 "Interval between repeated moves after DAS fires. 0 = instant.");
         arrSlider.addChangeListener(e -> arrLabel.setText(arrSlider.getValue() + " ms"));
+
+        panel.add(Box.createVerticalStrut(12));
+
+        // DCD
+        dcdSlider = new JSlider(0, 500, 17);
+        dcdLabel = new JLabel("17 ms");
+        addSliderRow(panel, "DCD (DAS Cut Delay)", dcdSlider, dcdLabel, "ms",
+                "Pause after a piece spawns before DAS resumes auto-repeating.");
+        dcdSlider.addChangeListener(e -> dcdLabel.setText(dcdSlider.getValue() + " ms"));
 
         panel.add(Box.createVerticalStrut(12));
 
@@ -282,15 +324,16 @@ public class SettingsPanel extends JDialog {
         panel.add(Box.createVerticalStrut(12));
 
         // IRS mode
-        JPanel irsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel irsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
         irsRow.setBackground(PANEL_BG);
-        irsRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        irsRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        irsRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         JLabel irsLabel = new JLabel("IRS (Initial Rotation):");
         irsLabel.setForeground(TEXT_FG);
-        irsLabel.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        irsLabel.setFont(new Font("Monospaced", Font.BOLD, 14));
+        irsLabel.setPreferredSize(new Dimension(260, 28));
         irsCombo = new JComboBox<>(new String[]{"off", "tap", "hold"});
-        irsCombo.setBackground(BTN_BG);
-        irsCombo.setForeground(ACCENT);
+        styleCombo(irsCombo);
         irsRow.add(irsLabel);
         irsRow.add(irsCombo);
         panel.add(irsRow);
@@ -298,20 +341,68 @@ public class SettingsPanel extends JDialog {
         panel.add(Box.createVerticalStrut(8));
 
         // IHS mode
-        JPanel ihsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel ihsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
         ihsRow.setBackground(PANEL_BG);
-        ihsRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        ihsRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        ihsRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         JLabel ihsLabel = new JLabel("IHS (Initial Hold):");
         ihsLabel.setForeground(TEXT_FG);
-        ihsLabel.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        ihsLabel.setFont(new Font("Monospaced", Font.BOLD, 14));
+        ihsLabel.setPreferredSize(new Dimension(260, 28));
         ihsCombo = new JComboBox<>(new String[]{"off", "tap", "hold"});
-        ihsCombo.setBackground(BTN_BG);
-        ihsCombo.setForeground(ACCENT);
+        styleCombo(ihsCombo);
         ihsRow.add(ihsLabel);
         ihsRow.add(ihsCombo);
         panel.add(ihsRow);
 
         return panel;
+    }
+
+    /** Apply the dark-cyan theme to a JComboBox, including its popup. */
+    private void styleCombo(JComboBox<String> combo) {
+        // Force the Basic UI so the Windows L&F doesn't paint its own
+        // light-grey editor/arrow button on top of our colors.
+        combo.setUI(new javax.swing.plaf.basic.BasicComboBoxUI() {
+            @Override protected JButton createArrowButton() {
+                JButton b = new JButton("\u25BE");
+                b.setBackground(BTN_BG);
+                b.setForeground(ACCENT);
+                b.setFont(new Font("Monospaced", Font.BOLD, 11));
+                b.setFocusPainted(false);
+                b.setContentAreaFilled(false);
+                b.setOpaque(true);
+                b.setBorder(BorderFactory.createMatteBorder(0, 1, 0, 0, ACCENT_DIM));
+                return b;
+            }
+        });
+        combo.setBackground(BTN_BG);
+        combo.setForeground(TEXT_FG);
+        combo.setFont(new Font("Monospaced", Font.BOLD, 14));
+        combo.setOpaque(true);
+        combo.setPreferredSize(new Dimension(120, 30));
+        combo.setBorder(BorderFactory.createLineBorder(ACCENT_DIM, 1));
+        combo.setRenderer(new javax.swing.DefaultListCellRenderer() {
+            @Override public Component getListCellRendererComponent(JList<?> list,
+                    Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                Component c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                c.setBackground(isSelected ? PANEL_BG_HI : BTN_BG);
+                c.setForeground(isSelected ? ACCENT : TEXT_FG);
+                if (c instanceof JComponent jc) {
+                    jc.setBorder(new EmptyBorder(3, 8, 3, 8));
+                    jc.setOpaque(true);
+                }
+                return c;
+            }
+        });
+        // Theme the popup's scroll pane / list as well.
+        Object popup = combo.getUI().getAccessibleChild(combo, 0);
+        if (popup instanceof javax.swing.plaf.basic.ComboPopup cp) {
+            JList<?> list = cp.getList();
+            list.setBackground(BTN_BG);
+            list.setForeground(TEXT_FG);
+            list.setSelectionBackground(PANEL_BG_HI);
+            list.setSelectionForeground(ACCENT);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -329,15 +420,25 @@ public class SettingsPanel extends JDialog {
         row.add(Box.createHorizontalStrut(20));
 
         JButton cancelBtn = styleButton(new JButton("CANCEL"));
-        cancelBtn.addActionListener(e -> dispose());
+        cancelBtn.addActionListener(e -> onClose.run());
         row.add(cancelBtn);
 
         JButton saveBtn = styleButton(new JButton("SAVE"));
         saveBtn.setForeground(ACCENT);
         saveBtn.addActionListener(e -> {
+            String conflict = findKeyConflict();
+            if (conflict != null) {
+                int r = JOptionPane.showConfirmDialog(this,
+                        "Two or more actions are bound to the same key:\n\n  " + conflict
+                                + "\n\nSave anyway?",
+                        "Key conflict",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.WARNING_MESSAGE);
+                if (r != JOptionPane.YES_OPTION) return;
+            }
             saveToSettings();
             saved = true;
-            dispose();
+            onClose.run();
         });
         row.add(saveBtn);
 
@@ -348,12 +449,34 @@ public class SettingsPanel extends JDialog {
     private JButton styleButton(JButton btn) {
         btn.setBackground(BTN_BG);
         btn.setForeground(TEXT_FG);
-        btn.setFont(new Font("Monospaced", Font.BOLD, 11));
+        btn.setFont(new Font("Monospaced", Font.BOLD, 13));
         btn.setFocusPainted(false);
+        // Required so setBackground actually paints on Windows L&F.
+        btn.setContentAreaFilled(false);
+        btn.setOpaque(true);
         btn.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(BTN_BORDER, 1),
-                new EmptyBorder(5, 12, 5, 12)));
+                new EmptyBorder(7, 16, 7, 16)));
         return btn;
+    }
+
+    /**
+     * Returns a human-readable description of the first duplicate key
+     * binding found, or {@code null} if all bindings are unique. Bindings
+     * with key code 0 (unbound) are ignored.
+     */
+    private String findKeyConflict() {
+        java.util.Map<Integer, String> seen = new java.util.HashMap<>();
+        for (var entry : keyBindButtons.entrySet()) {
+            int code = entry.getValue().getKeyCode();
+            if (code == 0) continue;
+            String prev = seen.put(code, entry.getKey());
+            if (prev != null) {
+                return prev + " + " + entry.getKey()
+                        + "  \u2192  " + KeyEvent.getKeyText(code);
+            }
+        }
+        return null;
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -366,6 +489,7 @@ public class SettingsPanel extends JDialog {
         // Handling
         dasSlider.setValue(s.getDasDelay());
         arrSlider.setValue(s.getArrInterval());
+        dcdSlider.setValue(s.getDasCutDelay());
         sdfSlider.setValue(s.getSoftDropFactor());
 
         // Visual
@@ -398,6 +522,7 @@ public class SettingsPanel extends JDialog {
         // Fire change listeners to update labels
         dasLabel.setText(dasSlider.getValue() + " ms");
         arrLabel.setText(arrSlider.getValue() + " ms");
+        dcdLabel.setText(dcdSlider.getValue() + " ms");
         int sdf = sdfSlider.getValue();
         sdfLabel.setText(sdf == 0 ? "INF" : sdf + "\u00d7");
         gridLabel.setText(gridSlider.getValue() + "%");
@@ -414,6 +539,7 @@ public class SettingsPanel extends JDialog {
         // Handling
         s.setDasDelay(dasSlider.getValue());
         s.setArrInterval(arrSlider.getValue());
+        s.setDasCutDelay(dcdSlider.getValue());
         s.setSoftDropFactor(sdfSlider.getValue());
 
         // Visual
@@ -456,51 +582,54 @@ public class SettingsPanel extends JDialog {
     // ═══════════════════════════════════════════════════════════════
 
     /**
-     * Adds a labeled slider row to a panel.
+     * Adds a labeled slider row to a panel. Title, slider, and value
+     * are placed on a single horizontal line so vertical space isn't
+     * wasted on a separate caption.
      */
     private void addSliderRow(JPanel parent, String title, JSlider slider,
                               JLabel valueLabel, String unit, String tooltip) {
-        // Title row
+        JPanel row = new JPanel(new BorderLayout(12, 0));
+        row.setBackground(PANEL_BG);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setToolTipText(tooltip);
+
         JLabel titleLabel = new JLabel(title);
         titleLabel.setForeground(TEXT_FG);
-        titleLabel.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        titleLabel.setFont(new Font("Monospaced", Font.BOLD, 14));
+        titleLabel.setPreferredSize(new Dimension(260, 28));
         titleLabel.setToolTipText(tooltip);
-        parent.add(titleLabel);
-
-        // Slider + value row
-        JPanel sliderRow = new JPanel(new BorderLayout(8, 0));
-        sliderRow.setBackground(PANEL_BG);
-        sliderRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
-        sliderRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(titleLabel, BorderLayout.WEST);
 
         slider.setBackground(PANEL_BG);
         slider.setForeground(ACCENT);
+        slider.setOpaque(true);
         slider.setToolTipText(tooltip);
-        sliderRow.add(slider, BorderLayout.CENTER);
+        row.add(slider, BorderLayout.CENTER);
 
         valueLabel.setForeground(ACCENT);
-        valueLabel.setPreferredSize(new Dimension(70, 20));
+        valueLabel.setFont(new Font("Monospaced", Font.BOLD, 14));
+        valueLabel.setPreferredSize(new Dimension(90, 28));
         valueLabel.setHorizontalAlignment(SwingConstants.RIGHT);
-        sliderRow.add(valueLabel, BorderLayout.EAST);
+        row.add(valueLabel, BorderLayout.EAST);
 
-        parent.add(sliderRow);
+        parent.add(row);
     }
 
     /**
      * Adds a key-binding row (label + capture button) to a panel.
      */
     private void addKeyBindRow(JPanel parent, String label, String actionId, int currentKey) {
-        JPanel row = new JPanel(new BorderLayout(8, 0));
+        JPanel row = new JPanel(new BorderLayout(12, 0));
         row.setBackground(PANEL_BG);
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.setBorder(new EmptyBorder(2, 0, 2, 0));
+        row.setBorder(new EmptyBorder(3, 0, 3, 0));
 
         JLabel lbl = new JLabel(label);
         lbl.setForeground(TEXT_FG);
-        lbl.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        lbl.setPreferredSize(new Dimension(130, 26));
+        lbl.setFont(new Font("Monospaced", Font.BOLD, 14));
+        lbl.setPreferredSize(new Dimension(220, 30));
         row.add(lbl, BorderLayout.WEST);
 
         KeyBindButton btn = new KeyBindButton(currentKey);
@@ -546,11 +675,14 @@ public class SettingsPanel extends JDialog {
             this.keyCode = initialKey;
             updateText();
             setFocusable(true);
-            setPreferredSize(new Dimension(150, 26));
+            setPreferredSize(new Dimension(220, 30));
             setBackground(BTN_BG);
             setForeground(ACCENT);
-            setFont(new Font("Monospaced", Font.BOLD, 11));
+            setFont(new Font("Monospaced", Font.BOLD, 13));
             setFocusPainted(false);
+            // Required so setBackground actually paints on Windows L&F.
+            setContentAreaFilled(false);
+            setOpaque(true);
             setBorder(BorderFactory.createCompoundBorder(
                     BorderFactory.createLineBorder(ACCENT_DIM, 1),
                     new EmptyBorder(2, 8, 2, 8)));
@@ -608,7 +740,22 @@ public class SettingsPanel extends JDialog {
      * @param owner the parent frame
      */
     public static void showDialog(JFrame owner) {
-        SettingsPanel dialog = new SettingsPanel(owner);
-        dialog.setVisible(true);
+        JDialog dlg = new JDialog(owner, "SETTINGS // CONFIGURATION", true);
+        dlg.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        dlg.setResizable(false);
+        SettingsPanel form = new SettingsPanel(dlg::dispose);
+        dlg.setContentPane(form);
+        dlg.pack();
+        dlg.setLocationRelativeTo(owner);
+        dlg.setVisible(true);
+    }
+
+    /**
+     * Creates an embeddable settings panel for inline use (e.g. inside
+     * the start menu's card layout). Save and Back both invoke
+     * {@code onBack}.
+     */
+    public static SettingsPanel createEmbedded(Runnable onBack) {
+        return new SettingsPanel(onBack);
     }
 }

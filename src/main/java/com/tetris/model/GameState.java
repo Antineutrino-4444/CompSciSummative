@@ -304,13 +304,20 @@ public class GameState {
     }
 
     /**
-     * Rotates the current piece 180° (if supported).
+     * Rotates the current piece 180° with SRS+ wall kicks (TETR.IO / Jstris).
+     *
+     * Same algorithm as 90° rotation: try the basic rotation, then each
+     * 180° kick offset in order. First valid position wins.
      *
      * @return true if the rotation was successful
      */
     public boolean rotate180() {
         if (!canAct()) return false;
         Tetromino rotated = currentPiece.rotate180();
+        int fromState = currentPiece.getRotationState();
+        int toState = (fromState + 2) % 4;
+
+        // Test 0: basic rotation, no offset
         if (board.isValidPosition(rotated)) {
             currentPiece = rotated;
             lastMoveWasRotation = true;
@@ -318,6 +325,23 @@ public class GameState {
             onSuccessfulMove();
             return true;
         }
+
+        // Tests 1–N: SRS+ 180° kick offsets
+        Position[] kicks = SRSData.getKicks180(currentPiece.getType(), fromState, toState);
+        for (int i = 0; i < kicks.length; i++) {
+            Tetromino kicked = rotated.translate(kicks[i].getX(), kicks[i].getY());
+            if (board.isValidPosition(kicked)) {
+                currentPiece = kicked;
+                lastMoveWasRotation = true;
+                // Last kick index of 4 is the "TST-equivalent" promotion slot
+                // for 90° kicks; 180° kicks don't have an equivalent so we
+                // keep the index for stat tracking but don't promote.
+                lastKickIndex = i + 1;
+                onSuccessfulMove();
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -521,8 +545,16 @@ public class GameState {
         // ──── Clear lines ────
         int linesCleared = board.clearLines();
 
+        // ──── All Clear / Perfect Clear detection ────
+        // tetr.io awards a flat 3500 × level when the board is completely
+        // empty after a line-clearing piece locks. This must be checked
+        // BEFORE spawning the next piece so the next piece's cells don't
+        // count as "occupied".
+        boolean perfectClear = linesCleared > 0 && board.isCompletelyEmpty();
+
         // ──── Award score ────
-        scoreSystem.onLineClear(linesCleared, isTSpin, isTSpinMini);
+        scoreSystem.onLineClear(linesCleared, isTSpin, isTSpinMini, perfectClear);
+        scoreSystem.onPieceLocked();
 
         // ──── Spawn next piece ────
         currentPiece = null;

@@ -72,13 +72,21 @@ public class Settings {
     // HANDLING
     // ═══════════════════════════════════════════════════════════════
 
-    /** DAS: Delayed Auto Shift in milliseconds (0–500). */
+    /** DAS: Delayed Auto Shift in milliseconds (0–500). Default = TETR.IO
+     *  factory value of 10 frames ≈ 167 ms. */
     private int dasDelay = 167;
 
-    /** ARR: Auto Repeat Rate in milliseconds (0–200). 0 = instant. */
+    /** ARR: Auto Repeat Rate in milliseconds (0–200). 0 = instant.
+     *  Default = TETR.IO factory value of 2 frames ≈ 33 ms. */
     private int arrInterval = 33;
 
-    /** SDF: Soft Drop Factor (1–40, or 0 for instant). */
+    /** DCD: DAS Cut Delay in milliseconds (0–500). Time to wait
+     *  after a piece spawns / direction changes before re-applying DAS.
+     *  TETR.IO factory default is 0. */
+    private int dasCutDelay = 0;
+
+    /** SDF: Soft Drop Factor (1–40, or 0 for instant). Default = TETR.IO
+     *  factory value of 6× gravity. */
     private int softDropFactor = 6;
 
     // ═══════════════════════════════════════════════════════════════
@@ -111,7 +119,7 @@ public class Settings {
     private double boardOpacity = 0.85;
 
     /** Ghost piece opacity (0.0 = invisible, 1.0 = fully opaque). */
-    private double ghostOpacity = 0.15;
+    private double ghostOpacity = 0.55;
 
     // ═══════════════════════════════════════════════════════════════
     // KEY BINDINGS
@@ -160,6 +168,7 @@ public class Settings {
             // Handling
             dasDelay       = intProp(p, "handling.das",       dasDelay,       0, 500);
             arrInterval    = intProp(p, "handling.arr",       arrInterval,    0, 200);
+            dasCutDelay    = intProp(p, "handling.dcd",       dasCutDelay,    0, 500);
             softDropFactor = intProp(p, "handling.sdf",       softDropFactor, 0, 40);
 
             // Gameplay
@@ -206,6 +215,7 @@ public class Settings {
             // Handling
             p.setProperty("handling.das",          String.valueOf(dasDelay));
             p.setProperty("handling.arr",          String.valueOf(arrInterval));
+            p.setProperty("handling.dcd",          String.valueOf(dasCutDelay));
             p.setProperty("handling.sdf",          String.valueOf(softDropFactor));
 
             // Gameplay
@@ -247,10 +257,10 @@ public class Settings {
      * Resets all settings to their factory defaults.
      */
     public void resetToDefaults() {
-        dasDelay = 167;  arrInterval = 33;  softDropFactor = 6;
+        dasDelay = 167;  arrInterval = 33;  dasCutDelay = 0;  softDropFactor = 6;
         lockDelay = 500;  maxLockResets = 15;  previewCount = 5;
         irsMode = "tap";  ihsMode = "tap";
-        gridOpacity = 0.1;  boardOpacity = 0.85;  ghostOpacity = 0.15;
+        gridOpacity = 0.1;  boardOpacity = 0.85;  ghostOpacity = 0.55;
         keyMoveLeft = KeyEvent.VK_LEFT;  keyMoveRight = KeyEvent.VK_RIGHT;
         keySoftDrop = KeyEvent.VK_DOWN;  keyHardDrop = KeyEvent.VK_SPACE;
         keyRotateCW = KeyEvent.VK_UP;    keyRotateCCW = KeyEvent.VK_Z;
@@ -267,6 +277,7 @@ public class Settings {
     // Handling
     public int getDasDelay()       { return dasDelay; }
     public int getArrInterval()    { return arrInterval; }
+    public int getDasCutDelay()    { return dasCutDelay; }
     public int getSoftDropFactor() { return softDropFactor; }
 
     // Gameplay
@@ -303,6 +314,7 @@ public class Settings {
     // Handling
     public void setDasDelay(int v)       { dasDelay = clamp(v, 0, 500); }
     public void setArrInterval(int v)    { arrInterval = clamp(v, 0, 200); }
+    public void setDasCutDelay(int v)    { dasCutDelay = clamp(v, 0, 500); }
     public void setSoftDropFactor(int v) { softDropFactor = clamp(v, 0, 40); }
 
     // Gameplay

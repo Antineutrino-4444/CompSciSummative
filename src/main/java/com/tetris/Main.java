@@ -1,6 +1,7 @@
 package com.tetris;
 
 import com.tetris.controller.GameController;
+import com.tetris.view.StartMenu;
 
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
@@ -108,8 +109,14 @@ public class Main {
         // Create the controller and start on the EDT
         final int level = startLevel;
         SwingUtilities.invokeLater(() -> {
-            GameController controller = new GameController(level);
-            controller.start();
+            // Continuous menu: the StartMenu hosts every screen (settings,
+            // nuke builder, the actual game) inside a CardLayout, so the
+            // launcher window stays visible the whole session.
+            StartMenu menu = new StartMenu(
+                    null,
+                    level,
+                    GameController::new);
+            menu.setVisible(true);
         });
     }
 }

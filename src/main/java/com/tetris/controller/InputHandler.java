@@ -2,6 +2,9 @@ package com.tetris.controller;
 
 import com.tetris.model.Settings;
 
+import java.awt.AWTEvent;
+import java.awt.EventQueue;
+import java.awt.Toolkit;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.util.HashSet;
@@ -10,84 +13,82 @@ import java.util.Set;
 /**
  * InputHandler.java
  * =================
- * Handles keyboard input for the Tetris game, implementing DAS (Delayed Auto Shift)
- * and ARR (Auto Repeat Rate) for responsive, modern-feeling controls.
+ * jstris-style frame-counting DAS / ARR.
  *
- * ═══════════════════════════════════════════════════════════════════════
- * CONTROL SCHEME
- * ═══════════════════════════════════════════════════════════════════════
- * All key bindings are configurable via the Settings dialog (F1).
- * Default bindings:
+ * ─────────────────────────────────────────────────────────────────
+ * THE BUG WE FIX HERE
+ * ─────────────────────────────────────────────────────────────────
+ * Swing's game-loop {@link javax.swing.Timer} and AWT key events all
+ * dispatch on the EDT. When the user releases a key just before a
+ * timer tick, the event order on the EDT queue can be:
  *
- *   Key              Action
- *   ───              ──────
- *   Left Arrow       Move piece left
- *   Right Arrow      Move piece right
- *   Down Arrow       Soft drop (move down faster)
- *   Up Arrow         Rotate clockwise
- *   Z                Rotate counter-clockwise
- *   A                Rotate 180°
- *   Space            Hard drop (instant drop & lock)
- *   C / Shift        Hold piece
- *   P / Escape       Pause / Resume
- *   R                Reset
- *   F1               Open Settings
+ *      [timer-tick → processInput()] → [keyReleased]
  *
- * ═══════════════════════════════════════════════════════════════════════
- * DAS & ARR (Delayed Auto Shift & Auto Repeat Rate)
- * ═══════════════════════════════════════════════════════════════════════
- * All timing values are read from Settings at runtime, so changes in the
- * Settings dialog take effect immediately without restarting.
+ * `processInput` then runs against stale {@code pressedKeys} that
+ * still contains the key, fires one more ARR shift, *then* the
+ * release event finally executes. That's the classic "piece moves
+ * one extra cell after I let go" feel.
  *
- *   1. First press: move once immediately.
- *   2. Wait DAS (configurable, default 167ms).
- *   3. After DAS triggers, repeat every ARR (configurable, default 33ms).
+ * Fix: at the top of {@link #processInput()} we drain every pending
+ * {@link KeyEvent} from the AWT {@link EventQueue} synchronously, so
+ * the input snapshot is always current as of the moment the game
+ * tick decides what to do.
  *
- * SOFT DROP (SDF):
- *   - SDF (Soft Drop Factor): piece drops at SDF× gravity speed.
- *   - A value of 0 means instant soft drop (teleport to bottom).
+ * ─────────────────────────────────────────────────────────────────
+ * FRAME-COUNTING DAS / ARR (jstris's "FPS-based DAS")
+ * ─────────────────────────────────────────────────────────────────
+ * The Jstris settings dialog has a "FPS-based DAS — Evaluate DAS on
+ * fixed intervals" toggle that is ON by default. Counting DAS in
+ * frames rather than wall-clock ms gives perfectly stable handling
+ * even when {@code System.nanoTime()} jitter or GC pauses would
+ * otherwise produce the occasional double-shift on a single frame.
  *
- * ═══════════════════════════════════════════════════════════════════════
- * IMPLEMENTATION NOTES
- * ═══════════════════════════════════════════════════════════════════════
- * - All key codes are looked up from Settings.get() at runtime.
- * - DAS/ARR/SDF values are also read from Settings each frame.
- * - This allows hot-reloading of settings without restarting the game.
- * - We track pressed keys in a Set to support simultaneous key presses.
- * - Rotation, hard drop, hold, etc. are single-fire (don't repeat on hold).
+ * We translate Settings DAS/ARR (ms) into frame counts using the
+ * controller's frame interval:
+ *
+ *      dasFrames = ceil(DAS_ms / FRAME_INTERVAL_MS)
+ *      arrFrames = max(1, round(ARR_ms / FRAME_INTERVAL_MS))   if ARR > 0
+ *      arrFrames = 0                                            if ARR == 0 (instant)
+ *
+ * One shift fires per frame at most (except ARR=0 → entire row
+ * teleport), exactly like jstris.
+ *
+ * ─────────────────────────────────────────────────────────────────
+ * WINDOWS AUTO-REPEAT
+ * ─────────────────────────────────────────────────────────────────
+ * On Windows + Swing, holding a key fires repeated {@code keyPressed}
+ * events with NO interleaved {@code keyReleased}. We just ignore
+ * presses for keys that are already in {@code pressedKeys} — no
+ * heuristics needed.
  */
 public class InputHandler implements KeyListener {
 
+    /** Game-loop frame interval — must match GameController's value. */
+    private static final int FRAME_INTERVAL_MS = 16;
+
     // ─────────────────────── State ──────────────────────────────
 
-    /** Set of currently pressed key codes. */
-    private final Set<Integer> pressedKeys = new HashSet<>();
-
-    /** Set of keys that have been consumed (for single-fire actions). */
+    private final Set<Integer> pressedKeys  = new HashSet<>();
     private final Set<Integer> consumedKeys = new HashSet<>();
 
-    /** Timestamps for DAS tracking per direction. */
-    private long leftPressTime;
-    private long rightPressTime;
-    private boolean leftDASActive;
-    private boolean rightDASActive;
-    private long lastLeftRepeat;
-    private long lastRightRepeat;
-    private long lastDownRepeat;
+    // Frame counters (incremented once per processInput call while held).
+    private int leftFramesHeld;
+    private int rightFramesHeld;
+    private boolean leftDASCharged;
+    private boolean rightDASCharged;
+    /** Frames since the last ARR shift fired (so ARR>1 paces correctly). */
+    private int leftFramesSinceShift;
+    private int rightFramesSinceShift;
 
-    /**
-     * Flags set in keyPressed() and consumed in processInput() to guarantee
-     * the initial move fires exactly once, regardless of timing jitter
-     * between the key event and the next game loop frame.
-     */
-    private volatile boolean leftJustPressed;
-    private volatile boolean rightJustPressed;
-    private volatile boolean downJustPressed;
+    // Soft drop uses ms-paced gravity scaling, kept on nanoTime for accuracy.
+    private long lastDownRepeatNs;
 
-    /** Reference to the game controller for triggering actions. */
+    /** Set in keyPressed, consumed once on the next processInput tick. */
+    private boolean leftJustPressed;
+    private boolean rightJustPressed;
+    private boolean downJustPressed;
+
     private final GameController controller;
-
-    // ─────────────────────── Constructor ─────────────────────────
 
     public InputHandler(GameController controller) {
         this.controller = controller;
@@ -98,26 +99,25 @@ public class InputHandler implements KeyListener {
     @Override
     public void keyPressed(KeyEvent e) {
         int code = e.getKeyCode();
-        Settings s = Settings.get();
-        if (!pressedKeys.contains(code)) {
-            pressedKeys.add(code);
-            long now = System.currentTimeMillis();
+        // Windows fires repeated keyPressed for held keys without a
+        // matching release. The first one adds the key; subsequent
+        // ones are no-ops so DAS isn't restarted.
+        if (!pressedKeys.add(code)) return;
 
-            // Track DAS start time for movement keys (compared against settings)
-            if (s.isMoveLeft(code)) {
-                leftPressTime = now;
-                leftDASActive = false;
-                lastLeftRepeat = now;
-                leftJustPressed = true;
-            } else if (s.isMoveRight(code)) {
-                rightPressTime = now;
-                rightDASActive = false;
-                lastRightRepeat = now;
-                rightJustPressed = true;
-            } else if (s.isSoftDrop(code)) {
-                lastDownRepeat = now;
-                downJustPressed = true;
-            }
+        Settings s = Settings.get();
+        if (s.isMoveLeft(code)) {
+            leftFramesHeld = 0;
+            leftDASCharged = false;
+            leftFramesSinceShift = 0;
+            leftJustPressed = true;
+        } else if (s.isMoveRight(code)) {
+            rightFramesHeld = 0;
+            rightDASCharged = false;
+            rightFramesSinceShift = 0;
+            rightJustPressed = true;
+        } else if (s.isSoftDrop(code)) {
+            lastDownRepeatNs = System.nanoTime();
+            downJustPressed = true;
         }
     }
 
@@ -128,93 +128,105 @@ public class InputHandler implements KeyListener {
         consumedKeys.remove(code);
 
         Settings s = Settings.get();
-        // Reset DAS state
-        if (s.isMoveLeft(code))  leftDASActive = false;
-        if (s.isMoveRight(code)) rightDASActive = false;
+        if (s.isMoveLeft(code)) {
+            leftDASCharged = false;
+            leftFramesHeld = 0;
+            leftFramesSinceShift = 0;
+        }
+        if (s.isMoveRight(code)) {
+            rightDASCharged = false;
+            rightFramesHeld = 0;
+            rightFramesSinceShift = 0;
+        }
     }
 
     @Override
-    public void keyTyped(KeyEvent e) {
-        // Not used — we use keyPressed/keyReleased for precise control
+    public void keyTyped(KeyEvent e) { /* unused */ }
+
+    // ─────────────────────── EDT race fix ──────────────────────
+
+    /**
+     * Drain every pending {@link KeyEvent} from the AWT event queue
+     * synchronously so that {@link #pressedKeys} reflects exactly
+     * what the user is doing at this instant in time, not what they
+     * were doing a frame ago. This eliminates the "one extra cell
+     * after release" race entirely.
+     */
+    private void drainPendingKeyEvents() {
+        EventQueue queue = Toolkit.getDefaultToolkit().getSystemEventQueue();
+        while (true) {
+            AWTEvent peek = queue.peekEvent(KeyEvent.KEY_PRESSED);
+            AWTEvent peekRel = queue.peekEvent(KeyEvent.KEY_RELEASED);
+            if (peek == null && peekRel == null) return;
+            try {
+                AWTEvent ev = queue.getNextEvent();
+                if (ev instanceof KeyEvent ke) {
+                    int id = ke.getID();
+                    if (id == KeyEvent.KEY_PRESSED)        keyPressed(ke);
+                    else if (id == KeyEvent.KEY_RELEASED)  keyReleased(ke);
+                    else if (id == KeyEvent.KEY_TYPED)     keyTyped(ke);
+                }
+                // Non-KeyEvents from the peek (shouldn't happen with the
+                // ID filter, but be safe) are simply discarded; they'd be
+                // processed on the next normal EDT pump otherwise. Since
+                // we're already on the EDT, dispatch them so we don't
+                // starve other components.
+                else if (ev != null) {
+                    Toolkit.getDefaultToolkit().getSystemEventQueue().postEvent(ev);
+                    return;
+                }
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
     }
 
     // ─────────────────────── Input Processing ───────────────────
 
-    /**
-     * Called every frame from the game loop. Processes all currently pressed
-     * keys and triggers the appropriate game actions.
-     *
-     * All key codes and timing values are read from Settings.get() each frame,
-     * so rebinding keys or changing DAS/ARR takes effect immediately.
-     */
     public void processInput() {
-        long now = System.currentTimeMillis();
+        drainPendingKeyEvents();
+
         Settings s = Settings.get();
 
-        // ──── Single-fire actions (don't repeat on hold) ────
+        // ──── Single-fire actions ────
+        if (isNewPress(s.getKeyHardDrop()))  controller.hardDrop();
+        if (isNewPress(s.getKeyRotateCW()))  controller.rotateCW();
+        if (isNewPress(s.getKeyRotateCCW())) controller.rotateCCW();
+        if (isNewPress(s.getKeyRotate180())) controller.rotate180();
+        if (isNewPress(s.getKeyHold())  || isNewPress(s.getKeyHoldAlt()))  controller.hold();
+        if (isNewPress(s.getKeyPause()) || isNewPress(s.getKeyPauseAlt())) controller.togglePause();
+        if (isNewPress(s.getKeyReset()))    controller.restart();
+        if (isNewPress(s.getKeySettings())) controller.openSettings();
 
-        // Hard drop
-        if (isNewPress(s.getKeyHardDrop())) {
-            controller.hardDrop();
-        }
-
-        // Rotate CW
-        if (isNewPress(s.getKeyRotateCW())) {
-            controller.rotateCW();
-        }
-
-        // Rotate CCW
-        if (isNewPress(s.getKeyRotateCCW())) {
-            controller.rotateCCW();
-        }
-
-        // Rotate 180°
-        if (isNewPress(s.getKeyRotate180())) {
-            controller.rotate180();
-        }
-
-        // Hold (primary or alt)
-        if (isNewPress(s.getKeyHold()) || isNewPress(s.getKeyHoldAlt())) {
-            controller.hold();
-        }
-
-        // Pause (primary or alt)
-        if (isNewPress(s.getKeyPause()) || isNewPress(s.getKeyPauseAlt())) {
-            controller.togglePause();
-        }
-
-        // Reset
-        if (isNewPress(s.getKeyReset())) {
-            controller.restart();
-        }
-
-        // Settings
-        if (isNewPress(s.getKeySettings())) {
-            controller.openSettings();
-        }
-
-        // ──── DAS/ARR movement (left/right) ────
-        long dasDelay = s.getDasDelay();
-        long arrInterval = Math.max(1, s.getArrInterval());
+        // ──── Frame-counting DAS / ARR ────
+        int dasFrames = Math.max(1, (s.getDasDelay() + FRAME_INTERVAL_MS - 1) / FRAME_INTERVAL_MS);
+        int arrFrames = s.getArrInterval() == 0
+                ? 0
+                : Math.max(1, (s.getArrInterval() + FRAME_INTERVAL_MS / 2) / FRAME_INTERVAL_MS);
 
         // Move left
         if (pressedKeys.contains(s.getKeyMoveLeft())) {
             if (leftJustPressed) {
                 controller.moveLeft();
                 leftJustPressed = false;
-            } else if (!leftDASActive) {
-                if (now - leftPressTime >= dasDelay) {
-                    leftDASActive = true;
-                    lastLeftRepeat = now;
-                    controller.moveLeft();
-                }
             } else {
-                if (s.getArrInterval() == 0) {
-                    // ARR=0: instant — move all the way in one frame
+                leftFramesHeld++;
+                if (!leftDASCharged) {
+                    if (leftFramesHeld >= dasFrames) {
+                        leftDASCharged = true;
+                        leftFramesSinceShift = 0;
+                        controller.moveLeft();
+                    }
+                } else if (arrFrames == 0) {
+                    // Instant: travel the whole row this frame.
                     for (int i = 0; i < 10; i++) controller.moveLeft();
-                } else if (now - lastLeftRepeat >= arrInterval) {
-                    controller.moveLeft();
-                    lastLeftRepeat = now;
+                } else {
+                    leftFramesSinceShift++;
+                    if (leftFramesSinceShift >= arrFrames) {
+                        controller.moveLeft();
+                        leftFramesSinceShift = 0;
+                    }
                 }
             }
         }
@@ -224,55 +236,54 @@ public class InputHandler implements KeyListener {
             if (rightJustPressed) {
                 controller.moveRight();
                 rightJustPressed = false;
-            } else if (!rightDASActive) {
-                if (now - rightPressTime >= dasDelay) {
-                    rightDASActive = true;
-                    lastRightRepeat = now;
-                    controller.moveRight();
-                }
             } else {
-                if (s.getArrInterval() == 0) {
+                rightFramesHeld++;
+                if (!rightDASCharged) {
+                    if (rightFramesHeld >= dasFrames) {
+                        rightDASCharged = true;
+                        rightFramesSinceShift = 0;
+                        controller.moveRight();
+                    }
+                } else if (arrFrames == 0) {
                     for (int i = 0; i < 10; i++) controller.moveRight();
-                } else if (now - lastRightRepeat >= arrInterval) {
-                    controller.moveRight();
-                    lastRightRepeat = now;
+                } else {
+                    rightFramesSinceShift++;
+                    if (rightFramesSinceShift >= arrFrames) {
+                        controller.moveRight();
+                        rightFramesSinceShift = 0;
+                    }
                 }
             }
         }
 
-        // ──── Soft drop (SDF-based) ────
+        // ──── Soft drop (kept ms-based — needs to scale with gravity) ────
         if (pressedKeys.contains(s.getKeySoftDrop())) {
+            long now = System.nanoTime();
             int sdf = s.getSoftDropFactor();
             if (downJustPressed) {
                 controller.softDrop();
                 downJustPressed = false;
-                lastDownRepeat = now;
+                lastDownRepeatNs = now;
             } else if (sdf == 0) {
-                // SDF=0: instant drop (teleport to ghost position)
                 for (int i = 0; i < 40; i++) controller.softDrop();
-                lastDownRepeat = now;
+                lastDownRepeatNs = now;
             } else {
-                long softDropInterval = Math.max(1, controller.getGravityInterval() / sdf);
+                long gravityIntervalNs  = controller.getGravityInterval() * 1_000_000L;
+                long softDropIntervalNs = Math.max(1L, gravityIntervalNs / sdf);
                 int maxDropsPerFrame = 20;
                 int drops = 0;
-                while (now - lastDownRepeat >= softDropInterval && drops < maxDropsPerFrame) {
+                while (now - lastDownRepeatNs >= softDropIntervalNs && drops < maxDropsPerFrame) {
                     controller.softDrop();
-                    lastDownRepeat += softDropInterval;
+                    lastDownRepeatNs += softDropIntervalNs;
                     drops++;
                 }
-                if (drops >= maxDropsPerFrame) {
-                    lastDownRepeat = now;
-                }
+                if (drops >= maxDropsPerFrame) lastDownRepeatNs = now;
             }
         }
     }
 
-    /**
-     * Checks if a key is freshly pressed (not yet consumed for single-fire actions).
-     * Marks it as consumed after returning true.
-     */
     private boolean isNewPress(int keyCode) {
-        if (keyCode == 0) return false; // unbound
+        if (keyCode == 0) return false;
         if (pressedKeys.contains(keyCode) && !consumedKeys.contains(keyCode)) {
             consumedKeys.add(keyCode);
             return true;
@@ -280,26 +291,16 @@ public class InputHandler implements KeyListener {
         return false;
     }
 
-    // ─────────────────────── IRS/IHS Support ────────────────────
+    // ─────────────────────── IRS / IHS ─────────────────────────
 
-    /**
-     * Checks if a key is currently held down (regardless of consumed state).
-     */
     public boolean isKeyHeld(int keyCode) {
         return pressedKeys.contains(keyCode);
     }
 
-    /**
-     * Checks if a key is pressed but not yet consumed.
-     * Used for IRS/IHS "tap" mode.
-     */
     public boolean hasUnconsumedKey(int keyCode) {
         return keyCode != 0 && pressedKeys.contains(keyCode) && !consumedKeys.contains(keyCode);
     }
 
-    /**
-     * Marks a key as consumed (won't fire again until released and re-pressed).
-     */
     public void consumeKey(int keyCode) {
         consumedKeys.add(keyCode);
     }

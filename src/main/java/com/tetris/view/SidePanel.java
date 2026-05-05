@@ -1,379 +1,198 @@
 package com.tetris.view;
 
-import com.tetris.model.*;
+import com.tetris.model.GameState;
+import com.tetris.model.Position;
+import com.tetris.model.ScoreSystem;
+import com.tetris.model.TetrominoType;
+import com.tetris.view.theme.BlockRenderer;
+import com.tetris.view.theme.Theme;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.KeyEvent;
-import java.util.List;
 
 /**
- * SidePanel.java
- * ==============
- * Renders the side information panels: Hold piece, Next pieces preview,
- * score, level, lines, combo, and controls reference.
+ * SidePanel.java — TETR.IO-style left HUD column.
  *
- * ═══════════════════════════════════════════════════════════════════════
- * LAYOUT (top to bottom)
- * ═══════════════════════════════════════════════════════════════════════
+ * Layout (top → bottom):
+ *   • HOLD label + held piece preview (no heavy card chrome)
+ *   • A thin separator
+ *   • Stats stack: SCORE / LEVEL / LINES / TIME / PIECES / PPS
+ *   • B2B chain badge + COMBO badge stacked beneath the stats
  *
- *   ┌────────────────┐
- *   │    HOLD         │ ← Shows the held piece (or empty)
- *   ├────────────────┤
- *   │    NEXT         │ ← Shows the next 5 upcoming pieces
- *   │    [piece 1]    │
- *   │    [piece 2]    │
- *   │    [piece 3]    │
- *   │    [piece 4]    │
- *   │    [piece 5]    │
- *   ├────────────────┤
- *   │   SCORE        │ ← Current score
- *   │   LEVEL        │ ← Current level
- *   │   LINES        │ ← Total lines cleared
- *   │   COMBO        │ ← Current combo
- *   ├────────────────┤
- *   │   Last Action  │ ← e.g., "B2B Tetris Combo 3"
- *   ├────────────────┤
- *   │   CONTROLS     │ ← Key reference
- *   └────────────────┘
- *
- * ═══════════════════════════════════════════════════════════════════════
- * MINI PIECE RENDERING
- * ═══════════════════════════════════════════════════════════════════════
- * The Hold and Next panels render pieces at a smaller cell size (MINI_CELL)
- * centered within a fixed-size preview box. Each piece is drawn in its
- * spawn orientation (rotation state 0).
- *
- * The hold piece is grayed out if it was already used this turn.
+ * The visual goal is the lean, content-first look used by tetr.io and
+ * jstris: tiny labels, large mono numbers, almost no borders. Every
+ * color and font comes from {@link Theme}.
  */
 public class SidePanel extends JPanel {
 
-    /** Cell size for mini piece previews. */
-    private static final int MINI_CELL = 18;
-
-    /** Width of the side panel in pixels. */
-    private static final int PANEL_WIDTH = 180;
-
-    /** Spacing between sections. */
-    private static final int SECTION_GAP = 15;
-
-    // ─────────────────────── Colors (CERN/LHC theme) ─────────
-
-    private static final Color BG_COLOR = new Color(6, 8, 16);
-    private static final Color TEXT_COLOR = new Color(0, 200, 220);
-    private static final Color LABEL_COLOR = new Color(80, 120, 140);
-    private static final Color VALUE_COLOR = new Color(0, 240, 255);
-    private static final Color SECTION_BG = new Color(10, 16, 28);
-    private static final Color SECTION_BORDER = new Color(0, 80, 100);
-    private static final Color ACTION_COLOR = new Color(255, 180, 40);
-
-    // ─────────────────────── Fonts (monospace — data readout feel) ────
-
-    private static final Font TITLE_FONT = new Font("Monospaced", Font.BOLD, 13);
-    private static final Font VALUE_FONT = new Font("Monospaced", Font.BOLD, 18);
-    private static final Font LABEL_FONT = new Font("Monospaced", Font.PLAIN, 10);
-    private static final Font SMALL_FONT = new Font("Monospaced", Font.PLAIN, 10);
-
-    // ─────────────────────── State ──────────────────────────────
+    private static final int PREFERRED_WIDTH = 180;
+    private static final int MINI_CELL       = 22;
+    private static final int LABEL_GAP       = 6;
+    private static final int STAT_ROW_H      = 34;
+    private static final int SECTION_GAP     = 18;
 
     private GameState gameState;
 
-    // ─────────────────────── Constructor ─────────────────────────
-
     public SidePanel(GameState gameState) {
         this.gameState = gameState;
-        setBackground(BG_COLOR);
-        // Height must accommodate: Hold(70) + Next(270) + Score(120) + Action(30) + Controls(~141)
-        // plus SECTION_GAP(15)*4 gaps + top padding(10) = ~701px minimum
-        setPreferredSize(new Dimension(PANEL_WIDTH, 710));
+        setBackground(Theme.BG_0);
+        setPreferredSize(new Dimension(PREFERRED_WIDTH, 720));
     }
 
-    public void setGameState(GameState gameState) {
-        this.gameState = gameState;
-    }
-
-    // ─────────────────────── Rendering ──────────────────────────
+    public void setGameState(GameState gameState) { this.gameState = gameState; }
 
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
 
-        // Subtle CRT scanlines
-        drawScanlines(g2);
-
-        int y = 10; // current vertical drawing position
-
-        // ──── HOLD section ────
-        y = drawHoldSection(g2, y);
+        int y = 12;
+        y = drawHold(g2, y);
         y += SECTION_GAP;
-
-        // ──── NEXT section ────
-        y = drawNextSection(g2, y);
+        drawDivider(g2, y - SECTION_GAP / 2);
+        y = drawBadges(g2, y);
         y += SECTION_GAP;
-
-        // ──── SCORE section ────
-        y = drawScoreSection(g2, y);
-        y += SECTION_GAP;
-
-        // ──── LAST ACTION ────
-        y = drawActionSection(g2, y);
-        y += SECTION_GAP;
-
-        // ──── CONTROLS section ────
-        drawControlsSection(g2, y);
+        drawDivider(g2, y - SECTION_GAP / 2);
+        drawStats(g2, y);
     }
 
-    /**
-     * Draws the HOLD piece section.
-     *
-     * @return y position after this section
-     */
-    private int drawHoldSection(Graphics2D g2, int y) {
-        int boxHeight = 70;
-        drawSectionBox(g2, y, boxHeight, "HOLD");
+    // ───────────────────── Sections ────────────────────────────
+
+    private int drawHold(Graphics2D g2, int y) {
+        int boxH = MINI_CELL * 2 + 28;
+        drawSectionLabel(g2, "HOLD", y);
+        // Subtle inset behind the piece — same vibe as TETR.IO's hold slot.
+        int boxY = y + 18;
+        int boxX = 10;
+        int boxW = getWidth() - 20;
+        g2.setColor(Theme.alpha(Theme.BG_1, 200));
+        g2.fillRoundRect(boxX, boxY, boxW, boxH, Theme.RADIUS_M, Theme.RADIUS_M);
+        g2.setColor(Theme.alpha(Theme.DIVIDER, 180));
+        g2.drawRoundRect(boxX, boxY, boxW - 1, boxH - 1, Theme.RADIUS_M, Theme.RADIUS_M);
 
         TetrominoType holdType = gameState.getHoldPiece();
         if (holdType != null) {
-            Color color = holdType.getColor();
-            if (gameState.isHoldUsed()) {
-                // Gray out if hold already used this piece
-                color = new Color(80, 80, 80);
-            }
-            drawMiniPiece(g2, holdType, 10, y + 22, color);
+            boolean used = gameState.isHoldUsed();
+            Color color = used
+                    ? Theme.blend(holdType.getColor(), Theme.BG_2, 0.8f)
+                    : holdType.getColor();
+            drawMiniPiece(g2, holdType, boxX, boxY, boxW, boxH, color, used ? 0.45f : 1f);
         }
-
-        return y + boxHeight;
+        return boxY + boxH;
     }
 
-    /**
-     * Draws the NEXT pieces preview section.
-     *
-     * @return y position after this section
-     */
-    private int drawNextSection(Graphics2D g2, int y) {
-        List<TetrominoType> previews = gameState.getPreviewPieces();
-        int boxHeight = 20 + previews.size() * 50;
-        drawSectionBox(g2, y, boxHeight, "NEXT");
+    /** B2B chain + COMBO badges, drawn TETR.IO-style as bold side cards. */
+    private int drawBadges(Graphics2D g2, int y) {
+        ScoreSystem s = gameState.getScoreSystem();
+        int chain = s.getB2bChain();
+        int combo = s.getCombo();
 
-        int pieceY = y + 22;
-        for (TetrominoType type : previews) {
-            drawMiniPiece(g2, type, 10, pieceY, type.getColor());
-            pieceY += 50;
-        }
+        int badgeH = 44;
+        int gap = 8;
+        int x = 10;
+        int w = getWidth() - 20;
 
-        return y + boxHeight;
+        drawBadge(g2, x, y, w, badgeH,
+                "B2B", chain >= 1 ? "x" + chain : "—",
+                chain >= 1 ? Theme.HIGHLIGHT : Theme.TEXT_FAINT,
+                chain >= 1);
+        y += badgeH + gap;
+
+        drawBadge(g2, x, y, w, badgeH,
+                "COMBO", combo >= 1 ? "x" + combo : "—",
+                combo >= 1 ? Theme.ACCENT_BRIGHT : Theme.TEXT_FAINT,
+                combo >= 1);
+        return y + badgeH;
     }
 
-    /**
-     * Draws the score/level/lines/combo section.
-     *
-     * @return y position after this section
-     */
-    private int drawScoreSection(Graphics2D g2, int y) {
-        ScoreSystem score = gameState.getScoreSystem();
+    private void drawBadge(Graphics2D g2, int x, int y, int w, int h,
+                            String label, String value, Color tint, boolean active) {
+        // Background — slightly brighter when active, like TETR.IO's
+        // glowing chain counters.
+        Color bg = active ? Theme.blend(Theme.BG_1, tint, 0.15f) : Theme.BG_1;
+        g2.setColor(Theme.alpha(bg, 230));
+        g2.fillRoundRect(x, y, w, h, Theme.RADIUS_M, Theme.RADIUS_M);
+        g2.setColor(Theme.alpha(active ? tint : Theme.DIVIDER, active ? 200 : 180));
+        g2.drawRoundRect(x, y, w - 1, h - 1, Theme.RADIUS_M, Theme.RADIUS_M);
 
-        int boxHeight = 120;
-        drawSectionBox(g2, y, boxHeight, null);
+        g2.setFont(Theme.FONT_CAPTION);
+        g2.setColor(Theme.TEXT_MUTED);
+        g2.drawString(label, x + 10, y + 15);
 
-        int textY = y + 18;
-        int lineHeight = 28;
-
-        // Score
-        drawLabelValue(g2, "SCORE", String.valueOf(score.getScore()), textY);
-        textY += lineHeight;
-
-        // Level
-        drawLabelValue(g2, "LEVEL", String.valueOf(score.getLevel()), textY);
-        textY += lineHeight;
-
-        // Lines
-        drawLabelValue(g2, "LINES", String.valueOf(score.getTotalLinesCleared()), textY);
-        textY += lineHeight;
-
-        // Combo
-        String comboText = score.getCombo() > 0 ? String.valueOf(score.getCombo()) : "-";
-        drawLabelValue(g2, "COMBO", comboText, textY);
-
-        return y + boxHeight;
-    }
-
-    /**
-     * Draws the last action display (e.g., "B2B Tetris Combo 3").
-     *
-     * @return y position after this section
-     */
-    private int drawActionSection(Graphics2D g2, int y) {
-        String action = gameState.getScoreSystem().getLastAction();
-        if (action == null || action.isEmpty()) {
-            return y;
-        }
-
-        int boxHeight = 30;
-        drawSectionBox(g2, y, boxHeight, null);
-
-        g2.setColor(ACTION_COLOR);
-        g2.setFont(new Font("Monospaced", Font.BOLD, 12));
+        g2.setFont(Theme.FONT_MONO_LARGE);
+        g2.setColor(tint);
         FontMetrics fm = g2.getFontMetrics();
-        int textWidth = fm.stringWidth(action);
-        g2.drawString(action, (getWidth() - textWidth) / 2, y + 20);
-
-        return y + boxHeight;
+        int vw = fm.stringWidth(value);
+        g2.drawString(value, x + w - 10 - vw, y + h - 12);
     }
 
-    /**
-     * Draws the controls reference section.
-     * Key bindings are read dynamically from Settings.
-     */
-    private void drawControlsSection(Graphics2D g2, int y) {
-        Settings s = Settings.get();
-        String[] controls = {
-            keyName(s.getKeyMoveLeft()) + "/" + keyName(s.getKeyMoveRight()) + "  Move",
-            keyName(s.getKeySoftDrop()) + "  Soft Drop",
-            keyName(s.getKeyHardDrop()) + "  Hard Drop",
-            keyName(s.getKeyRotateCW()) + "  Rotate CW",
-            keyName(s.getKeyRotateCCW()) + "  Rotate CCW",
-            keyName(s.getKeyRotate180()) + "  Rotate 180",
-            keyName(s.getKeyHold()) + "/" + keyName(s.getKeyHoldAlt()) + "  Hold",
-            keyName(s.getKeyPause()) + "/" + keyName(s.getKeyPauseAlt()) + "  Pause",
-            keyName(s.getKeyReset()) + "  Reset",
-            keyName(s.getKeySettings()) + "  Settings"
+    private void drawStats(Graphics2D g2, int y) {
+        ScoreSystem s = gameState.getScoreSystem();
+        long ms = s.getElapsedMs();
+        int sec = (int) (ms / 1000);
+        String time = String.format("%d:%02d", sec / 60, sec % 60);
+
+        String[][] rows = {
+            { "SCORE",  String.valueOf(s.getScore()) },
+            { "LEVEL",  String.valueOf(s.getLevel()) },
+            { "LINES",  String.valueOf(s.getTotalLinesCleared()) },
+            { "TIME",   time },
+            { "PIECES", String.valueOf(s.getPiecesPlaced()) },
+            { "PPS",    String.format("%.2f", s.getPiecesPerSecond()) },
         };
-
-        int boxHeight = 15 + controls.length * 14;
-        drawSectionBox(g2, y, boxHeight, "CONTROLS");
-
-        g2.setFont(SMALL_FONT);
-        g2.setColor(LABEL_COLOR);
-        int textY = y + 24;
-        for (String line : controls) {
-            g2.drawString(line, 12, textY);
-            textY += 14;
+        int rowY = y + 10;
+        for (String[] r : rows) {
+            drawStatRow(g2, r[0], r[1], rowY);
+            rowY += STAT_ROW_H;
         }
     }
 
-    // ─────────────────────── Helpers ────────────────────────────
+    private void drawStatRow(Graphics2D g2, String label, String value, int y) {
+        g2.setFont(Theme.FONT_CAPTION);
+        g2.setColor(Theme.TEXT_MUTED);
+        g2.drawString(label, 14, y);
 
-    /**
-     * Draws a rounded section box with an optional title.
-     */
-    private void drawSectionBox(Graphics2D g2, int y, int height, String title) {
-        // Background
-        g2.setColor(SECTION_BG);
-        g2.fillRoundRect(4, y, getWidth() - 8, height, 8, 8);
-
-        // Border
-        g2.setColor(SECTION_BORDER);
-        g2.setStroke(new BasicStroke(1));
-        g2.drawRoundRect(4, y, getWidth() - 8, height, 8, 8);
-
-        // Title
-        if (title != null) {
-            g2.setColor(TEXT_COLOR);
-            g2.setFont(TITLE_FONT);
-            g2.drawString(title, 12, y + 15);
-        }
-    }
-
-    /**
-     * Draws a label–value pair (e.g., "SCORE" and "12400").
-     */
-    private void drawLabelValue(Graphics2D g2, String label, String value, int y) {
-        // Label (left-aligned)
-        g2.setColor(LABEL_COLOR);
-        g2.setFont(LABEL_FONT);
-        g2.drawString(label, 12, y);
-
-        // Value (right-aligned)
-        g2.setColor(VALUE_COLOR);
-        g2.setFont(VALUE_FONT);
+        g2.setFont(Theme.FONT_MONO_LARGE);
+        g2.setColor(Theme.TEXT_PRIMARY);
         FontMetrics fm = g2.getFontMetrics();
-        int valueWidth = fm.stringWidth(value);
-        g2.drawString(value, getWidth() - 16 - valueWidth, y);
+        int vw = fm.stringWidth(value);
+        g2.drawString(value, getWidth() - 14 - vw, y + LABEL_GAP + 14);
     }
 
-    /**
-     * Draws a miniature tetromino piece (for hold/next preview).
-     *
-     * Renders the piece in rotation state 0, centered horizontally
-     * within the panel.
-     *
-     * @param g2    graphics context
-     * @param type  the piece type to draw
-     * @param x     left offset
-     * @param y     top offset
-     * @param color the color to use
-     */
-    private void drawMiniPiece(Graphics2D g2, TetrominoType type, int x, int y, Color color) {
-        Position[] cells = type.getCells(0); // spawn orientation
+    // ───────────────────── Helpers ────────────────────────────
 
-        // Find the bounding box to center the piece
+    private void drawSectionLabel(Graphics2D g2, String label, int y) {
+        g2.setFont(Theme.FONT_MONO_BOLD);
+        g2.setColor(Theme.ACCENT);
+        g2.drawString(label, 14, y + 12);
+    }
+
+    private void drawDivider(Graphics2D g2, int y) {
+        g2.setColor(Theme.alpha(Theme.DIVIDER, 200));
+        g2.fillRect(14, y, getWidth() - 28, 1);
+    }
+
+    private void drawMiniPiece(Graphics2D g2, TetrominoType type,
+                                int boxX, int boxY, int boxW, int boxH,
+                                Color color, float alpha) {
+        Position[] cells = type.getCells(0);
         int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
         int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
-        for (Position cell : cells) {
-            minX = Math.min(minX, cell.getX());
-            maxX = Math.max(maxX, cell.getX());
-            minY = Math.min(minY, cell.getY());
-            maxY = Math.max(maxY, cell.getY());
+        for (Position c : cells) {
+            minX = Math.min(minX, c.getX()); maxX = Math.max(maxX, c.getX());
+            minY = Math.min(minY, c.getY()); maxY = Math.max(maxY, c.getY());
         }
-
-        int pieceWidth = (maxX - minX + 1) * MINI_CELL;
-        int offsetX = x + (getWidth() - 20 - pieceWidth) / 2;
-        int offsetY = y + 5;
-
-        for (Position cell : cells) {
-            int cx = offsetX + (cell.getX() - minX) * MINI_CELL;
-            int cy = offsetY + (cell.getY() - minY) * MINI_CELL;
-
-            // Main fill
-            g2.setColor(color);
-            g2.fillRect(cx + 1, cy + 1, MINI_CELL - 2, MINI_CELL - 2);
-
-            // Highlight
-            g2.setColor(color.brighter());
-            g2.fillRect(cx + 1, cy + 1, MINI_CELL - 2, 2);
-            g2.fillRect(cx + 1, cy + 1, 2, MINI_CELL - 2);
-
-            // Shadow
-            g2.setColor(color.darker());
-            g2.fillRect(cx + 1, cy + MINI_CELL - 3, MINI_CELL - 2, 2);
-            g2.fillRect(cx + MINI_CELL - 3, cy + 1, 2, MINI_CELL - 2);
+        int pw = (maxX - minX + 1) * MINI_CELL;
+        int ph = (maxY - minY + 1) * MINI_CELL;
+        int ox = boxX + (boxW - pw) / 2;
+        int oy = boxY + (boxH - ph) / 2;
+        for (Position c : cells) {
+            int cx = ox + (c.getX() - minX) * MINI_CELL;
+            int cy = oy + (c.getY() - minY) * MINI_CELL;
+            BlockRenderer.draw(g2, cx, cy, MINI_CELL, color, BlockRenderer.Style.SOLID, alpha);
         }
-    }
-
-    /**
-     * Returns a short display name for a key code.
-     * Uses arrow symbols for arrow keys, and KeyEvent.getKeyText() for others.
-     */
-    private String keyName(int keyCode) {
-        if (keyCode == 0) return "None";
-        return switch (keyCode) {
-            case KeyEvent.VK_LEFT  -> "\u2190";
-            case KeyEvent.VK_RIGHT -> "\u2192";
-            case KeyEvent.VK_UP    -> "\u2191";
-            case KeyEvent.VK_DOWN  -> "\u2193";
-            case KeyEvent.VK_SPACE -> "Space";
-            case KeyEvent.VK_SHIFT -> "Shift";
-            case KeyEvent.VK_ESCAPE -> "Esc";
-            default -> KeyEvent.getKeyText(keyCode);
-        };
-    }
-
-    /**
-     * Draws subtle CRT-style scanlines and a drifting bright line.
-     */
-    private void drawScanlines(Graphics2D g2) {
-        int w = getWidth(), h = getHeight();
-        long time = System.currentTimeMillis();
-        float scroll = (time % 8000) / 8000f * 20;
-        g2.setColor(new Color(0, 160, 180, 14));
-        for (float y = -20 + scroll; y < h; y += 4) {
-            g2.drawLine(0, (int) y, w, (int) y);
-        }
-        float brightY = (time % 4000) / 4000f * h;
-        g2.setColor(new Color(0, 220, 240, 30));
-        g2.fillRect(0, (int) brightY - 1, w, 3);
     }
 }

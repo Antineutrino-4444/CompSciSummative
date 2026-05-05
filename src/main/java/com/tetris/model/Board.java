@@ -1,6 +1,9 @@
 package com.tetris.model;
 
 import java.awt.Color;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Board.java
@@ -62,6 +65,22 @@ public class Board {
      * null = empty, non-null = color of the locked piece occupying that cell.
      */
     private final Color[][] grid;
+
+    /**
+     * Snapshot of the rows cleared by the most recent {@link #clearLines()}
+     * call. Each entry is a defensive copy of one full row, in the same
+     * top-to-bottom order they originally appeared on the board. Empty
+     * after a {@code clearLines()} that cleared nothing. Used by the view
+     * to animate the line-clear effect (flash + shatter particles) using
+     * the original cell colors.
+     */
+    private List<Color[]> lastClearedRowColors = Collections.emptyList();
+
+    /**
+     * Y indices of the cleared rows from the most recent {@link #clearLines()}
+     * call (in the original grid coordinate system, top-to-bottom).
+     */
+    private List<Integer> lastClearedRowIndices = Collections.emptyList();
 
     // ─────────────────────────── Constructor ──────────────────────
 
@@ -172,6 +191,20 @@ public class Board {
     public int clearLines() {
         int linesCleared = 0;
 
+        // Snapshot every cleared row first so the view can animate them.
+        List<Color[]> clearedColors = new ArrayList<>(4);
+        List<Integer> clearedIndices = new ArrayList<>(4);
+        for (int row = 0; row < TOTAL_HEIGHT; row++) {
+            if (isRowFull(row)) {
+                Color[] copy = new Color[WIDTH];
+                System.arraycopy(grid[row], 0, copy, 0, WIDTH);
+                clearedColors.add(copy);
+                clearedIndices.add(row);
+            }
+        }
+        lastClearedRowColors = clearedColors;
+        lastClearedRowIndices = clearedIndices;
+
         // writeRow is where the next non-cleared row will be placed (bottom-up)
         int writeRow = TOTAL_HEIGHT - 1;
 
@@ -252,6 +285,20 @@ public class Board {
     }
 
     /**
+     * Returns true if there are no locked cells anywhere on the board
+     * (visible play area or buffer). Used by the score system to detect
+     * an "All Clear" / Perfect Clear bonus immediately after line clears.
+     */
+    public boolean isCompletelyEmpty() {
+        for (int y = 0; y < TOTAL_HEIGHT; y++) {
+            for (int x = 0; x < WIDTH; x++) {
+                if (grid[y][x] != null) return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * Returns a deep copy of the grid for read-only rendering.
      */
     public Color[][] getGridCopy() {
@@ -260,5 +307,25 @@ public class Board {
             System.arraycopy(grid[y], 0, copy[y], 0, WIDTH);
         }
         return copy;
+    }
+
+    /**
+     * Y indices (in board coords, top = 0) of the rows cleared by the most
+     * recent {@link #clearLines()} call. Top-to-bottom order. Empty if no
+     * lines were cleared.
+     */
+    public List<Integer> getLastClearedRowIndices() {
+        return lastClearedRowIndices;
+    }
+
+    /**
+     * Defensive snapshot of the row contents that were just cleared by
+     * the most recent {@link #clearLines()} call, in the same order as
+     * {@link #getLastClearedRowIndices()}. Each entry is a {@code WIDTH}-
+     * wide array of the original cell colors. Empty if no lines were
+     * cleared.
+     */
+    public List<Color[]> getLastClearedRowColors() {
+        return lastClearedRowColors;
     }
 }

@@ -2,135 +2,138 @@ package com.tetris.view;
 
 import com.tetris.controller.InputHandler;
 import com.tetris.model.GameState;
+import com.tetris.view.theme.Theme;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.event.KeyEvent;
 
 /**
- * MainFrame.java
- * ==============
- * The top-level JFrame window for the Tetris game.
+ * MainFrame.java — top-level game window.
  *
- * ═══════════════════════════════════════════════════════════════════════
- * WINDOW LAYOUT
- * ═══════════════════════════════════════════════════════════════════════
+ * Hosts the playfield ({@link GamePanel}) in the center and the HUD
+ * ({@link SidePanel}) on the left. Provides:
  *
- *   ┌──────────────────────────────────────────┐
- *   │  Modern Tetris                       [─□X] │
- *   ├────────────────┬────────────────────────┤
- *   │                │                          │
- *   │   SIDE PANEL   │      GAME PANEL          │
- *   │   (Hold, Next, │      (10×20 playfield)   │
- *   │    Score, etc.) │                          │
- *   │                │                          │
- *   │                │                          │
- *   │                │                          │
- *   │                │                          │
- *   │                │                          │
- *   │                │                          │
- *   │                │                          │
- *   └────────────────┴────────────────────────┘
- *
- * Uses BorderLayout:
- *   - WEST: SidePanel (hold, next, score, controls)
- *   - CENTER: GamePanel (the playfield)
- *
- * ═══════════════════════════════════════════════════════════════════════
- * FOCUS & INPUT
- * ═══════════════════════════════════════════════════════════════════════
- * The GamePanel is set as the focusable component and has the KeyListener
- * attached. This ensures keyboard input is captured even after clicking
- * other UI elements.
- *
- * The frame is resizable — all panels adapt to the available space.
- *
- * ═══════════════════════════════════════════════════════════════════════
- * DOUBLE BUFFERING
- * ═══════════════════════════════════════════════════════════════════════
- * Swing's default double-buffering is enabled to prevent flickering
- * during the 60fps repaint cycle.
+ *   • A single key listener on the playfield so input never gets
+ *     dropped after focus shuffles.
+ *   • A Tools menu with Settings / Nuke Builder / Restart / Quit.
+ *   • A timer that drives ~60fps repaint of both panels.
+ *   • Confirm-on-close so a stray Alt-F4 doesn't kill the game.
  */
 public class MainFrame extends JFrame {
 
-    /** Reference to the game panel for repainting. */
     private final GamePanel gamePanel;
-
-    /** Reference to the side panel for repainting. */
     private final SidePanel sidePanel;
+    private final Timer repaintTimer;
 
-    // ─────────────────────── Constructor ─────────────────────────
-
-    /**
-     * Creates the main window and lays out the panels.
-     *
-     * @param gameState    the initial game state to render
-     * @param inputHandler the keyboard input handler to attach
-     */
-    public MainFrame(GameState gameState, InputHandler inputHandler) {
-        super("LHC // TETRIS");
-
-        // ──── Create panels ────
-        gamePanel = new GamePanel(gameState);
-        sidePanel = new SidePanel(gameState);
-
-        // ──── Layout ────
-        setLayout(new BorderLayout(5, 0));
-        add(sidePanel, BorderLayout.WEST);
-        add(gamePanel, BorderLayout.CENTER);
-
-        // ──── Window properties ────
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setResizable(true);
-        setMinimumSize(new Dimension(420, 400));
-        getContentPane().setBackground(new Color(4, 6, 14));
-        pack();
-        setLocationRelativeTo(null);  // Center on screen
-
-        // ──── Input handling ────
-        // Attach key listener to both the game panel and the frame
-        gamePanel.setFocusable(true);
-        gamePanel.addKeyListener(inputHandler);
-        gamePanel.requestFocusInWindow();
-
-        // Also listen on the frame for safety
-        addKeyListener(inputHandler);
-
-        // Ensure focus returns to game panel when clicked
-        gamePanel.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                gamePanel.requestFocusInWindow();
-            }
-        });
-    }
-
-    // ─────────────────────── State Update ───────────────────────
-
-    /**
-     * Updates the game state reference when the game restarts.
-     * Both panels need the new state to render correctly.
-     *
-     * @param gameState the new game state
-     */
+    /** Allows the controller to swap state on restart. */
     public void setGameState(GameState gameState) {
         gamePanel.setGameState(gameState);
         sidePanel.setGameState(gameState);
+        gamePanel.repaint();
+        sidePanel.repaint();
     }
 
-    /**
-     * Override repaint to ensure both panels are repainted.
-     */
-    @Override
-    public void repaint() {
-        super.repaint();
-        if (gamePanel != null) gamePanel.repaint();
-        if (sidePanel != null) sidePanel.repaint();
-    }
-
-    /**
-     * Returns focus to the game panel (e.g., after a settings dialog closes).
-     */
+    /** Returns focus to the playfield (called after dialogs close). */
     public void requestGameFocus() {
         gamePanel.requestFocusInWindow();
+    }
+
+    public MainFrame(GameState gameState, InputHandler inputHandler) {
+        super("Modern Tetris");
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        // Fullscreen-only: borderless, maximized to fill the screen.
+        setUndecorated(true);
+        setResizable(false);
+        setExtendedState(JFrame.MAXIMIZED_BOTH);
+        Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
+        setSize(screen);
+        setLocation(0, 0);
+        getContentPane().setBackground(Theme.BG_0);
+
+        // ── Layout ──
+        JPanel root = new JPanel(new BorderLayout(Theme.SPACE_M, 0));
+        root.setBackground(Theme.BG_0);
+        root.setBorder(new EmptyBorder(Theme.SPACE_M, Theme.SPACE_M, Theme.SPACE_M, Theme.SPACE_M));
+        setContentPane(root);
+
+        sidePanel = new SidePanel(gameState);
+        gamePanel = new GamePanel(gameState);
+
+        root.add(sidePanel, BorderLayout.WEST);
+        root.add(gamePanel, BorderLayout.CENTER);
+
+        // ── Input: single listener on the playfield ──
+        gamePanel.setFocusable(true);
+        gamePanel.addKeyListener(inputHandler);
+        SwingUtilities.invokeLater(gamePanel::requestFocusInWindow);
+        // Re-request focus whenever the panel becomes visible / gains the window.
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override public void windowActivated(java.awt.event.WindowEvent e) {
+                gamePanel.requestFocusInWindow();
+            }
+            @Override public void windowClosing(java.awt.event.WindowEvent e) {
+                if (confirmExit()) {
+                    repaintTimer.stop();
+                    dispose();
+                }
+            }
+        });
+
+        // ── Menu bar ──
+        setJMenuBar(buildMenuBar());
+
+        // ── Repaint pump ──
+        repaintTimer = new Timer(16, e -> {
+            gamePanel.repaint();
+            sidePanel.repaint();
+        });
+        repaintTimer.start();
+    }
+
+    private boolean confirmExit() {
+        // No prompt — exit immediately.
+        return true;
+    }
+
+    private JMenuBar buildMenuBar() {
+        JMenuBar bar = new JMenuBar();
+        bar.setBackground(Theme.BG_1);
+        bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.DIVIDER));
+
+        JMenu game = new JMenu("Game");
+        game.setForeground(Theme.TEXT_PRIMARY);
+        game.setFont(Theme.FONT_BODY);
+
+        JMenuItem quit = new JMenuItem("Return to menu");
+        quit.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0));
+        quit.addActionListener(e -> {
+            if (confirmExit()) { repaintTimer.stop(); dispose(); }
+        });
+        game.add(quit);
+
+        JMenu tools = new JMenu("Tools");
+        tools.setForeground(Theme.TEXT_PRIMARY);
+        tools.setFont(Theme.FONT_BODY);
+
+        JMenuItem settings = new JMenuItem("Settings...");
+        settings.addActionListener(e -> {
+            SettingsPanel.showDialog(this);
+            gamePanel.requestFocusInWindow();
+        });
+
+        JMenuItem nuke = new JMenuItem("Nuke Builder...");
+        nuke.addActionListener(e -> {
+            NukeBuilderDialog.showDialog(this);
+            gamePanel.requestFocusInWindow();
+        });
+
+        tools.add(settings);
+        tools.add(nuke);
+
+        bar.add(game);
+        bar.add(tools);
+        return bar;
     }
 }

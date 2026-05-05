@@ -73,7 +73,13 @@ public class Tetromino {
         // For a 10-wide board with 4-wide box: (10-4)/2 = 3
         // For a 10-wide board with 3-wide box: (10-3)/2 = 3 (integer division)
         int spawnX = (boardWidth - type.getBoundingBoxSize()) / 2;
-        int spawnY = 0;
+        // Vertical: spawn the bounding box near the bottom of the buffer
+        // zone so cells appear in (or just above) the top visible row
+        // immediately. With BUFFER_HEIGHT = 4 this places the top of a
+        // 3-row bbox at row 2 (cells in rows 2-3, peeking into row 4 on
+        // the very next gravity tick). Previously this was 0, which
+        // hid pieces for 3-4 rows before they ever appeared on screen.
+        int spawnY = Math.max(0, com.tetris.model.Board.BUFFER_HEIGHT - 2);
         return new Tetromino(type, new Position(spawnX, spawnY), 0);
     }
 
