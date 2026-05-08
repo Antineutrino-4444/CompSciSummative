@@ -9,7 +9,7 @@ import java.util.Map;
  * NukeDesign.java
  * ===============
  * Holds the player's current selection across all {@link NukeSlot}s and
- * computes a back-of-the-envelope summary: estimated yield, total mass,
+ * computes a back-of-the-envelope summary: estimated yield,
  * design complexity score, a textual description, and a list of
  * compatibility warnings explaining why certain combinations would fail
  * in real life (e.g. plutonium in a gun-type weapon).
@@ -22,11 +22,15 @@ public final class NukeDesign {
 
     /** Cosmetic + numerical tuning of a Teller-Ulam secondary stage.
      *  Only meaningful when CONFIGURATION is a Two-stage thermonuclear
-     *  design — ignored otherwise. Mirrors the inline FUSION DESIGN
-     *  column in NukeBuilderDialog. */
-    private String  fusionPusher        = "U-238";
-    private String  fusionChannelFiller = "Polystyrene foam";
-    private boolean fusionSparkPlug     = true;
+     *  design — ignored otherwise. Each fusion stage (secondary,
+     *  optional tertiary, optional quaternary) carries its own choice
+     *  of pusher / channel filler / fuel / spark plug, indexed by
+     *  stage number 0..2. Mirrors the inline FUSION DESIGN column in
+     *  NukeBuilderDialog. */
+    public static final int MAX_FUSION_STAGES = 3;
+    private final String[]  fusionPusher        = { "U-238", "U-238", "U-238" };
+    private final String[]  fusionChannelFiller = { "Polystyrene foam", "Polystyrene foam", "Polystyrene foam" };
+    private final boolean[] fusionSparkPlug     = { true, false, false };
     /** Number of fusion stages: 1 = standard Teller-Ulam (secondary only),
      *  2 = three-stage (adds a U-238 jacketed tertiary, fission-fusion-
      *  fission, ≈ Castle Bravo), 3 = four-stage (adds a quaternary —
@@ -50,23 +54,25 @@ public final class NukeDesign {
 
     public void reset() {
         for (NukeSlot s : NukeSlot.ALL) selections.put(s, NukePart.NONE);
-        fusionPusher        = "U-238";
-        fusionChannelFiller = "Polystyrene foam";
-        fusionSparkPlug     = true;
+        for (int i = 0; i < MAX_FUSION_STAGES; i++) {
+            fusionPusher[i]        = "U-238";
+            fusionChannelFiller[i] = "Polystyrene foam";
+            fusionSparkPlug[i]     = (i == 0); // only the secondary has a spark plug by default
+        }
         fusionStageCount    = 1;
     }
 
     // ─────────── Fusion tuning ( Teller-Ulam only ) ─────────
 
-    public void setFusionPusher(String v)        { fusionPusher        = v; }
-    public void setFusionChannelFiller(String v) { fusionChannelFiller = v; }
-    public void setFusionSparkPlug(boolean v)    { fusionSparkPlug     = v; }
-    public void setFusionStageCount(int n)       { fusionStageCount    = Math.max(1, Math.min(3, n)); }
+    public void setFusionPusher(int stage, String v)        { if (stage>=0 && stage<MAX_FUSION_STAGES) fusionPusher[stage]        = v; }
+    public void setFusionChannelFiller(int stage, String v) { if (stage>=0 && stage<MAX_FUSION_STAGES) fusionChannelFiller[stage] = v; }
+    public void setFusionSparkPlug(int stage, boolean v)    { if (stage>=0 && stage<MAX_FUSION_STAGES) fusionSparkPlug[stage]     = v; }
+    public void setFusionStageCount(int n)                  { fusionStageCount = Math.max(1, Math.min(MAX_FUSION_STAGES, n)); }
 
-    public String  getFusionPusher()        { return fusionPusher; }
-    public String  getFusionChannelFiller() { return fusionChannelFiller; }
-    public boolean getFusionSparkPlug()     { return fusionSparkPlug; }
-    public int     getFusionStageCount()    { return fusionStageCount; }
+    public String  getFusionPusher(int stage)        { return (stage>=0 && stage<MAX_FUSION_STAGES) ? fusionPusher[stage]        : "U-238"; }
+    public String  getFusionChannelFiller(int stage) { return (stage>=0 && stage<MAX_FUSION_STAGES) ? fusionChannelFiller[stage] : "Polystyrene foam"; }
+    public boolean getFusionSparkPlug(int stage)     { return (stage>=0 && stage<MAX_FUSION_STAGES) && fusionSparkPlug[stage]; }
+    public int     getFusionStageCount()             { return fusionStageCount; }
     /** True when the design has at least one extra fusion stage beyond
      *  the standard Teller-Ulam secondary (i.e. it is a 3-stage or
      *  4-stage weapon). Preserved as the old name for the schematic
@@ -78,67 +84,50 @@ public final class NukeDesign {
         NukePart cfg = get(NukeSlot.CONFIGURATION);
         if (cfg == NukePart.NONE) return false;
         String n = cfg.getName();
-        return n.startsWith("Two-stage") || n.startsWith("Enhanced") || n.startsWith("Salted");
+        return n.startsWith("Teller-Ulam") || n.startsWith("Enhanced") || n.startsWith("Salted");
     }
 
     /** Multiplicative yield modifier from the fusion sub-designer.
      *  Returns 1.0 when not in a two-stage configuration so it has no
-     *  effect on fission-only designs. Coarse pedagogical numbers. */
+     *  effect on fission-only designs. Coarse pedagogical numbers.
+     *  Each fusion stage carries its own pusher / channel / spark-plug
+     *  choices; this loop multiplies their contributions together. */
     private double fusionYieldMultiplier() {
         if (!isTwoStage()) return 1.0;
         double m = 1.0;
-        // Pusher / tamper material around the secondary.
-        switch (fusionPusher) {
-            case "U-238"    -> m *= 1.50; // fast-fission jacket adds significant yield
-            case "Lead"     -> m *= 0.85; // inert, cleaner, loses the fission contribution
-            case "Tungsten" -> m *= 0.90; // inert + dense, slightly better confinement than lead
-        }
-        // Radiation-channel filler determines how efficiently X-rays
-        // from the primary actually compress the secondary.
-        switch (fusionChannelFiller) {
-            case "Polystyrene foam" -> m *= 1.00; // canonical baseline
-            case "Vacuum"           -> m *= 1.05; // theoretical, slightly higher coupling
-        }
-        if (fusionSparkPlug) m *= 1.20; // Pu-239 spark plug ignites the fuel reliably
-        else                 m *= 0.70; // without one, ignition is marginal
-        // Each fusion stage beyond the standard Teller-Ulam secondary
-        // roughly doubles total yield (the canonical "3-stage" U-238
-        // jacket trick — Castle Bravo, 1954). A theoretical 4-stage
-        // device extrapolates the same pattern at lower marginal
-        // efficiency.
-        for (int i = 1; i < fusionStageCount; i++) {
-            m *= (i == 1) ? 2.00 : 1.50;
+        for (int i = 0; i < fusionStageCount; i++) {
+            // Pusher / tamper material wrapped around this stage.
+            switch (fusionPusher[i]) {
+                case "U-238"    -> m *= 1.30; // fast-fission jacket adds yield
+                case "Lead"     -> m *= 0.83; // inert, cleaner
+                case "Tungsten" -> m *= 0.90; // inert + dense, slightly better confinement
+            }
+            // Radiation-channel filler in front of this stage.
+            switch (fusionChannelFiller[i]) {
+                case "Polystyrene foam" -> m *= 1.00; // canonical baseline
+                case "Vacuum"           -> m *= 1.05; // theoretical, slightly higher coupling
+            }
+            // Spark plug. The secondary (i == 0) relies on its
+            // Pu-239 rod for reliable ignition, so the bonus/penalty
+            // there is large. Higher stages are already neutron-flooded
+            // by the previous stage, so a spark plug there is a smaller
+            // ignition assist (and a small efficiency loss if omitted).
+            if (i == 0) {
+                if (fusionSparkPlug[0]) m *= 1.20;
+                else                    m *= 0.70;
+            } else {
+                if (fusionSparkPlug[i]) m *= 1.05;
+                else                    m *= 0.95;
+            }
+            // Stage cascade: each successive stage roughly doubles yield
+            // (the canonical "3-stage" U-238 jacket trick — Castle
+            // Bravo, 1954). The hypothetical 4-stage adds ×1.5 more.
+            if (i >= 1) m *= (i == 1) ? 6.00 : 1.50;
         }
         return m;
-    }
-
-    /** Extra mass (kg) contributed by the fusion sub-designer choices. */
-    private double fusionExtraMassKg() {
-        if (!isTwoStage()) return 0;
-        double extra = 0;
-        switch (fusionPusher) {
-            case "U-238"    -> extra += 220;
-            case "Lead"     -> extra += 180;
-            case "Tungsten" -> extra += 260;
-        }
-        if (fusionChannelFiller.equals("Polystyrene foam")) extra += 30;
-        if (fusionSparkPlug)  extra += 8;
-        // Each extra fusion stage carries its own U-238 jacket plus a
-        // duplicate set of fuel/pusher/spark-plug hardware.
-        for (int i = 1; i < fusionStageCount; i++) {
-            extra += 500 + 220 + 30 + 8;
-        }
-        return extra;
     }
 
     // ─────────── Derived statistics ───────────
-
-    public double getTotalMassKg() {
-        double m = 0;
-        for (NukePart p : selections.values()) m += p.getMassKg();
-        m += fusionExtraMassKg();
-        return m;
-    }
 
     public double getComplexityScore() {
         double c = 0;
@@ -157,25 +146,131 @@ public final class NukeDesign {
         NukePart cfg = get(NukeSlot.CONFIGURATION);
         if (cfg == NukePart.NONE) return 0;
 
+        String  cn          = cfg.getName();
+        boolean isBoostCfg  = cn.startsWith("Boosted");
+        boolean isSloika    = cn.startsWith("Layer-cake");
+        boolean isThermoCfg = cn.startsWith("Teller-Ulam")
+                           || cn.startsWith("Enhanced")
+                           || cn.startsWith("Salted");
+        // Designs in which D-T boost is physically meaningful: the chain
+        // reaction has to still be building when the fusion neutrons
+        // arrive. True for boosted-fission primaries, layer-cake, and
+        // any thermonuclear primary; false for raw gun-type or simple
+        // Fat-Man-class implosion.
+        boolean boostApplies = isBoostCfg || isSloika || isThermoCfg;
+
+        NukePart fissile = get(NukeSlot.FISSILE);
+        NukePart tamper  = get(NukeSlot.TAMPER);
+        NukePart initP   = get(NukeSlot.INITIATOR);
+        NukePart boost   = get(NukeSlot.BOOST);
+        NukePart sec     = get(NukeSlot.SECONDARY);
+
+        // Anti-synergy #6: a Teller-Ulam secondary doesn't ignite without
+        // sufficient X-ray flux from a working primary. If the primary
+        // is missing fissile / implosion / initiator, the secondary is
+        // dead — its base and efficiency contributions are zeroed and a
+        // FIZZLE warning is emitted by getWarnings().
+        boolean secondaryFails = isThermoCfg && (
+                fissile == NukePart.NONE
+             || get(NukeSlot.IMPLOSION) == NukePart.NONE
+             || initP   == NukePart.NONE);
+
+        boolean hasU238Jacket = tamper != NukePart.NONE
+                && tamper.getName().startsWith("U-238 fast-fission");
+
         double base = cfg.getBaseYieldKt();
-        double eff = cfg.getEfficiencyBonus();
+        double eff  = cfg.getEfficiencyBonus();
         for (NukeSlot s : NukeSlot.ALL) {
             if (s == NukeSlot.CONFIGURATION) continue;
             NukePart p = get(s);
-            base += p.getBaseYieldKt();
-            eff += p.getEfficiencyBonus();
+            if (p == NukePart.NONE) continue;
+
+            double pBase = p.getBaseYieldKt();
+            double pEff  = p.getEfficiencyBonus();
+
+            // Synergy #1: boost gas only contributes where it physically
+            // applies. In gun-type / simple implosion designs, the gas
+            // is just inert filler.
+            if (s == NukeSlot.BOOST && !boostApplies) {
+                pBase = 0;
+                pEff  = 0;
+            }
+
+            // Synergy #2: U-238 fast-fission jacket × thermonuclear
+            // secondary. The 14-MeV fusion neutrons fast-fission the
+            // jacket. Calibrated alongside the U-238 pusher factor so
+            // the two don't double-count the same fast-fission physics.
+            if (s == NukeSlot.SECONDARY && hasU238Jacket) {
+                pBase *= 1.20;
+            }
+            // Anti-synergy #6: dead secondary contributes nothing.
+            if (s == NukeSlot.SECONDARY && secondaryFails) {
+                pBase = 0;
+                pEff  = 0;
+            }
+
+            // Anti-synergy #8: a heavy U-238 jacket on a small primary
+            // fights against the high assembly velocity that makes a
+            // hollow / levitated pit work in the first place.
+            if (s == NukeSlot.IMPLOSION
+                    && p.getName().startsWith("Hollow")
+                    && hasU238Jacket) {
+                pEff *= 0.85;
+            }
+
+            base += pBase;
+            eff  += pEff;
         }
-        // Heuristic: yield scales with (1 + efficiency * 4)
-        double scaled = base * (1.0 + eff * 4.0);
+
+        // Synergy #3: composite HEU/Pu pit + D-T boost. Pu provides
+        // reliable spontaneous-fission initiation, HEU extends the
+        // boosted chain. Neither alone gets the bonus.
+        if (boostApplies
+                && fissile != NukePart.NONE
+                && fissile.getName().startsWith("Composite")
+                && boost   != NukePart.NONE
+                && boost.getName().startsWith("Deuterium-Tritium")) {
+            eff += 0.10;
+        }
+
+        // Heuristic: yield scales with (1 + efficiency * 2)
+        double scaled = base * (1.0 + eff * 2.0);
 
         // Fusion sub-designer multipliers (pusher / channel filler /
         // spark plug / U-238 jacket). No-op for non-thermonuclear.
         scaled *= fusionYieldMultiplier();
 
-        // Compatibility penalties (incompatible selections fizzle)
-        for (String w : getWarnings()) {
-            if (w.startsWith("FIZZLE")) scaled *= 0.01;
+        // Synergy #4: spark-plug × fuel match. fusionYieldMultiplier()
+        // already applies a flat ×1.20 for spark plug enabled. Adjust
+        // here for the fuel where the real interaction differs:
+        //   • Natural LiD  — Li-7 (n,2n) reactions add unexpected yield
+        //                    (×2.00 net) — the Castle Bravo surprise.
+        if (isThermoCfg && fusionSparkPlug[0] && sec != NukePart.NONE) {
+            String sn = sec.getName();
+            if (sn.startsWith("Natural LiD")) scaled *= (2.00 / 1.20);
         }
+
+        // Anti-synergy #7: boost gas without an initiator misses the
+        // timing window — degraded but not dead, ×0.5 multiplier.
+        if (boostApplies && boost != NukePart.NONE && initP == NukePart.NONE) {
+            scaled *= 0.5;
+        }
+
+        // Compatibility penalties. A hard FIZZLE warning means the
+        // device cannot physically work — nothing ignites, not even a
+        // sub-kt fizzle, so the total yield is forced to exactly zero.
+        // FIZZLE-SOFT warnings (designs that *can* work but unreliably)
+        // still leave a 5% sub-kt yield. Order matters because the
+        // string "FIZZLE" prefix-matches "FIZZLE-SOFT".
+        boolean hardFizzle = false;
+        for (String w : getWarnings()) {
+            if (w.startsWith("FIZZLE-SOFT")) {
+                scaled *= 0.05;
+            } else if (w.startsWith("FIZZLE")) {
+                hardFizzle = true;
+            }
+        }
+        if (hardFizzle) return 0;
         return Math.max(0, scaled);
     }
 
@@ -203,15 +298,13 @@ public final class NukeDesign {
         String n = cfg.getName();
         boolean isGun     = n.startsWith("Gun-type");
         boolean isImpl    = n.startsWith("Implosion");
-        boolean isLinear  = n.startsWith("Linear");
         boolean isBoost   = n.startsWith("Boosted");
         boolean isSloika  = n.startsWith("Layer-cake");
-        boolean isThermo  = n.startsWith("Two-stage") || n.startsWith("Enhanced") || n.startsWith("Salted");
-        boolean isPureF   = n.startsWith("Pure fusion");
+        boolean isThermo  = n.startsWith("Teller-Ulam") || n.startsWith("Enhanced") || n.startsWith("Salted");
 
         // ── Fissile-fuel rules ──
-        if (!isPureF && fuel == NukePart.NONE) {
-            w.add("No fissile material selected — nothing to drive the chain reaction.");
+        if (fuel == NukePart.NONE) {
+            w.add("FIZZLE: no fissile material selected — nothing to drive the chain reaction.");
         }
         if (isGun && fuel != NukePart.NONE && fuel.getName().startsWith("Weapons-grade Plutonium")) {
             w.add("FIZZLE: gun-type assembly is too slow for plutonium — Pu-240 " +
@@ -221,28 +314,28 @@ public final class NukeDesign {
             w.add("FIZZLE: reactor-grade Pu has a far higher Pu-240 content than " +
                   "weapons-grade — gun-type assembly is hopeless.");
         }
-        if (fuel != NukePart.NONE && fuel.getName().startsWith("Reactor-grade")) {
-            w.add("Reactor-grade plutonium gives an unreliable, probably sub-kt yield " +
-                  "even with implosion (declassified DOE 1997).");
+        if (fuel != NukePart.NONE && fuel.getName().startsWith("Reactor-grade")
+                && !isGun) {
+            // FIZZLE-SOFT: the device can work, but unreliably and at
+            // a fraction of design yield (Pu-240 pre-detonation in the
+            // implosion regime). The gun-type case is already a hard
+            // FIZZLE above, so we exclude it here to avoid double
+            // penalty.
+            w.add("FIZZLE-SOFT: reactor-grade plutonium gives an unreliable, probably " +
+                  "sub-kt yield even with implosion (declassified DOE 1997).");
         }
 
         // ── Implosion rules ──
-        if ((isImpl || isLinear || isBoost || isSloika || isThermo) && imp == NukePart.NONE) {
-            w.add("Implosion-based design but no implosion system selected — no way " +
-                  "to compress the pit.");
+        if ((isImpl || isBoost || isSloika || isThermo) && imp == NukePart.NONE) {
+            w.add("FIZZLE: implosion-based design but no implosion system selected — " +
+                  "no way to compress the pit.");
         }
         if (isGun && imp != NukePart.NONE) {
             w.add("Implosion lenses selected for a gun-type weapon — they would be unused.");
         }
-        if (isLinear && imp != NukePart.NONE
-                && !imp.getName().startsWith("Two-point")
-                && !imp.getName().startsWith("Linear")) {
-            w.add("Linear/cylindrical configuration usually pairs with two-point or " +
-                  "linear implosion, not a spherical lens system.");
-        }
 
         // ── Initiator ──
-        if (!isGun && !isPureF && init == NukePart.NONE) {
+        if (!isGun && init == NukePart.NONE) {
             w.add("No neutron initiator — the chain reaction may start at the wrong " +
                   "moment, giving a fizzle or unpredictable yield.");
         }
@@ -252,11 +345,27 @@ public final class NukeDesign {
             w.add("'Boosted' configuration but no boost gas — falls back to a plain " +
                   "implosion fission yield.");
         }
-        if (!isBoost && !isThermo && boost != NukePart.NONE) {
-            w.add("Boost gas is only useful in boosted-fission or thermonuclear designs.");
+        if (!isBoost && !isSloika && !isThermo && boost != NukePart.NONE) {
+            w.add("Boost gas is only useful in boosted-fission, layer-cake, or " +
+                  "thermonuclear designs — here it contributes nothing to yield.");
+        }
+        // Anti-synergy #7: boost gas without a neutron initiator misses
+        // its timing window. Not a fizzle — just degraded.
+        if ((isBoost || isSloika || isThermo) && boost != NukePart.NONE && init == NukePart.NONE) {
+            w.add("Boost gas without a neutron initiator: the D-T fusion pulse " +
+                  "misses its timing window — boost contribution roughly halved.");
         }
 
         // ── Secondary ──
+        // Anti-synergy #6: a Teller-Ulam secondary needs a working
+        // primary to ignite. Without fissile / implosion / initiator,
+        // the X-ray drive fails and the secondary is dead.
+        if (isThermo && sec != NukePart.NONE
+                && (fuel == NukePart.NONE || imp == NukePart.NONE || init == NukePart.NONE)) {
+            w.add("FIZZLE: thermonuclear secondary failed to ignite — the primary " +
+                  "is incomplete (missing fissile material, implosion system, or " +
+                  "neutron initiator), so there is no X-ray drive to compress it.");
+        }
         if (isThermo && sec == NukePart.NONE) {
             w.add("Thermonuclear configuration but no fusion secondary — only the " +
                   "fission primary will fire.");
@@ -284,13 +393,6 @@ public final class NukeDesign {
             w.add("A naval depth charge needs a hydrostatic (depth-triggered) fuze.");
         }
 
-        // ── Mass / size sanity for missile RVs ──
-        if (del != NukePart.NONE && del.getName().startsWith("ICBM")
-                && getTotalMassKg() > 1000) {
-            w.add("This design weighs over a tonne — too heavy for a typical MIRV " +
-                  "re-entry vehicle. Consider a more compact primary.");
-        }
-
         // ── Salted / cobalt warning ──
         if (n.startsWith("Salted")) {
             w.add("'Salted' designs were proposed only as a doomsday cautionary tale " +
@@ -299,7 +401,7 @@ public final class NukeDesign {
 
         // ── Fusion sub-designer warnings (only meaningful for 2-stage) ──
         if (isThermo) {
-            if (!fusionSparkPlug && sec != NukePart.NONE
+            if (!fusionSparkPlug[0] && sec != NukePart.NONE
                     && !sec.getName().startsWith("Spark-plug")) {
                 w.add("No Pu-239 spark plug in the secondary — fusion ignition is marginal; " +
                       "yield will be a fraction of the design intent.");
@@ -315,10 +417,64 @@ public final class NukeDesign {
                       "that was already producing intolerable fallout — a 4-stage " +
                       "device would be a deliberate planet-scale contamination event.");
             }
-            if (fusionPusher.equals("Lead") || fusionPusher.equals("Tungsten")) {
-                w.add("Inert " + fusionPusher.toLowerCase() + " pusher: a 'cleaner' device " +
-                      "with lower yield (no fast-fission contribution from a U-238 tamper).");
+            // Per-stage pusher warning: any inert pusher anywhere in
+            // the cascade is a notable design choice (Tsar Bomba's lead
+            // tamper roughly halved yield). Mention each one.
+            for (int i = 0; i < fusionStageCount; i++) {
+                String p = fusionPusher[i];
+                if (p.equals("Lead") || p.equals("Tungsten")) {
+                    String stageLabel = (i == 0) ? "secondary"
+                                      : (i == 1) ? "tertiary"
+                                                 : "quaternary";
+                    w.add("Inert " + p.toLowerCase() + " pusher on the " + stageLabel +
+                          ": a 'cleaner' stage with lower yield (no fast-fission " +
+                          "contribution from a U-238 tamper).");
+                }
             }
+            // Synergy #4: Castle Bravo surprise. Natural LiD plus an
+            // active spark plug: Li-7 (n,2n) reactions release extra
+            // tritium and unexpected yield. Informational — the yield
+            // model already accounts for the multiplier.
+            if (fusionSparkPlug[0] && sec != NukePart.NONE
+                    && sec.getName().startsWith("Natural LiD")) {
+                w.add("Castle Bravo surprise: natural LiD + Pu-239 spark plug — Li-7 " +
+                      "(n,2n) reactions breed extra tritium and the device yields " +
+                      "~67% more than the spec sheet predicts. The 1954 designers " +
+                      "under-predicted Castle Bravo's yield by 2.5× for exactly " +
+                      "this reason.");
+            }
+        }
+
+        // Synergy #2 (informational): U-238 fast-fission jacket boosts
+        // a thermonuclear secondary by ~20% in this model (calibrated
+        // alongside the U-238 pusher factor so the two don't double-count
+        // the same fast-fission physics). Historically the jacket was
+        // the dominant yield contribution in F-F-F designs.
+        if (isThermo && sec != NukePart.NONE
+                && get(NukeSlot.TAMPER) != NukePart.NONE
+                && get(NukeSlot.TAMPER).getName().startsWith("U-238 fast-fission")) {
+            w.add("U-238 fast-fission jacket around the fusion secondary: 14-MeV " +
+                  "fusion neutrons fast-fission the jacket, contributing extra " +
+                  "yield (and the bulk of the long-lived fallout).");
+        }
+
+        // Synergy #3 (informational): composite pit + D-T boost.
+        if ((isBoost || isSloika || isThermo)
+                && fuel != NukePart.NONE && fuel.getName().startsWith("Composite")
+                && boost != NukePart.NONE && boost.getName().startsWith("Deuterium-Tritium")) {
+            w.add("Composite HEU/Pu pit + D-T boost: the Pu-239 fraction provides " +
+                  "reliable spontaneous-fission initiation while the HEU extends " +
+                  "the boosted chain — a small but meaningful efficiency bonus.");
+        }
+
+        // Anti-synergy #8 (informational): heavy U-238 jacket against a
+        // hollow / levitated pit fights the high assembly velocity.
+        if (imp != NukePart.NONE && imp.getName().startsWith("Hollow")
+                && get(NukeSlot.TAMPER) != NukePart.NONE
+                && get(NukeSlot.TAMPER).getName().startsWith("U-238 fast-fission")) {
+            w.add("Heavy U-238 jacket on a hollow / levitated pit: the jacket's " +
+                  "mass slows the imploding shell before impact, costing some of " +
+                  "the high-velocity advantage that makes a levitated pit work.");
         }
 
         return w;
@@ -343,10 +499,6 @@ public final class NukeDesign {
             return "Fat Man (Mk-III) — Nagasaki, 9 Aug 1945. ~21 kt from a 6.2 kg " +
                    "plutonium core symmetrically crushed by 32 explosive lenses. The " +
                    "design that all later fission weapons descend from.";
-        if (name.startsWith("Linear"))
-            return "W48 155 mm artillery shell (1963) — ~72 t TNT-eq from a tube only " +
-                   "6 inches across, using linear two-point implosion of a hollow pit. " +
-                   "The smallest US nuclear weapon ever fielded.";
         if (name.startsWith("Layer-cake"))
             return "Joe-4 / RDS-6s — Sakharov\u2019s 'layer cake', USSR Aug 1953, ~400 kt. " +
                    "Alternating shells of Li-6-D fusion fuel and U-238 around a fission " +
@@ -360,7 +512,7 @@ public final class NukeDesign {
                    "to 340 kt selectable on the ground. Still in the US stockpile after " +
                    "a half-century of life-extension programmes.";
         }
-        if (name.startsWith("Two-stage")) {
+        if (name.startsWith("Teller-Ulam")) {
             if (sec.getName().startsWith("Cryogenic"))
                 return "Ivy Mike — Enewetak Atoll, 1 Nov 1952, ~10.4 Mt. The first true " +
                        "two-stage Teller-Ulam test, using cryogenic liquid deuterium so " +
@@ -384,10 +536,6 @@ public final class NukeDesign {
                    "thermonuclear device jacketed in Co-59. Neutron capture would breed " +
                    "Co-60 fallout with a 5.27-year half-life, rendering large areas " +
                    "uninhabitable for decades. Proposed as a cautionary tale, never built.";
-        if (name.startsWith("Pure fusion"))
-            return "Hypothetical inertial-confinement device — fusion ignition without a " +
-                   "fission primary trigger. No working design has ever existed; the laser " +
-                   "or Z-pinch energy budget required is far beyond any portable system.";
         return "—";
     }
 

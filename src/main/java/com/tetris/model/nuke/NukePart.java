@@ -23,14 +23,11 @@ public final class NukePart {
             "— none —",
             "No component selected for this slot.",
             "",
-            0.0, 0.0, 0.0, 1.0);
+            0.0, 0.0, 1.0);
 
     private final String name;
     private final String shortDescription;
     private final String educationalNotes;
-
-    /** Mass contribution in kilograms (rough). */
-    private final double massKg;
 
     /** Base yield contribution in kilotons of TNT equivalent (rough). */
     private final double baseYieldKt;
@@ -42,12 +39,11 @@ public final class NukePart {
     private final double complexity;
 
     public NukePart(String name, String shortDescription, String educationalNotes,
-                    double massKg, double baseYieldKt,
+                    double baseYieldKt,
                     double efficiencyBonus, double complexity) {
         this.name = name;
         this.shortDescription = shortDescription;
         this.educationalNotes = educationalNotes;
-        this.massKg = massKg;
         this.baseYieldKt = baseYieldKt;
         this.efficiencyBonus = efficiencyBonus;
         this.complexity = complexity;
@@ -56,7 +52,6 @@ public final class NukePart {
     public String getName()             { return name; }
     public String getShortDescription() { return shortDescription; }
     public String getEducationalNotes() { return educationalNotes; }
-    public double getMassKg()           { return massKg; }
     public double getBaseYieldKt()      { return baseYieldKt; }
     public double getEfficiencyBonus()  { return efficiencyBonus; }
     public double getComplexity()       { return complexity; }

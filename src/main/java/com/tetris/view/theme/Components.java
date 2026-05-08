@@ -174,6 +174,19 @@ public final class Components {
             setOpaque(false);
             setContentAreaFilled(false);
             setBorderPainted(false);
+            setFocusPainted(false);
+            // Some Look-and-Feels (notably WindowsLookAndFeel) paint an
+            // orange/yellow "default button" indicator along the bottom
+            // edge of any button on the same root pane as the registered
+            // default button — even when borderPainted/focusPainted are
+            // off. Opting out of default-capability stops that decoration
+            // entirely. The Enter-key binding on the explicitly-set
+            // default button still works because that path goes through
+            // JRootPane.setDefaultButton, not isDefaultCapable.
+            setDefaultCapable(false);
+            // Drop any L&F-installed border so paintBorder has nothing
+            // to draw even if a future caller flips borderPainted on.
+            setBorder(new EmptyBorder(0, 0, 0, 0));
             setForeground(textColor());
             addMouseListener(new MouseAdapter() {
                 @Override public void mouseEntered(MouseEvent e) { hovered = true;  repaint(); }
@@ -247,6 +260,14 @@ public final class Components {
             int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
             g.drawString(t, tx, ty);
             g.dispose();
+        }
+
+        @Override
+        protected void paintBorder(Graphics g) {
+            // Intentionally empty — the rounded outline is drawn inside
+            // paintComponent so we never want the L&F or any installed
+            // border to add an extra edge (which previously showed up
+            // as a stray orange/yellow line along the bottom).
         }
 
         @Override

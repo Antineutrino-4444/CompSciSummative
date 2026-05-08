@@ -35,7 +35,7 @@ import java.util.Map;
  * on the left then lists the available parts for that slot — click one
  * to install it. The schematic re-paints to show the chosen component
  * and the right-hand info panel updates with educational text and the
- * derived yield / mass / damage estimate.
+ * derived yield / damage estimate.
  *
  * All information shown is at the conceptual level of a public
  * encyclopedia article. There is deliberately no engineering data.
@@ -98,16 +98,23 @@ public class NukeBuilderDialog extends JPanel {
      *  ignition choice, channel coupling, and the number of stacked
      *  stages (2-, 3- or 4-stage weapon). */
     private enum FusionGroup {
+        STAGE_SELECT ("Fusion: Edit Stage",
+                      "Picks which fusion stage you are currently " +
+                      "editing. Each stacked stage (secondary, " +
+                      "optional tertiary, optional quaternary) carries " +
+                      "its own pusher, channel filler, fuel and spark " +
+                      "plug. Only visible when the device has more " +
+                      "than one fusion stage.",
+                      new String[]{ "Edit Secondary",
+                                    "Edit Tertiary",
+                                    "Edit Quaternary" }),
         FUEL         ("Fusion: Fuel",
                       "The fusion fuel inside the secondary capsule. " +
                       "Lithium-6 deuteride is the canonical 'dry' choice " +
-                      "used by every modern weapon; cryogenic liquid " +
-                      "deuterium is the original Ivy-Mike-class wet " +
-                      "design (massive but high yield); natural lithium " +
+                      "used by every modern weapon; natural lithium " +
                       "deuteride is cheaper but less predictable " +
                       "(Castle Bravo, 1954).",
                       new String[]{ "Lithium-6 deuteride (dry)",
-                                    "Cryogenic liquid deuterium",
                                     "Natural LiD (Li-6 + Li-7)" }),
         PUSHER       ("Fusion: Pusher",
                       "Tamper material wrapped around the secondary " +
@@ -139,9 +146,9 @@ public class NukeBuilderDialog extends JPanel {
                       "the cost of catastrophic fallout. A 4-stage " +
                       "device is hypothetical — no working example has " +
                       "ever existed.",
-                      new String[]{ "2-stage (standard Teller-Ulam)",
-                                    "3-stage (+ U-238 tertiary jacket)",
-                                    "4-stage (+ quaternary, hypothetical)" });
+                      new String[]{ "2-stage",
+                                    "3-stage",
+                                    "4-stage" });
 
         final String name;
         final String description;
@@ -159,17 +166,31 @@ public class NukeBuilderDialog extends JPanel {
     private final FusionDetails fusion = new FusionDetails();
 
     /** Holds the player's choices in the Fusion Designer sub-builder.
-     *  Defaults match the canonical modern thermonuclear secondary. */
+     *  Each stacked fusion stage carries its own pusher / channel /
+     *  fuel / spark plug, indexed 0 = secondary, 1 = tertiary,
+     *  2 = quaternary. Defaults match the canonical modern
+     *  thermonuclear secondary on stage 0; higher stages start with
+     *  the same defaults except their spark plug is OFF (physically,
+     *  only the secondary needs a spark plug — higher stages are
+     *  ignited by the previous stage's neutron flux). */
     static final class FusionDetails {
-        /** Fuel choice for the secondary. Mirrors (and replaces) the
-         *  old NukeSlot.SECONDARY part-pick role for two-stage designs. */
-        String  fuel          = "Lithium-6 deuteride (dry)";
-        String  pusher        = "U-238";          // U-238 / Pb / Tungsten
-        String  channelFiller = "Polystyrene foam"; // Foam / Vacuum
-        boolean sparkPlug     = true;             // Pu-239 spark plug down centre
+        static final int MAX = 3;
+        /** Fuel choice per stage. Stage 0 mirrors NukeSlot.SECONDARY. */
+        final String[]  fuel          = { "Lithium-6 deuteride (dry)",
+                                          "Lithium-6 deuteride (dry)",
+                                          "Lithium-6 deuteride (dry)" };
+        final String[]  pusher        = { "U-238", "U-238", "U-238" };
+        final String[]  channelFiller = { "Polystyrene foam",
+                                          "Polystyrene foam",
+                                          "Polystyrene foam" };
+        final boolean[] sparkPlug     = { true, false, false };
         /** Number of fusion stages. 1 = standard 2-stage Teller-Ulam,
          *  2 = 3-stage (adds U-238 jacketed tertiary), 3 = 4-stage. */
         int     stageCount    = 1;
+        /** Which stage the user is currently editing in the sub-builder
+         *  (0 = secondary, 1 = tertiary, 2 = quaternary). Always
+         *  clamped to a stage that actually exists. */
+        int     editingStage  = 0;
     }
 
     private SchematicPanel schematic;
@@ -182,7 +203,7 @@ public class NukeBuilderDialog extends JPanel {
     private JPanel slotsBarOuter;   // wraps slot list (for focus border)
     private JPanel listWrapOuter;   // wraps parts list (for focus border)
     private JTextArea infoArea;
-    private JLabel yieldLabel, massLabel, complexityLabel;
+    private JLabel yieldLabel, complexityLabel;
     private JTextArea analogLabel, radiusLabel;
     private JTextArea effectsArea, warningsArea;
     private final Map<NukeSlot, JButton> slotButtons = new LinkedHashMap<>();
@@ -297,7 +318,7 @@ public class NukeBuilderDialog extends JPanel {
 
         JPanel leftCol = new JPanel(new BorderLayout(0, 6));
         leftCol.setBackground(DARK_BG);
-        leftCol.setPreferredSize(new Dimension(170, 0));
+        leftCol.setPreferredSize(new Dimension(200, 0));
         // Put slotsCol at CENTER so its bordered list expands to fill
         // the full column height \u2014 this is the alignment "mark" that
         // every other column's bordered box matches at the bottom.
@@ -378,7 +399,7 @@ public class NukeBuilderDialog extends JPanel {
         // they just stay disabled (greyed out by updateSlotAvailability)
         // until a Two-stage thermonuclear configuration is selected.
         slotsBar.add(Box.createVerticalStrut(4));
-        JLabel divider = new JLabel(" — FUSION SUB-DESIGN —");
+        JLabel divider = new JLabel(" — SUB-DESIGN —");
         divider.setForeground(new Color(180, 90, 200));   // matches secondary slot tint
         divider.setFont(new Font("Monospaced", Font.BOLD, 10));
         divider.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -387,7 +408,14 @@ public class NukeBuilderDialog extends JPanel {
         slotsBar.add(Box.createVerticalStrut(2));
 
         for (FusionGroup g : FusionGroup.values()) {
-            JButton b = new JButton(g.name);
+            // STAGE_SELECT only matters when there's more than one
+            // fusion stage to switch between — keep the slot column
+            // tidy in the standard 2-stage case.
+            if (g == FusionGroup.STAGE_SELECT && fusion.stageCount <= 1) continue;
+            // Per-stage groups carry a plain label; the active stage
+            // is communicated through STAGE_SELECT and the schematic.
+            String label = g.name;
+            JButton b = new JButton(label);
             styleSlotButton(b);
             b.addActionListener(e -> setActiveFusionGroup(g));
             b.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -489,9 +517,14 @@ public class NukeBuilderDialog extends JPanel {
     }
 
     private void styleSlotButton(JButton b) {
-        b.setOpaque(true);
-        b.setBackground(new Color(225, 232, 240));
-        b.setForeground(new Color(10, 14, 20));
+        // Transparent fill so the slot row reads as a clean outlined
+        // chip on the panel background — selection is communicated
+        // through the border colour alone, never through a filled
+        // background plate.
+        b.setOpaque(false);
+        b.setContentAreaFilled(false);
+        b.setBackground(PANEL_BG);
+        b.setForeground(new Color(210, 220, 230));
         b.setFont(new Font("SansSerif", Font.BOLD, 12));
         b.setFocusPainted(false);
         // Non-focusable so the dialog’s window-scope arrow-key bindings
@@ -561,13 +594,13 @@ public class NukeBuilderDialog extends JPanel {
         // user into building physically nonsensical designs.
         NukePart cfg = design.get(NukeSlot.CONFIGURATION);
         String cfgName = (cfg == NukePart.NONE) ? "" : cfg.getName();
-        boolean cfgIsLinear = cfgName.startsWith("Linear");
+        boolean cfgIsSloika = cfgName.startsWith("Layer-cake");
 
         for (NukePart p : activeSlot.getOptions()) {
-            if (activeSlot == NukeSlot.IMPLOSION
-                    && p.getName().startsWith("Two-point linear")
-                    && !cfgIsLinear) {
-                continue; // only meaningful for Linear (cylindrical) configs
+            if (activeSlot == NukeSlot.SECONDARY
+                    && p.getName().startsWith("Spark-plug enhanced")
+                    && cfgIsSloika) {
+                continue; // spark-plug ignition is meaningless for layer-cake
             }
             JButton b = new JButton(p.getName());
             b.setHorizontalAlignment(SwingConstants.LEFT);
@@ -576,19 +609,31 @@ public class NukeBuilderDialog extends JPanel {
             b.setFont(new Font("SansSerif", Font.BOLD, 12));
             b.setFocusPainted(false);
             b.setFocusable(false); // arrow-key bindings must not be eaten
-            b.setOpaque(true);
+            // Transparent fill so the row reads as a clean outlined
+            // chip on the panel background — selection is shown via
+            // the border colour alone, never a filled plate. Border
+            // thickness is held constant (idle 1 px / selected 2 px
+            // with matching insets) so content never shifts.
+            b.setOpaque(false);
+            b.setContentAreaFilled(false);
+            b.setBackground(PANEL_BG);
             boolean selected = p == current;
-            // Light fill, dark text — readable against the colored backgrounds.
-            Color fill = selected ? slotColor.brighter() : new Color(225, 232, 240);
+            Color fg;
             if (dimmed) {
-                // Wash everything towards panel grey to indicate it's inactive.
-                fill = blend(fill, PANEL_BG, 0.55f);
+                fg = new Color(110, 120, 130);
+            } else if (selected) {
+                fg = new Color(245, 250, 255);
+            } else {
+                fg = new Color(210, 220, 230);
             }
-            b.setBackground(fill);
-            b.setForeground(dimmed ? new Color(110, 120, 130) : new Color(10, 14, 20));
+            b.setForeground(fg);
+            Color borderCol = dimmed ? new Color(60, 70, 85)
+                                     : (selected ? ACCENT : ACCENT_DIM);
+            int thick = (selected && !dimmed) ? 2 : 1;
+            int pad   = (selected && !dimmed) ? 3 : 4;
             b.setBorder(new javax.swing.border.CompoundBorder(
-                    new LineBorder(selected && !dimmed ? ACCENT : ACCENT_DIM, selected && !dimmed ? 2 : 1),
-                    new EmptyBorder(4, 8, 4, 8)));
+                    new LineBorder(borderCol, thick),
+                    new EmptyBorder(pad, pad + 4, pad, pad + 4)));
             b.addActionListener(e -> {
                 // Click moves keyboard focus to this column too.
                 focusedColumn = FocusCol.PARTS;
@@ -780,48 +825,18 @@ public class NukeBuilderDialog extends JPanel {
         // bottom: 6 from palette wrap inset + 6 from leftCol vgap).
         wrap.setBorder(new EmptyBorder(6, 4, 12, 4));
 
-        // Top: selected component info. Bottom: warnings panel (moved
-        // here from the right column so it can use the empty space
-        // beneath the component description).
-        JPanel infoPanel = new JPanel(new BorderLayout());
-        infoPanel.setBackground(PANEL_BG);
-        infoPanel.setBorder(new LineBorder(ACCENT_DIM, 1));
-        JLabel head = new JLabel("  COMPONENT INFORMATION");
-        head.setForeground(ACCENT);
-        head.setFont(new Font("Monospaced", Font.BOLD, 11));
-        head.setBorder(new EmptyBorder(6, 6, 4, 6));
-        infoPanel.add(head, BorderLayout.NORTH);
-
+        // The COMPONENT INFORMATION panel was removed at the user's
+        // request — the right column now hosts only the WARNINGS
+        // panel. infoArea is still instantiated (off-screen) so the
+        // showInfo / showFusionInfo / autoFitTextArea callsites stay
+        // valid without further surgery.
         infoArea = new JTextArea();
         infoArea.setEditable(false);
-        infoArea.setFocusable(false); // arrow keys reach the root-pane bindings
+        infoArea.setFocusable(false);
         infoArea.setLineWrap(true);
         infoArea.setWrapStyleWord(true);
-        infoArea.setBackground(PANEL_BG);
-        infoArea.setForeground(TEXT_FG);
-        infoArea.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        infoArea.setBorder(new EmptyBorder(4, 8, 8, 8));
-        infoArea.setText(
-            "Select a component on the left to read about what it does and " +
-            "where it appeared historically.\n\n" +
-            "Try building a 'Little Boy' analog (gun-type + HEU + radar fuze " +
-            "+ free-fall casing), a 'Fat Man' analog (implosion + Pu-239 + " +
-            "natural-U tamper + 32-lens + Mk-III casing), or a modern MIRV " +
-            "warhead (boosted + Pu hollow pit + RV aeroshell + PAL safety).");
-        infoPanel.add(infoArea, BorderLayout.CENTER);
 
-        // Warnings panel — sized to its content (sits at the bottom of
-        // the column, never wastes space). The component-info panel
-        // grabs everything else.
-        JPanel warnPanel = new JPanel(new BorderLayout()) {
-            @Override public Dimension getPreferredSize() {
-                // Header height + actual wrapped text height + padding.
-                int w = getWidth() > 0 ? getWidth() : 400;
-                warningsArea.setSize(w - 18, Short.MAX_VALUE);
-                int textH = warningsArea.getPreferredSize().height;
-                return new Dimension(w, 28 + textH + 14);
-            }
-        };
+        JPanel warnPanel = new JPanel(new BorderLayout());
         warnPanel.setBackground(PANEL_BG);
         warnPanel.setBorder(new LineBorder(ACCENT_DIM, 1));
         JLabel wh = new JLabel("  WARNINGS");
@@ -835,15 +850,7 @@ public class NukeBuilderDialog extends JPanel {
         warningsArea.setBorder(new EmptyBorder(4, 8, 8, 8));
         warnPanel.add(warningsArea, BorderLayout.CENTER);
 
-        // Wrap them in a host panel so we can re-layout when the
-        // warnings text changes height. Also remember the wrap so
-        // refresh() can revalidate it after setting new warnings text.
-        JPanel host = new JPanel(new BorderLayout(0, 6));
-        host.setBackground(DARK_BG);
-        host.add(infoPanel,  BorderLayout.CENTER);
-        host.add(warnPanel,  BorderLayout.SOUTH);
-
-        wrap.add(host, BorderLayout.CENTER);
+        wrap.add(warnPanel, BorderLayout.CENTER);
         return wrap;
     }
 
@@ -880,7 +887,6 @@ public class NukeBuilderDialog extends JPanel {
         stats.add(sh, gc);
 
         gc.gridy++; yieldLabel      = makeStat("Yield: —");        stats.add(yieldLabel, gc);
-        gc.gridy++; massLabel       = makeStat("Mass: —");         stats.add(massLabel, gc);
         gc.gridy++; complexityLabel = makeStat("Complexity: —");   stats.add(complexityLabel, gc);
         gc.gridy++; radiusLabel     = makeStatArea("Severe-blast radius: —"); stats.add(radiusLabel, gc);
         gc.gridy++; analogLabel     = makeStatArea("Analog: —");   stats.add(analogLabel, gc);
@@ -976,20 +982,19 @@ public class NukeBuilderDialog extends JPanel {
         if (cfg == NukePart.NONE) return false;
 
         String c = cfg.getName();
-        boolean isPureFusion = c.startsWith("Pure fusion");
         boolean isGun        = c.startsWith("Gun-type");
-        boolean isImpl       = c.startsWith("Implosion") || c.startsWith("Linear");
+        boolean isImpl       = c.startsWith("Implosion");
         boolean isBoosted    = c.startsWith("Boosted");
         boolean isSloika     = c.startsWith("Layer-cake");
-        boolean isTwoStage   = c.startsWith("Two-stage");
+        boolean isTwoStage   = c.startsWith("Teller-Ulam");
 
         switch (slot.getId()) {
-            case "fissile":   return !isPureFusion;
-            case "tamper":    return !isPureFusion;
-            case "initiator": return !isPureFusion;
-            case "implosion": return !isGun && !isPureFusion;
+            case "fissile":   return true;
+            case "tamper":    return true;
+            case "initiator": return true;
+            case "implosion": return !isGun;
             case "boost":     return isBoosted || isSloika || isTwoStage;
-            case "secondary": return isSloika || isTwoStage || isPureFusion;
+            case "secondary": return isSloika || isTwoStage;
             case "casing":
             case "fuze":
             case "delivery":  return true;
@@ -1005,32 +1010,42 @@ public class NukeBuilderDialog extends JPanel {
      * become irrelevant.
      */
     private void updateSlotAvailability() {
+        // Bright amber when the slots column has keyboard focus,
+        // dim cyan otherwise. This prevents a stale yellow "selected"
+        // border from sitting on the slots column after the user
+        // moves focus over to the parts column — which read as
+        // residue from the previous selection.
+        Color slotActiveBorder   = focusedColumn == FocusCol.SLOTS
+                ? new Color(255, 220, 80) : ACCENT_DIM;
+        Color fusionActiveBorder = focusedColumn == FocusCol.SLOTS
+                ? new Color(255, 220, 80) : new Color(140, 90, 170);
         for (NukeSlot s : NukeSlot.ALL) {
             JButton b = slotButtons.get(s);
             if (b == null) continue;
             boolean ok = slotApplicable(s);
             boolean isActive = (s == activeSlot && activeFusionGroup == null);
             b.setEnabled(ok);
+            // All states share a transparent fill so the row never
+            // looks like a filled highlight plate — only the border
+            // colour / thickness communicates selection and state.
+            b.setOpaque(false);
+            b.setContentAreaFilled(false);
+            b.setBackground(PANEL_BG);
             if (!ok) {
-                b.setBackground(new Color(60, 70, 85));
-                b.setForeground(new Color(140, 150, 160));
+                b.setForeground(new Color(95, 105, 115));
                 b.setBorder(new javax.swing.border.CompoundBorder(
-                        new LineBorder(ACCENT_DIM, 1),
+                        new LineBorder(new Color(60, 70, 85), 1),
                         new EmptyBorder(4, 8, 4, 8)));
                 b.setToolTipText("Not applicable to current configuration");
             } else if (isActive) {
-                // Bright active highlight — vivid orange fill, dark text,
-                // thick yellow border. Cyan was too dim against the
-                // light-grey inactive buttons.
-                b.setBackground(new Color(255, 140, 0));
-                b.setForeground(new Color(8, 12, 20));
+                // Selected: brighter text + thicker accent border.
+                b.setForeground(new Color(245, 250, 255));
                 b.setBorder(new javax.swing.border.CompoundBorder(
-                        new LineBorder(new Color(255, 220, 80), 2),
+                        new LineBorder(slotActiveBorder, 2),
                         new EmptyBorder(3, 7, 3, 7)));
                 b.setToolTipText(null);
             } else {
-                b.setBackground(new Color(225, 232, 240));
-                b.setForeground(new Color(10, 14, 20));
+                b.setForeground(new Color(210, 220, 230));
                 b.setBorder(new javax.swing.border.CompoundBorder(
                         new LineBorder(ACCENT_DIM, 1),
                         new EmptyBorder(4, 8, 4, 8)));
@@ -1051,30 +1066,32 @@ public class NukeBuilderDialog extends JPanel {
             FusionGroup g = e.getKey();
             JButton b = e.getValue();
             boolean isActive = (g == activeFusionGroup);
+            // Same transparent-fill treatment as the slot buttons:
+            // selection is shown via border colour, not a fill plate.
+            b.setOpaque(false);
+            b.setContentAreaFilled(false);
+            b.setBackground(PANEL_BG);
             if (!fusionUnlocked) {
-                // Locked: same visual treatment as an inapplicable
-                // NukeSlot, plus a tooltip explaining how to unlock.
+                // Locked: dim outlined chip + tooltip explaining how to unlock.
                 b.setEnabled(false);
-                b.setBackground(new Color(60, 70, 85));
-                b.setForeground(new Color(140, 150, 160));
+                b.setForeground(new Color(95, 105, 115));
                 b.setBorder(new javax.swing.border.CompoundBorder(
-                        new LineBorder(ACCENT_DIM, 1),
+                        new LineBorder(new Color(60, 70, 85), 1),
                         new EmptyBorder(4, 8, 4, 8)));
                 b.setToolTipText("Unlocks for Two-stage thermonuclear configurations");
             } else if (isActive) {
+                // Selected fusion row: bright text + thicker violet/yellow border.
                 b.setEnabled(true);
-                b.setBackground(new Color(255, 140, 0));
-                b.setForeground(new Color(8, 12, 20));
+                b.setForeground(new Color(240, 225, 255));
                 b.setBorder(new javax.swing.border.CompoundBorder(
-                        new LineBorder(new Color(255, 220, 80), 2),
+                        new LineBorder(fusionActiveBorder, 2),
                         new EmptyBorder(3, 7, 3, 7)));
                 b.setToolTipText(null);
             } else {
-                // Calm violet tint marks them as members of the
+                // Idle: violet outline marks them as members of the
                 // SECONDARY family — visually grouped with that slot.
                 b.setEnabled(true);
-                b.setBackground(new Color(220, 200, 235));
-                b.setForeground(new Color(40, 20, 60));
+                b.setForeground(new Color(200, 175, 220));
                 b.setBorder(new javax.swing.border.CompoundBorder(
                         new LineBorder(new Color(140, 90, 170), 1),
                         new EmptyBorder(4, 8, 4, 8)));
@@ -1111,6 +1128,15 @@ public class NukeBuilderDialog extends JPanel {
         this.activeFusionGroup = null;
         // Selecting a slot moves keyboard focus to the slots column.
         focusedColumn = FocusCol.SLOTS;
+        // If this slot still holds the implicit NONE placeholder, jump
+        // to the first visible option so the user immediately sees a
+        // concrete choice instead of an empty selection.
+        if (design.get(s) == NukePart.NONE) {
+            java.util.List<NukePart> opts = visibleParts(s);
+            if (!opts.isEmpty()) {
+                design.set(s, opts.get(0));
+            }
+        }
         rebuildSlotList();
         updateSlotAvailability();
         rebuildPartsList();
@@ -1156,7 +1182,18 @@ public class NukeBuilderDialog extends JPanel {
         String current = currentFusionValue(g);
         boolean dimmed = focusedColumn != FocusCol.PARTS;
 
-        for (String opt : g.options) {
+        // STAGE_SELECT only lists the stages that currently exist on
+        // the device — no point offering "Edit Quaternary" on a 2- or
+        // 3-stage build.
+        String[] options = g.options;
+        if (g == FusionGroup.STAGE_SELECT) {
+            int n = Math.max(1, fusion.stageCount);
+            String[] subset = new String[n];
+            System.arraycopy(g.options, 0, subset, 0, n);
+            options = subset;
+        }
+
+        for (String opt : options) {
             JButton b = new JButton(opt);
             b.setHorizontalAlignment(SwingConstants.LEFT);
             b.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1164,16 +1201,27 @@ public class NukeBuilderDialog extends JPanel {
             b.setFont(new Font("SansSerif", Font.BOLD, 12));
             b.setFocusPainted(false);
             b.setFocusable(false);
-            b.setOpaque(true);
+            // Transparent fill — selection shown via border colour only.
+            b.setOpaque(false);
+            b.setContentAreaFilled(false);
+            b.setBackground(PANEL_BG);
             boolean selected = opt.equals(current);
-            Color fill = selected ? slotColor.brighter() : new Color(225, 232, 240);
-            if (dimmed) fill = blend(fill, PANEL_BG, 0.55f);
-            b.setBackground(fill);
-            b.setForeground(dimmed ? new Color(110, 120, 130) : new Color(10, 14, 20));
+            Color fg;
+            if (dimmed) {
+                fg = new Color(110, 120, 130);
+            } else if (selected) {
+                fg = new Color(245, 250, 255);
+            } else {
+                fg = new Color(210, 220, 230);
+            }
+            b.setForeground(fg);
+            Color borderCol = dimmed ? new Color(60, 70, 85)
+                                     : (selected ? ACCENT : ACCENT_DIM);
+            int thick = (selected && !dimmed) ? 2 : 1;
+            int pad   = (selected && !dimmed) ? 3 : 4;
             b.setBorder(new javax.swing.border.CompoundBorder(
-                    new LineBorder(selected && !dimmed ? ACCENT : ACCENT_DIM,
-                                   selected && !dimmed ? 2 : 1),
-                    new EmptyBorder(4, 8, 4, 8)));
+                    new LineBorder(borderCol, thick),
+                    new EmptyBorder(pad, pad + 4, pad, pad + 4)));
             b.addActionListener(e -> {
                 focusedColumn = FocusCol.PARTS;
                 applyFusionValue(g, opt);
@@ -1186,38 +1234,96 @@ public class NukeBuilderDialog extends JPanel {
     }
 
     /** Read the value currently assigned to a fusion sub-design group
-     *  out of the {@link #fusion} struct. */
+     *  out of the {@link #fusion} struct. Per-stage groups read the
+     *  array slot at {@code fusion.editingStage}. */
     private String currentFusionValue(FusionGroup g) {
+        int s = clampedEditingStage();
         return switch (g) {
-            case FUEL         -> fusion.fuel;
-            case PUSHER       -> fusion.pusher;
-            case CHANNEL      -> fusion.channelFiller;
-            case SPARK_PLUG   -> fusion.sparkPlug ? "Pu-239 rod"      : "(none)";
+            case STAGE_SELECT -> stageEditLabel(s);
+            case FUEL         -> fusion.fuel[s];
+            case PUSHER       -> fusion.pusher[s];
+            case CHANNEL      -> fusion.channelFiller[s];
+            case SPARK_PLUG   -> fusion.sparkPlug[s] ? "Pu-239 rod"      : "(none)";
             case STAGES       -> switch (fusion.stageCount) {
-                case 2  -> "3-stage (+ U-238 tertiary jacket)";
-                case 3  -> "4-stage (+ quaternary, hypothetical)";
-                default -> "2-stage (standard Teller-Ulam)";
+                case 2  -> "3-stage";
+                case 3  -> "4-stage";
+                default -> "2-stage";
             };
         };
     }
 
     /** Write a value into the {@link #fusion} struct for one group.
-     *  Boolean / multi-valued groups translate the option string back
-     *  into the appropriate flag or count. The FUEL group is also
+     *  Per-stage groups write the array slot at
+     *  {@code fusion.editingStage}. The FUEL group on stage 0 is also
      *  mirrored into {@link NukeSlot#SECONDARY} so the schematic
      *  painter and warnings logic continue to see a real secondary. */
     private void applyFusionValue(FusionGroup g, String value) {
+        int s = clampedEditingStage();
         switch (g) {
-            case FUEL         -> { fusion.fuel = value; syncFuelToSecondarySlot(); }
-            case PUSHER       -> fusion.pusher = value;
-            case CHANNEL      -> fusion.channelFiller = value;
-            case SPARK_PLUG   -> fusion.sparkPlug = "Pu-239 rod".equals(value);
+            case STAGE_SELECT -> {
+                if      (value.contains("Tertiary"))   fusion.editingStage = 1;
+                else if (value.contains("Quaternary")) fusion.editingStage = 2;
+                else                                   fusion.editingStage = 0;
+                // Clamp to existing stages.
+                if (fusion.editingStage >= fusion.stageCount) {
+                    fusion.editingStage = fusion.stageCount - 1;
+                }
+            }
+            case FUEL         -> {
+                fusion.fuel[s] = value;
+                if (s == 0) syncFuelToSecondarySlot();
+            }
+            case PUSHER       -> fusion.pusher[s] = value;
+            case CHANNEL      -> fusion.channelFiller[s] = value;
+            case SPARK_PLUG   -> fusion.sparkPlug[s] = "Pu-239 rod".equals(value);
             case STAGES       -> {
                 if      (value.startsWith("3-stage")) fusion.stageCount = 2;
                 else if (value.startsWith("4-stage")) fusion.stageCount = 3;
                 else                                  fusion.stageCount = 1;
+                // Snap the editing cursor back into the valid range
+                // when the user collapses stages.
+                if (fusion.editingStage >= fusion.stageCount) {
+                    fusion.editingStage = fusion.stageCount - 1;
+                }
             }
         }
+    }
+
+    /** Defensive read of {@link FusionDetails#editingStage} that
+     *  clamps to the currently-existing stage range. */
+    private int clampedEditingStage() {
+        int s = fusion.editingStage;
+        if (s < 0) s = 0;
+        if (s >= fusion.stageCount) s = fusion.stageCount - 1;
+        return s;
+    }
+
+    /** Human label for the stage-select dropdown row. */
+    private static String stageEditLabel(int s) {
+        return switch (s) {
+            case 1  -> "Edit Tertiary";
+            case 2  -> "Edit Quaternary";
+            default -> "Edit Secondary";
+        };
+    }
+
+    /** Pretty stage name (without the "Edit " prefix) for headers and
+     *  info-panel breadcrumbs. */
+    private static String stageName(int s) {
+        return switch (s) {
+            case 1  -> "Tertiary";
+            case 2  -> "Quaternary";
+            default -> "Secondary";
+        };
+    }
+
+    /** Whether a fusion group is per-stage (its value is read/written
+     *  through the editingStage index) vs. global to the whole device. */
+    private static boolean isPerStageGroup(FusionGroup g) {
+        return g == FusionGroup.FUEL
+            || g == FusionGroup.PUSHER
+            || g == FusionGroup.CHANNEL
+            || g == FusionGroup.SPARK_PLUG;
     }
 
     /** Locate the NukePart in the SECONDARY slot whose name best matches
@@ -1226,12 +1332,11 @@ public class NukeBuilderDialog extends JPanel {
      *  and historical-analog text working as before — they all still
      *  read {@code design.get(NukeSlot.SECONDARY)}. */
     private void syncFuelToSecondarySlot() {
-        String f = fusion.fuel == null ? "" : fusion.fuel;
+        String f = fusion.fuel[0] == null ? "" : fusion.fuel[0];
         NukePart match = NukePart.NONE;
         for (NukePart p : NukeSlot.SECONDARY.getOptions()) {
             String n = p.getName();
             if (f.startsWith("Lithium-6")    && n.startsWith("Lithium-6"))    { match = p; break; }
-            if (f.startsWith("Cryogenic")    && n.startsWith("Cryogenic"))    { match = p; break; }
             if (f.startsWith("Natural")      && n.startsWith("Natural"))      { match = p; break; }
         }
         design.set(NukeSlot.SECONDARY, match);
@@ -1251,8 +1356,16 @@ public class NukeBuilderDialog extends JPanel {
         sb.append(g.description).append("\n\n");
         sb.append("— ").append(current).append(" —\n");
         sb.append(fusionOptionDescription(g, current)).append("\n\n");
+        // STAGE_SELECT only lists stages that exist on the device.
+        String[] opts = g.options;
+        if (g == FusionGroup.STAGE_SELECT) {
+            int n = Math.max(1, fusion.stageCount);
+            String[] sub = new String[n];
+            System.arraycopy(g.options, 0, sub, 0, n);
+            opts = sub;
+        }
         sb.append("All options:\n");
-        for (String opt : g.options) {
+        for (String opt : opts) {
             sb.append("  ").append(opt.equals(current) ? "▶ " : "  ");
             sb.append(opt).append('\n');
         }
@@ -1266,6 +1379,23 @@ public class NukeBuilderDialog extends JPanel {
      *  generic description. */
     private String fusionOptionDescription(FusionGroup g, String opt) {
         switch (g) {
+            case STAGE_SELECT: switch (opt) {
+                case "Edit Secondary":
+                    return "Switches the editor to the secondary fusion stage — " +
+                           "the stage directly compressed by the fission primary's " +
+                           "X-ray pulse. Its choices feed the warnings, historical " +
+                           "analog and Castle Bravo synergy.";
+                case "Edit Tertiary":
+                    return "Switches the editor to the tertiary stage — added " +
+                           "when the device is configured as 3-stage. Its U-238 " +
+                           "jacket is the fast-fission contribution that defined " +
+                           "Castle Bravo (1954) and dominates the fallout signature.";
+                case "Edit Quaternary":
+                    return "Switches the editor to the (hypothetical) quaternary " +
+                           "stage — a fourth stage added on top of the tertiary. " +
+                           "No real device has ever used one; the Soviet Tsar " +
+                           "Bomba team explicitly stopped at three.";
+            } break;
             case FUEL: switch (opt) {
                 case "Lithium-6 deuteride (dry)":
                     return "Solid lithium-6 deuteride. The Li-6 absorbs a fast " +
@@ -1273,11 +1403,6 @@ public class NukeBuilderDialog extends JPanel {
                            "fuses with the deuterium. Storable at room " +
                            "temperature, light, and weaponizable — the canonical " +
                            "fuel of every modern thermonuclear weapon.";
-                case "Cryogenic liquid deuterium":
-                    return "Pure liquid D2 kept at ∜249 °C by a building-sized " +
-                           "refrigeration plant. Used by Ivy Mike (1952, ~10 Mt). " +
-                           "Worked, but the device weighed ~74 tonnes and was " +
-                           "un-deliverable as a weapon.";
                 case "Natural LiD (Li-6 + Li-7)":
                     return "Cheaper unenriched LiD. The Castle Bravo (1954) " +
                            "designers assumed Li-7 would be inert; it wasn't. The " +
@@ -1329,18 +1454,18 @@ public class NukeBuilderDialog extends JPanel {
                            "fraction of the design intent.";
             } break;
             case STAGES: switch (opt) {
-                case "2-stage (standard Teller-Ulam)":
+                case "2-stage":
                     return "One fission primary radiatively compresses one fusion " +
                            "secondary. The architecture of essentially every " +
                            "deployed strategic warhead since the late 1950s. " +
                            "Yield bounded mostly by the secondary's mass.";
-                case "3-stage (+ U-238 tertiary jacket)":
+                case "3-stage":
                     return "Wraps the secondary in a thick U-238 jacket. The " +
                            "14-MeV fusion neutrons fast-fission that jacket, " +
                            "adding a third (fission) stage that roughly doubles " +
                            "yield. Used by Castle Bravo (1954, 15 Mt) and Tsar " +
                            "Bomba's full-yield variant. Catastrophic fallout.";
-                case "4-stage (+ quaternary, hypothetical)":
+                case "4-stage":
                     return "A hypothetical extrapolation: a second fusion stage " +
                            "ignited by the third stage's flux, then jacketed " +
                            "again. No working device has ever existed; the Soviet " +
@@ -1375,9 +1500,11 @@ public class NukeBuilderDialog extends JPanel {
         // Push the inline FUSION DESIGN choices into the model so yield,
         // mass and warnings reflect them. No-op for non-thermonuclear
         // configurations (NukeDesign ignores the values in that case).
-        design.setFusionPusher(fusion.pusher);
-        design.setFusionChannelFiller(fusion.channelFiller);
-        design.setFusionSparkPlug(fusion.sparkPlug);
+        for (int i = 0; i < FusionDetails.MAX; i++) {
+            design.setFusionPusher(i, fusion.pusher[i]);
+            design.setFusionChannelFiller(i, fusion.channelFiller[i]);
+            design.setFusionSparkPlug(i, fusion.sparkPlug[i]);
+        }
         design.setFusionStageCount(fusion.stageCount);
         // Keep the SECONDARY slot in lock-step with the FUEL choice
         // from the sub-builder whenever we're in two-stage mode \u2014
@@ -1395,7 +1522,6 @@ public class NukeBuilderDialog extends JPanel {
         rebuildPartsList();
         double kt = design.getEstimatedYieldKt();
         yieldLabel.setText("Yield:        " + formatYield(kt));
-        massLabel.setText(String.format("Mass:         %,.1f kg", design.getTotalMassKg()));
         complexityLabel.setText(String.format("Complexity:   %.1f / 25", design.getComplexityScore()));
         radiusLabel.setText(String.format("Blast radius: %.2f km (5 psi)", design.getDamageRadiusKm()));
         analogLabel.setText("Analog:       " + design.getHistoricalAnalog());
@@ -1471,6 +1597,11 @@ public class NukeBuilderDialog extends JPanel {
 
         styleColumnFocus(slotsBarOuter,  slotsHeading,   "STAGE / SLOT",      focusedColumn == FocusCol.SLOTS);
         styleColumnFocus(listWrapOuter,  paletteHeading, partsHeadingText(),  focusedColumn == FocusCol.PARTS);
+        // The slot/fusion buttons' active border colour also depends
+        // on which column is focused (so an "out of focus" column
+        // doesn't keep a bright residue from its previous selection),
+        // so re-style them whenever focus changes.
+        updateSlotAvailability();
 
         // Context-aware key hint. Always one short line, reads
         // left-to-right matching how the arrow keys are laid out on
@@ -1491,14 +1622,18 @@ public class NukeBuilderDialog extends JPanel {
 
     /** Apply the focused-vs-unfocused chrome to a single column. */
     private void styleColumnFocus(JComponent body, JLabel heading, String headingText, boolean focused) {
-        Color borderColor = focused ? new Color(255, 170, 60) : ACCENT_DIM;
-        int   borderWidth = focused ? 2 : 1;
+        // The column outline stays a constant 1 px dim-cyan rectangle
+        // at all times. Wrapping the column in an orange "focused"
+        // border used to bleed across the full bottom edge — making
+        // the slot column always look orange-bottomed and the parts
+        // column's bottom edge mismatch the brighter cyan selection
+        // colour of its active button. Focus is now communicated
+        // exclusively through the heading marker (\u25B6) and through
+        // the highlighted button inside the column.
         body.setBorder(new javax.swing.border.CompoundBorder(
-                new LineBorder(borderColor, borderWidth),
+                new LineBorder(ACCENT_DIM, 1),
                 new EmptyBorder(6, 6, 6, 6)));
-        // Tinted body background makes the focused column pop without
-        // relying on a 2-pixel border colour change alone.
-        body.setBackground(focused ? blend(PANEL_BG, new Color(255, 170, 60), 0.10f) : PANEL_BG);
+        body.setBackground(PANEL_BG);
         if (heading != null) {
             heading.setText((focused ? " \u25B6  " : "    ") + headingText);
             // Focused: glowing amber. Unfocused: still clearly legible
@@ -1646,7 +1781,13 @@ public class NukeBuilderDialog extends JPanel {
             if (slotApplicable(s)) out.add(s);
         }
         if (fusion) {
-            for (FusionGroup g : FusionGroup.values()) out.add(g);
+            for (FusionGroup g : FusionGroup.values()) {
+                // Mirror the visibility rules from rebuildSlotList()
+                // so keyboard navigation never lands on a row that
+                // isn't actually rendered.
+                if (g == FusionGroup.STAGE_SELECT && this.fusion.stageCount <= 1) continue;
+                out.add(g);
+            }
         }
         return out;
     }
@@ -1664,12 +1805,12 @@ public class NukeBuilderDialog extends JPanel {
     private java.util.List<NukePart> visibleParts(NukeSlot slot) {
         NukePart cfg = design.get(NukeSlot.CONFIGURATION);
         String cfgName = (cfg == NukePart.NONE) ? "" : cfg.getName();
-        boolean cfgIsLinear = cfgName.startsWith("Linear");
+        boolean cfgIsSloika = cfgName.startsWith("Layer-cake");
         java.util.List<NukePart> out = new java.util.ArrayList<>();
         for (NukePart p : slot.getOptions()) {
-            if (slot == NukeSlot.IMPLOSION
-                    && p.getName().startsWith("Two-point linear")
-                    && !cfgIsLinear) continue;
+            if (slot == NukeSlot.SECONDARY
+                    && p.getName().startsWith("Spark-plug enhanced")
+                    && cfgIsSloika) continue;
             out.add(p);
         }
         return out;
@@ -1711,17 +1852,20 @@ public class NukeBuilderDialog extends JPanel {
     private boolean inFusionMode() {
         NukePart cfg = design.get(NukeSlot.CONFIGURATION);
         if (cfg == NukePart.NONE) return false;
-        return cfg.getName().startsWith("Two-stage");
+        return cfg.getName().startsWith("Teller-Ulam");
     }
 
     /** Restore the fusion sub-design choices to their initial defaults
      *  so the UI matches the model after a Reset. */
     private void resetFusionStruct() {
-        fusion.fuel          = "Lithium-6 deuteride (dry)";
-        fusion.pusher        = "U-238";
-        fusion.channelFiller = "Polystyrene foam";
-        fusion.sparkPlug     = true;
+        for (int i = 0; i < FusionDetails.MAX; i++) {
+            fusion.fuel[i]          = "Lithium-6 deuteride (dry)";
+            fusion.pusher[i]        = "U-238";
+            fusion.channelFiller[i] = "Polystyrene foam";
+            fusion.sparkPlug[i]     = (i == 0);
+        }
         fusion.stageCount    = 1;
+        fusion.editingStage  = 0;
         activeFusionGroup    = null;
         focusedColumn        = FocusCol.SLOTS;
     }
@@ -1760,6 +1904,17 @@ public class NukeBuilderDialog extends JPanel {
         private final Map<NukeSlot, Shape> hitShapes = new LinkedHashMap<>();
         private final Map<NukeSlot, Shape> labelHitShapes = new LinkedHashMap<>();
         private final java.util.List<LabelAnchor> labels = new java.util.ArrayList<>();
+
+        // Per-fusion-stage geometry captured during draw so the
+        // sub-design highlight can light up the *specific* part of
+        // the *specific* stage the user is currently editing. Index
+        // 0 = secondary, 1 = tertiary, 2 = quaternary. Any null
+        // entries are simply skipped.
+        private final Shape[]       stageOuterShape = new Shape[FusionDetails.MAX];
+        private final Rectangle2D[] stageFoamRect   = new Rectangle2D[FusionDetails.MAX];
+        private final Rectangle2D[] stagePusherRect = new Rectangle2D[FusionDetails.MAX];
+        private final Rectangle2D[] stageFuelRect   = new Rectangle2D[FusionDetails.MAX];
+        private final Rectangle2D[] stagePlugRect   = new Rectangle2D[FusionDetails.MAX];
 
         /** Outline of the outer aeroshell, used as the CASING hit-shape. */
         private Shape envelopeShape;
@@ -1811,6 +1966,13 @@ public class NukeBuilderDialog extends JPanel {
             hitShapes.clear();
             labelHitShapes.clear();
             labels.clear();
+            for (int i = 0; i < FusionDetails.MAX; i++) {
+                stageOuterShape[i] = null;
+                stageFoamRect[i]   = null;
+                stagePusherRect[i] = null;
+                stageFuelRect[i]   = null;
+                stagePlugRect[i]   = null;
+            }
 
             // Rotate the entire painting 90° clockwise so the device
             // — originally drawn as a tall vertical missile — appears
@@ -1851,28 +2013,65 @@ public class NukeBuilderDialog extends JPanel {
             String cfg = design.get(NukeSlot.CONFIGURATION).getName();
             if (cfg.startsWith("Gun-type")) {
                 drawGunType(g, cx, devTop, devBot);
-            } else if (cfg.startsWith("Linear")) {
-                drawLinearImplosion(g, cx, devTop, devBot);
             } else if (cfg.startsWith("Implosion")) {
                 drawImplosion(g, cx, devTop, devBot, false);
             } else if (cfg.startsWith("Boosted")) {
                 drawImplosion(g, cx, devTop, devBot, true);
             } else if (cfg.startsWith("Layer-cake")) {
                 drawSloika(g, cx, devTop, devBot);
-            } else if (cfg.startsWith("Two-stage")) {
-                drawTellerUlam(g, cx, devTop, devBot);
-            } else if (cfg.startsWith("Pure fusion")) {
-                drawPureFusion(g, cx, devTop, devBot);
+            } else if (cfg.startsWith("Teller-Ulam")) {
+                if (fusion.stageCount >= 2) {
+                    drawMultiStage(g, cx, devTop, devBot, fusion.stageCount + 1);
+                } else {
+                    drawTellerUlam(g, cx, devTop, devBot);
+                }
             } else {
                 drawTellerUlam(g, cx, devTop, devBot);
             }
 
-            // ── Active-slot highlight ──
-            Shape act = hitShapes.get(activeSlot);
-            if (act != null && activeSlot != NukeSlot.CONFIGURATION) {
-                g.setStroke(new BasicStroke(2.4f));
-                g.setColor(ACCENT);
-                g.draw(act);
+            // ── Active-slot / sub-design highlight ──
+            // Sub-design (fusion sub-designer) highlight takes
+            // precedence whenever the user is editing a fusion group:
+            //   • An "overarching" highlight outlines the entire stage
+            //     capsule (secondary / tertiary / quaternary) the user
+            //     is editing, in a soft purple matching the SUB-DESIGN
+            //     section header.
+            //   • A focused highlight in the standard ACCENT cyan
+            //     outlines the specific part inside that stage that
+            //     corresponds to the active fusion group (FUEL,
+            //     PUSHER, CHANNEL, SPARK_PLUG).
+            // STAGE_SELECT and STAGES are stage-scoped settings, not
+            // part-scoped, so for those we only draw the overarching
+            // stage highlight.
+            if (inFusionMode() && activeFusionGroup != null) {
+                int stageIdx = clampedEditingStage();
+                Shape stageShape = (stageIdx >= 0 && stageIdx < FusionDetails.MAX)
+                        ? stageOuterShape[stageIdx] : null;
+                if (stageShape != null) {
+                    g.setStroke(new BasicStroke(2.0f));
+                    g.setColor(new Color(180, 90, 200, 220));
+                    g.draw(stageShape);
+                }
+                Rectangle2D partRect = null;
+                switch (activeFusionGroup) {
+                    case FUEL       -> partRect = stageFuelRect[stageIdx];
+                    case PUSHER     -> partRect = stagePusherRect[stageIdx];
+                    case CHANNEL    -> partRect = stageFoamRect[stageIdx];
+                    case SPARK_PLUG -> partRect = stagePlugRect[stageIdx];
+                    default         -> { /* STAGE_SELECT, STAGES — stage-scoped only */ }
+                }
+                if (partRect != null) {
+                    g.setStroke(new BasicStroke(2.4f));
+                    g.setColor(ACCENT);
+                    g.draw(partRect);
+                }
+            } else {
+                Shape act = hitShapes.get(activeSlot);
+                if (act != null && activeSlot != NukeSlot.CONFIGURATION) {
+                    g.setStroke(new BasicStroke(2.4f));
+                    g.setColor(ACCENT);
+                    g.draw(act);
+                }
             }
 
             g.dispose();
@@ -2360,62 +2559,6 @@ public class NukeBuilderDialog extends JPanel {
             }
         }
 
-        // ─── Linear (cylindrical) implosion — narrow shell, axial implosion ───
-        private void drawLinearImplosion(Graphics2D g, int cx, int devTop, int devBot) {
-            // Always packaged in a narrow shell (artillery / RV)
-            int devH = devBot - devTop;
-            int devW = Math.min(virtW - 2 * DEV_MARGIN, Math.max(200, devH / 4));
-            Rectangle2D bay = paintShell(g, cx, devTop, devBot, devW, 0, 0);
-
-            double pitH = bay.getHeight() * 0.42;
-            double pitW = bay.getWidth() * 0.45;
-            double pitCy = bay.getCenterY();
-
-            // ── Layer 0: tamper sleeve — paint FIRST as the outermost band
-            //    so it visibly wraps the entire pit assembly. ──
-            double tamperPad = 14;
-            Rectangle2D tamper = new Rectangle2D.Double(
-                    cx - pitW / 2 - tamperPad,
-                    pitCy - pitH / 2 - tamperPad - 22,
-                    pitW + 2 * tamperPad,
-                    pitH + 2 * tamperPad + 44);
-            paintRegion(g, NukeSlot.TAMPER, tamper, true);
-            anchorLabel(NukeSlot.TAMPER,
-                    new Point((int) tamper.getX(), (int) tamper.getCenterY()), false);
-
-            // ── Layer 1: HE charges at top and bottom (inside the tamper).
-            //    Combined into a single Area so the IMPLOSION slot's
-            //    highlight + click region covers BOTH halves uniformly. ──
-            Rectangle2D heTop = new Rectangle2D.Double(
-                    cx - pitW / 2 - 4, pitCy - pitH / 2 - 22,
-                    pitW + 8, 18);
-            Rectangle2D heBot = new Rectangle2D.Double(
-                    cx - pitW / 2 - 4, pitCy + pitH / 2 + 4,
-                    pitW + 8, 18);
-            Area heBoth = new Area(heTop);
-            heBoth.add(new Area(heBot));
-            paintRegion(g, NukeSlot.IMPLOSION, heBoth, true);
-            anchorLabel(NukeSlot.IMPLOSION,
-                    new Point((int) heTop.getMaxX(), (int) heTop.getCenterY()), true);
-
-            // ── Layer 2: cylindrical fissile pit — innermost, drawn LAST. ──
-            Rectangle2D pit = new Rectangle2D.Double(
-                    cx - pitW / 2, pitCy - pitH / 2, pitW, pitH);
-            paintRegion(g, NukeSlot.FISSILE, pit, true);
-            anchorLabel(NukeSlot.FISSILE,
-                    new Point((int) pit.getMaxX(), (int) pit.getCenterY()), true);
-
-            // Initiator dot at the centre of the pit.
-            Ellipse2D init = circle(cx, pitCy, 4);
-            paintRegion(g, NukeSlot.INITIATOR, init, true);
-            anchorLabel(NukeSlot.INITIATOR, new Point(cx, (int) pitCy), true);
-
-            // Detonator markers on the outer face of each HE charge.
-            g.setColor(new Color(255, 230, 120));
-            g.fillOval(cx - 2, (int) heTop.getY() - 4, 4, 4);
-            g.fillOval(cx - 2, (int) heBot.getMaxY(), 4, 4);
-        }
-
         // ─── Sloika / layer-cake (single-stage thermonuclear) ───
         private void drawSloika(Graphics2D g, int cx, int devTop, int devBot) {
             int[] body = bodyForDelivery(cx, devTop, devBot);
@@ -2528,6 +2671,7 @@ public class NukeBuilderDialog extends JPanel {
             // The outer SECONDARY shell registers the click target for the
             // whole secondary stage and is drawn first as the ablator/pusher.
             paintRegion(g, NukeSlot.SECONDARY, secondaryShape, true);
+            stageOuterShape[0] = secondaryShape;
             anchorLabel(NukeSlot.SECONDARY,
                     new Point((int) secondary.getMaxX(), (int) secondary.getCenterY()), true);
 
@@ -2537,32 +2681,12 @@ public class NukeBuilderDialog extends JPanel {
             double sx = secondary.getX(), sy = secondary.getY();
             double sw = secondary.getWidth(), sh = secondary.getHeight();
 
-            // Optional outer U-238 tertiary jacket (3-stage or 4-stage).
-            if (fusion.stageCount >= 2) {
-                Rectangle2D jacket = new Rectangle2D.Double(sx + 2, sy + 2, sw - 4, sh - 4);
-                g.setColor(new Color(70, 55, 40));
-                g.fill(jacket);
-                g.setColor(new Color(140, 110, 80));
-                g.setStroke(new BasicStroke(1.2f));
-                g.draw(jacket);
-                sx += 6; sy += 6; sw -= 12; sh -= 12;
-            }
-            // Hypothetical quaternary (4-stage) — a second jacket inside
-            // the first, drawn with a slightly cooler tint so the layers
-            // stay visually distinct.
-            if (fusion.stageCount >= 3) {
-                Rectangle2D q = new Rectangle2D.Double(sx + 2, sy + 2, sw - 4, sh - 4);
-                g.setColor(new Color(55, 45, 60));
-                g.fill(q);
-                g.setColor(new Color(120, 95, 140));
-                g.setStroke(new BasicStroke(1.2f));
-                g.draw(q);
-                sx += 6; sy += 6; sw -= 12; sh -= 12;
-            }
+            // (Multi-stage devices are rendered by drawMultiStage instead
+            // of stacking decorative jackets here.)
 
             // 1. Channel filler band just inside the case.
             Color fillerCol, fillerEdge;
-            switch (fusion.channelFiller) {
+            switch (fusion.channelFiller[0]) {
                 case "Vacuum":
                     fillerCol = new Color(20, 30, 40); fillerEdge = new Color(80, 110, 140); break;
                 case "Polystyrene foam":
@@ -2575,29 +2699,21 @@ public class NukeBuilderDialog extends JPanel {
             g.setColor(fillerEdge);
             g.setStroke(new BasicStroke(1.0f));
             g.draw(foam);
-            // Tiny dot pattern only for foam (texture cue).
-            if (fusion.channelFiller.startsWith("Polystyrene")) {
-                g.setColor(new Color(140, 190, 220, 120));
-                for (int yy = (int) (foam.getY() + 6); yy < foam.getMaxY() - 4; yy += 7) {
-                    for (int xx = (int) (foam.getX() + 6); xx < foam.getMaxX() - 4; xx += 7) {
-                        g.fillOval(xx, yy, 2, 2);
-                    }
-                }
-            }
+            stageFoamRect[0] = foam;
 
             // 2. Pusher / tamper.
-            Color pusherCol, pusherEdge, pusherHatch;
-            switch (fusion.pusher) {
+            Color pusherCol, pusherEdge;
+            switch (fusion.pusher[0]) {
                 case "Lead":
                     pusherCol = new Color(80, 80, 95); pusherEdge = new Color(150, 150, 170);
-                    pusherHatch = new Color(45, 45, 55); break;
+                    break;
                 case "Tungsten":
                     pusherCol = new Color(60, 65, 75); pusherEdge = new Color(170, 175, 185);
-                    pusherHatch = new Color(30, 32, 40); break;
+                    break;
                 case "U-238":
                 default:
                     pusherCol = new Color(95, 75, 60); pusherEdge = new Color(150, 120, 95);
-                    pusherHatch = new Color(60, 45, 35); break;
+                    break;
             }
             Rectangle2D pusher = new Rectangle2D.Double(
                     sx + 12, sy + 10, sw - 24, sh - 20);
@@ -2605,11 +2721,7 @@ public class NukeBuilderDialog extends JPanel {
             g.fill(pusher);
             g.setColor(pusherEdge);
             g.draw(pusher);
-            g.setColor(pusherHatch);
-            for (int yy = (int) (pusher.getY() + 4); yy < pusher.getMaxY() - 2; yy += 6) {
-                g.drawLine((int) pusher.getX() + 3, yy,
-                        (int) pusher.getMaxX() - 3, yy);
-            }
+            stagePusherRect[0] = pusher;
 
             // 3. LiD fusion fuel.
             Rectangle2D fuel = new Rectangle2D.Double(
@@ -2618,22 +2730,30 @@ public class NukeBuilderDialog extends JPanel {
             g.fill(fuel);
             g.setColor(new Color(245, 220, 150));
             g.draw(fuel);
-            g.setColor(new Color(170, 140, 80, 180));
+            stageFuelRect[0] = fuel;
+            g.setColor(new Color(245, 240, 220));
             g.setFont(new Font("Monospaced", Font.BOLD, 9));
             FontMetrics fmF = g.getFontMetrics();
-            String fuelTag = fusion.fuel.startsWith("Cryogenic")
-                    ? "D2"
-                    : fusion.fuel.startsWith("Natural")
-                            ? "natLi-D" : "6Li-D";
+            String fuelTag = fusion.fuel[0].startsWith("Natural") ? "natLi-D" : "6Li-D";
             int tagW = fmF.stringWidth(fuelTag);
-            if (fuel.getWidth() > tagW + 10 && fuel.getHeight() > fmF.getHeight() + 4) {
-                g.drawString(fuelTag,
-                        (int) (fuel.getCenterX() - tagW / 2.0),
-                        (int) (fuel.getY() + fmF.getAscent() + 2));
+            if (fuel.getWidth() > fmF.getHeight() + 4 && fuel.getHeight() > tagW + 10) {
+                // The whole schematic is rotated 90° CW. Anchor the
+                // tag near the canvas-left edge of the fuel rect so it
+                // appears at the *display top* of the cylinder, then
+                // counter-rotate so the text reads horizontally.
+                // After the -90° rotation around (ax, ay), glyphs
+                // extend in canvas -y, so to centre the text on
+                // fuel.getCenterY() we offset ay by +tagW/2.
+                double ax = fuel.getX() + fmF.getAscent() + 2;
+                double ay = fuel.getCenterY() + tagW / 2.0;
+                java.awt.geom.AffineTransform old = g.getTransform();
+                g.rotate(-Math.PI / 2.0, ax, ay);
+                g.drawString(fuelTag, (int) ax, (int) ay);
+                g.setTransform(old);
             }
 
             // 4. Optional Pu-239 spark-plug rod down the central axis.
-            if (fusion.sparkPlug) {
+            if (fusion.sparkPlug[0]) {
                 int plugW = 8;
                 Rectangle2D plug = new Rectangle2D.Double(
                         cx - plugW / 2.0, fuel.getY() + 4,
@@ -2643,41 +2763,258 @@ public class NukeBuilderDialog extends JPanel {
                 g.setStroke(new BasicStroke(1.2f));
                 g.setColor(new Color(255, 200, 120));
                 g.draw(plug);
+                stagePlugRect[0] = plug;
             }
         }
 
-        // ─── Pure fusion (theoretical — no fission trigger) ───
-        private void drawPureFusion(Graphics2D g, int cx, int devTop, int devBot) {
-            int[] body = bodyForDelivery(cx, devTop, devBot);
+        // ════════════════════════════════════════════════════════════
+        // Multi-stage (3-stage / 4-stage) Teller-Ulam variant.
+        // Lays out the primary at the top of the radiation case and
+        // then stacks (totalStages - 1) secondary capsules vertically,
+        // each of which radiation-couples downward into the next. Only
+        // the topmost (true secondary) registers a SECONDARY hit shape;
+        // the lower stages are decorative tertiary / quaternary fuel
+        // packages whose materials follow the same fusion sub-design.
+        // ════════════════════════════════════════════════════════════
+        private void drawMultiStage(Graphics2D g, int cx, int devTop, int devBot,
+                                    int totalStages) {
+            int[] body = stubbyBody(cx, devTop, devBot);
             int devW = body[0], noseH = body[1], tailH = body[2];
             Rectangle2D bay = paintShell(g, cx, devTop, devBot, devW, noseH, tailH);
 
-            double cy = bay.getCenterY();
-            double R  = Math.min(bay.getWidth(), bay.getHeight()) * 0.32;
+            Shape radCase = new Rectangle2D.Double(
+                    bay.getX() + 1, bay.getY() + 1,
+                    bay.getWidth() - 2, bay.getHeight() - 2);
+            g.setColor(new Color(50, 55, 65));
+            g.fill(radCase);
+            g.setStroke(new BasicStroke(1.0f));
+            g.setColor(new Color(120, 135, 150));
+            g.draw(radCase);
+            Rectangle2D rcB = radCase.getBounds2D();
 
-            // Laser driver array — eight beams converging on the fuel pellet.
-            g.setStroke(new BasicStroke(1.4f));
-            for (int i = 0; i < 8; i++) {
-                double a = i * Math.PI / 4;
-                int x1 = (int) (cx + Math.cos(a) * R * 1.10);
-                int y1 = (int) (cy + Math.sin(a) * R * 1.10);
-                int x2 = (int) (cx + Math.cos(a) * R * 1.55);
-                int y2 = (int) (cy + Math.sin(a) * R * 1.55);
-                g.setColor(new Color(120, 200, 240));
-                g.drawLine(x1, y1, x2, y2);
-                g.fillOval(x2 - 4, y2 - 4, 8, 8);
+            // Use the *exact* same primary geometry as drawTellerUlam
+            // so the fission stage stays in a fixed visual position
+            // (and at a fixed size) regardless of stage count.
+            double margin  = 16;
+            double caseTop = rcB.getY() + margin;
+            double caseBot = rcB.getMaxY() - margin;
+            double caseH   = caseBot - caseTop;
+            double primR   = Math.min(rcB.getWidth() * 0.30, caseH * 0.22);
+
+            double primCy = caseTop + primR + 4;
+
+            // ── Primary (small implosion sphere up top) ──
+            paintLensRing(g, cx, primCy, primR);
+            paintRegion(g, NukeSlot.IMPLOSION, circle(cx, primCy, primR), true);
+            paintRegion(g, NukeSlot.TAMPER,    circle(cx, primCy, primR * 0.78), true);
+            paintRegion(g, NukeSlot.BOOST,     circle(cx, primCy, primR * 0.55), true);
+            paintRegion(g, NukeSlot.FISSILE,   circle(cx, primCy, primR * 0.42), true);
+            paintRegion(g, NukeSlot.INITIATOR, circle(cx, primCy, primR * 0.13), true);
+
+            // ── Stack the secondary capsules below the primary. ──
+            // The stack starts at the same Y as the 2-stage TU secondary
+            // (primCy + primR + 22) so the fission primary doesn't move
+            // when stages are added. The remaining room is then split
+            // equally among all (totalStages - 1) capsules so the top
+            // secondary shrinks along the long axis to make space for
+            // the tertiary / quaternary instead of pushing them off the
+            // case. Width still tapers per-stage.
+            int    nSecs    = totalStages - 1;
+            double stackTop = primCy + primR + 22;
+            double stackBot = caseBot - 4;
+            double gap      = 10;
+            double totalH   = stackBot - stackTop;
+            double secH     = (totalH - gap * (nSecs - 1)) / nSecs;
+            secH = Math.max(36, secH);
+
+            String[] stageNames = { "SECONDARY", "TERTIARY", "QUATERNARY" };
+            for (int i = 0; i < nSecs; i++) {
+                double secCy = stackTop + secH / 2.0 + i * (secH + gap);
+                // Match the 2-stage TU secondary width (0.72) for the
+                // top secondary, then taper inward for each tertiary /
+                // quaternary so the cascade is visually distinct.
+                double secW  = rcB.getWidth() * (0.72 - 0.10 * i);
+                drawSecondaryCapsule(g, cx, secCy, secW, secH, radCase,
+                        i == 0,
+                        i < stageNames.length ? stageNames[i] : "STAGE " + (i + 2),
+                        i);
+
+                // Radiation-coupling arrow into the next stage.
+                if (i < nSecs - 1) {
+                    int ay = (int) (secCy + secH / 2.0 + 2);
+                    int by = (int) (secCy + secH / 2.0 + gap - 2);
+                    g.setStroke(new BasicStroke(1.4f));
+                    g.setColor(new Color(255, 210, 120, 200));
+                    g.drawLine(cx, ay, cx, by);
+                    int[] xs = { cx - 4, cx + 4, cx };
+                    int[] ys = { by - 4, by - 4, by };
+                    g.fillPolygon(xs, ys, 3);
+                }
+            }
+        }
+
+        /** Draws one secondary fuel capsule (filler / pusher / fuel /
+         *  optional spark plug). When {@code isPrimarySecondary} is true
+         *  the outer shell registers as the SECONDARY hit shape; lower
+         *  stages are purely decorative. */
+        private void drawSecondaryCapsule(Graphics2D g, int cx, double secCy,
+                                          double secW, double secH, Shape radCase,
+                                          boolean isPrimarySecondary,
+                                          String label,
+                                          int stage) {
+            // Per-stage material picks. Falls back to the secondary's
+            // values for any out-of-range stage so the painter stays
+            // robust if it gets called with a bad index.
+            int s = (stage >= 0 && stage < FusionDetails.MAX) ? stage : 0;
+            String stageFiller   = fusion.channelFiller[s];
+            String stagePusher   = fusion.pusher[s];
+            String stageFuel     = fusion.fuel[s];
+            boolean stageSpark   = fusion.sparkPlug[s];
+            Rectangle2D secRect = new Rectangle2D.Double(
+                    cx - secW / 2, secCy - secH / 2, secW, secH);
+            Shape secondaryShape;
+            Rectangle2D secondary;
+            Area secArea = new Area(secRect);
+            secArea.intersect(new Area(radCase));
+            if (secArea.isEmpty()) {
+                secondaryShape = secRect;
+                secondary = secRect;
+            } else {
+                secondaryShape = secArea;
+                secondary = secArea.getBounds2D();
             }
 
-            // Fusion fuel pellet (D-T target). Reuse the SECONDARY slot
-            // so the player can still pick the fuel chemistry, but label
-            // it inline as a target rather than a thermonuclear secondary.
-            paintRegion(g, NukeSlot.SECONDARY, circle(cx, cy, R), true);
-            anchorLabel(NukeSlot.SECONDARY,
-                    new Point((int) (cx + R * 0.9), (int) cy), true);
+            if (isPrimarySecondary) {
+                // Register the click target for the SECONDARY slot but
+                // paint the shell with the same neutral jacket as the
+                // tertiary / quaternary stages. Otherwise the violet
+                // SECONDARY fill makes the top capsule look permanently
+                // highlighted even when the user is editing a *different*
+                // stage — the new editing-stage overlay is the single
+                // source of truth for "which stage is active".
+                hitShapes.put(NukeSlot.SECONDARY, secondaryShape);
+                g.setColor(new Color(70, 55, 40));
+                g.fill(secondaryShape);
+                g.setColor(new Color(140, 110, 80));
+                g.setStroke(new BasicStroke(1.2f));
+                g.draw(secondaryShape);
+            } else {
+                // Decorative tertiary/quaternary outer shell — U-238-tinted
+                // jacket that visually mimics the SECONDARY ablator but
+                // with a cooler hue so the user reads the cascade order.
+                g.setColor(new Color(70, 55, 40));
+                g.fill(secondaryShape);
+                g.setColor(new Color(140, 110, 80));
+                g.setStroke(new BasicStroke(1.2f));
+                g.draw(secondaryShape);
+            }
+            if (s >= 0 && s < FusionDetails.MAX) stageOuterShape[s] = secondaryShape;
 
-            g.setFont(new Font("SansSerif", Font.ITALIC, 10));
-            // (Inline text labels removed — the active component is
-            // identified through the left-hand slot/parts menu.)
+            double sx = secondary.getX(), sy = secondary.getY();
+            double sw = secondary.getWidth(), sh = secondary.getHeight();
+            if (sw < 30 || sh < 24) return; // too tiny for inner detail
+
+            // 1. Channel filler band.
+            Color fillerCol, fillerEdge;
+            switch (stageFiller) {
+                case "Vacuum":
+                    fillerCol = new Color(20, 30, 40); fillerEdge = new Color(80, 110, 140); break;
+                case "Polystyrene foam":
+                default:
+                    fillerCol = new Color(70, 110, 140); fillerEdge = new Color(120, 170, 200); break;
+            }
+            Rectangle2D foam = new Rectangle2D.Double(sx + 4, sy + 4, sw - 8, sh - 8);
+            g.setColor(fillerCol);
+            g.fill(foam);
+            g.setColor(fillerEdge);
+            g.setStroke(new BasicStroke(1.0f));
+            g.draw(foam);
+            stageFoamRect[s] = foam;
+
+            // 2. Pusher / tamper.
+            Color pusherCol, pusherEdge;
+            switch (stagePusher) {
+                case "Lead":
+                    pusherCol = new Color(80, 80, 95); pusherEdge = new Color(150, 150, 170); break;
+                case "Tungsten":
+                    pusherCol = new Color(60, 65, 75); pusherEdge = new Color(170, 175, 185); break;
+                case "U-238":
+                default:
+                    pusherCol = new Color(95, 75, 60); pusherEdge = new Color(150, 120, 95); break;
+            }
+            Rectangle2D pusher = new Rectangle2D.Double(
+                    sx + 12, sy + 10, sw - 24, sh - 20);
+            if (pusher.getWidth() > 0 && pusher.getHeight() > 0) {
+                g.setColor(pusherCol);
+                g.fill(pusher);
+                g.setColor(pusherEdge);
+                g.draw(pusher);
+                stagePusherRect[s] = pusher;
+            }
+
+            // 3. LiD fusion fuel.
+            Rectangle2D fuel = new Rectangle2D.Double(
+                    sx + 22, sy + 18, sw - 44, sh - 36);
+            if (fuel.getWidth() > 0 && fuel.getHeight() > 0) {
+                g.setColor(new Color(210, 180, 110));
+                g.fill(fuel);
+                g.setColor(new Color(245, 220, 150));
+                g.draw(fuel);
+                stageFuelRect[s] = fuel;
+
+                g.setColor(new Color(245, 240, 220));
+                g.setFont(new Font("Monospaced", Font.BOLD, 9));
+                FontMetrics fmF = g.getFontMetrics();
+                String fuelTag = stageFuel.startsWith("Natural") ? "natLi-D" : "6Li-D";
+                int tagW = fmF.stringWidth(fuelTag);
+                if (fuel.getWidth() > fmF.getHeight() + 4 && fuel.getHeight() > tagW + 10) {
+                    // Anchor near the canvas-left edge of the fuel
+                    // rect (= display top after the 90° CW canvas
+                    // rotation), centred along the long axis, then
+                    // counter-rotate so the text reads horizontally.
+                    // After the -90° rotation around (ax, ay), glyphs
+                    // extend in canvas -y, so to centre the text on
+                    // fuel.getCenterY() we offset ay by +tagW/2.
+                    double ax = fuel.getX() + fmF.getAscent() + 2;
+                    double ay = fuel.getCenterY() + tagW / 2.0;
+                    java.awt.geom.AffineTransform old = g.getTransform();
+                    g.rotate(-Math.PI / 2.0, ax, ay);
+                    g.drawString(fuelTag, (int) ax, (int) ay);
+                    g.setTransform(old);
+                }
+
+                // 4. Optional Pu-239 spark-plug rod. Drawn whenever
+                // *this* stage's spark plug is enabled — physically
+                // only the secondary uses one, but the per-stage UI
+                // lets the user override that for educational purposes.
+                if (stageSpark) {
+                    int plugW = 8;
+                    Rectangle2D plug = new Rectangle2D.Double(
+                            cx - plugW / 2.0, fuel.getY() + 4,
+                            plugW, fuel.getHeight() - 8);
+                    g.setColor(new Color(220, 150, 70));
+                    g.fill(plug);
+                    g.setStroke(new BasicStroke(1.2f));
+                    g.setColor(new Color(255, 200, 120));
+                    g.draw(plug);
+                    stagePlugRect[s] = plug;
+                }
+            }
+
+            // Stage label, in normal (horizontal) orientation for the
+            // user. The schematic canvas is rotated 90° CW, so:
+            //   • "display bottom-left of the stage" maps to canvas
+            //     bottom-right (sx+sw, sy+sh)
+            //   • a -90° (CCW) text rotation around that anchor cancels
+            //     the canvas rotation so the label reads left-to-right.
+            g.setFont(new Font("Monospaced", Font.BOLD, 9));
+            g.setColor(new Color(180, 210, 230, 220));
+            double ax = secondary.getMaxX() - 4;
+            double ay = secondary.getMaxY() - 4;
+            java.awt.geom.AffineTransform oldL = g.getTransform();
+            g.rotate(-Math.PI / 2.0, ax, ay);
+            g.drawString(label, (int) ax, (int) (ay - 2));
+            g.setTransform(oldL);
         }
 
         private void anchorLabel(NukeSlot slot, Point pivot, boolean rightSide) {

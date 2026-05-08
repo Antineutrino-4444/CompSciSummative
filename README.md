@@ -248,7 +248,7 @@ This file alone is the largest UI weakness in the project; see the dedicated sec
 
 ### 3.1 Architectural problems
 
-1. **God class.** Dialog construction, schematic painting (`SchematicPanel` inner class), terminal painting (`FuzeTerminal`), switcher rail painting (`SwitcherRail`), keyboard model (`FocusCol`, `fusionRowIndex`), domain logic (`FusionDetails` static struct, `slotApplicable`, `cfgIsLinear` filtering), styling, and dialog lifecycle all live in one file.
+1. **God class.** Dialog construction, schematic painting (`SchematicPanel` inner class), terminal painting (`FuzeTerminal`), switcher rail painting (`SwitcherRail`), keyboard model (`FocusCol`, `fusionRowIndex`), domain logic (`FusionDetails` static struct, `slotApplicable`), styling, and dialog lifecycle all live in one file.
 2. **No MVP/MVC.** The dialog *owns* a `NukeDesign`. There is no separate controller, no presenter, no event bus — every interaction directly mutates `design` from inside a button listener and then calls `refresh()` to rebuild the world.
 3. **`refresh()` is a sledgehammer.** Every state change rebuilds the parts list, repaints the schematic, repaints the fuze terminal, repaints the switcher rail, recomputes the build summary, recomputes the info text, recomputes derived stats, and repaints chrome. There is no diffing — clicking a single radio option rebuilds the entire palette column.
 4. **Duplicated palette of constants.** `DARK_BG`, `PANEL_BG`, `TEXT_FG`, `ACCENT`, `ACCENT_DIM`, `BTN_BG` are re-declared inside this class (lines 56–62) with values that drift from `SettingsPanel`'s "identical" palette.
@@ -266,7 +266,6 @@ This file alone is the largest UI weakness in the project; see the dedicated sec
 - **Three-column palette with a custom "switcher rail"** between the parts list and the fusion designer ([NukeBuilderDialog.java](src/main/java/com/tetris/view/NukeBuilderDialog.java#L237-L322)). The rail exists *only* to teach the user that the right-arrow key crosses a column boundary — a clear sign that the interaction model is non-obvious.
 - **The schematic is the headline visual but is the most passive part of the screen.** Slots are clicked from the textual list on the left, not from the schematic itself. The "click a region of the schematic to make that slot active" promise from the file's own header comment is only partially delivered.
 - **Forced ordering** — the user must select a "Configuration" first or every other slot shows the same scolding message ("Select a configuration first"). This is a wizard-style flow shoehorned into a free-form palette UI.
-- **Filtering rules are hardcoded** — e.g. "Two-point linear" implosion only shown for "Linear (cylindrical)" configs ([NukeBuilderDialog.java](src/main/java/com/tetris/view/NukeBuilderDialog.java#L455-L460)). These rules should live in `NukePart` / `NukeSlot` metadata, not in the view.
 - **Reset / Close are tiny footer buttons** under the slot list — easy to miss, no separation from the slot buttons themselves.
 - **No "save build / load build / share build"** — every session starts from blank.
 - **No undo / redo.** Misclicking a part means re-finding the previous one in the list.
