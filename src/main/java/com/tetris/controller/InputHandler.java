@@ -115,7 +115,7 @@ public class InputHandler implements KeyListener {
             rightDASCharged = false;
             rightFramesSinceShift = 0;
             rightJustPressed = true;
-        } else if (s.isSoftDrop(code)) {
+        } else if (s.isMoveDown(code)) {
             lastDownRepeatNs = System.nanoTime();
             downJustPressed = true;
         }
@@ -137,6 +137,10 @@ public class InputHandler implements KeyListener {
             rightDASCharged = false;
             rightFramesHeld = 0;
             rightFramesSinceShift = 0;
+        }
+        if (s.isMoveDown(code)) {
+            downJustPressed = false;
+            lastDownRepeatNs = 0L;
         }
     }
 
@@ -193,17 +197,21 @@ public class InputHandler implements KeyListener {
         if (isNewPress(s.getKeyHardDrop()))  controller.hardDrop();
         if (isNewPress(s.getKeyRotateCW()))  controller.rotateCW();
         if (isNewPress(s.getKeyRotateCCW())) controller.rotateCCW();
-        if (isNewPress(s.getKeyRotate180())) controller.rotate180();
         if (isNewPress(s.getKeyHold())  || isNewPress(s.getKeyHoldAlt()))  controller.hold();
-        if (isNewPress(s.getKeyPause()) || isNewPress(s.getKeyPauseAlt())) controller.togglePause();
-        if (isNewPress(s.getKeyReset()))    controller.restart();
+        if (isNewPress(s.getKeyPause()))    controller.togglePause();
+        if (isNewPress(s.getKeyPauseAlt())) controller.handleEscapePause();
+        if (isNewPress(s.getKeyExitStage())) controller.exitStage();
         if (isNewPress(s.getKeySettings())) controller.openSettings();
+        // Dev console — backtick / tilde key (same physical key, different shift state).
+        if (isNewPress(KeyEvent.VK_BACK_QUOTE)) controller.toggleDevConsole();
 
         // ──── Frame-counting DAS / ARR ────
         int dasFrames = Math.max(1, (s.getDasDelay() + FRAME_INTERVAL_MS - 1) / FRAME_INTERVAL_MS);
         int arrFrames = s.getArrInterval() == 0
                 ? 0
                 : Math.max(1, (s.getArrInterval() + FRAME_INTERVAL_MS / 2) / FRAME_INTERVAL_MS);
+
+        // Move left (MoveUp has no repeating game action — it's navigation-only in menus)
 
         // Move left
         if (pressedKeys.contains(s.getKeyMoveLeft())) {
@@ -256,8 +264,8 @@ public class InputHandler implements KeyListener {
             }
         }
 
-        // ──── Soft drop (kept ms-based — needs to scale with gravity) ────
-        if (pressedKeys.contains(s.getKeySoftDrop())) {
+        // ──── Soft drop / Move Down (kept ms-based — needs to scale with gravity) ────
+        if (pressedKeys.contains(s.getKeyMoveDown())) {
             long now = System.nanoTime();
             int sdf = s.getSoftDropFactor();
             if (downJustPressed) {
@@ -303,5 +311,29 @@ public class InputHandler implements KeyListener {
 
     public void consumeKey(int keyCode) {
         consumedKeys.add(keyCode);
+    }
+
+    /**
+     * Step 23 control refinement \u2014 forcibly clear ALL held-key state
+     * and reset DAS/ARR counters. Used by the MAB shell's input adapter
+     * when focus is lost, an overlay opens, the match restarts, or the
+     * window is deactivated. Without this, a missed {@code keyReleased}
+     * event (very common when focus shifts to a button) leaves a
+     * direction "stuck" in {@link #pressedKeys} and the controller
+     * keeps shifting that way forever.
+     */
+    public void releaseAll() {
+        pressedKeys.clear();
+        consumedKeys.clear();
+        leftFramesHeld = 0;
+        rightFramesHeld = 0;
+        leftDASCharged = false;
+        rightDASCharged = false;
+        leftFramesSinceShift = 0;
+        rightFramesSinceShift = 0;
+        leftJustPressed = false;
+        rightJustPressed = false;
+        downJustPressed = false;
+        lastDownRepeatNs = 0L;
     }
 }

@@ -6,7 +6,9 @@ import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -170,6 +172,8 @@ public class SettingsPanel extends JPanel {
         add(createButtonRow(), BorderLayout.SOUTH);
 
         loadFromSettings();
+        installKeyboardNavigation();
+        SwingUtilities.invokeLater(this::focusInitialControl);
     }
 
     /** Backwards-compatible constructor — kept so existing call sites
@@ -181,6 +185,235 @@ public class SettingsPanel extends JPanel {
 
     /** Returns true if the user clicked Save. */
     public boolean wasSaved() { return saved; }
+
+    /** Places keyboard selection on the first visible settings control. */
+    public void focusInitialControl() {
+        SwingUtilities.invokeLater(() -> {
+            List<Component> controls = currentKeyboardControls();
+            if (!controls.isEmpty()) controls.get(0).requestFocusInWindow();
+            else requestFocusInWindow();
+        });
+    }
+
+    private void installKeyboardNavigation() {
+        installControlBindings(this);
+
+        InputMap im = getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
+        ActionMap am = getActionMap();
+        bindPanelNav(im, am, "settingsPrevFallback", KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), -1);
+        bindPanelNav(im, am, "settingsNextFallback", KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), +1);
+        bindPanelNav(im, am, "settingsPrevLeftFallback", KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, 0), -1);
+        bindPanelNav(im, am, "settingsNextRightFallback", KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), +1);
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "settingsConfirmFallback");
+        am.put("settingsConfirmFallback", new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) {
+                activateFocusedControl();
+            }
+        });
+    }
+
+    private void bindPanelNav(InputMap im, ActionMap am, String name, KeyStroke key, int delta) {
+        im.put(key, name);
+        am.put(name, new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) {
+                focusRelative(delta);
+            }
+        });
+    }
+
+    private void installControlBindings(Component root) {
+        if (root instanceof JComponent jc && root != this && isKeyboardControl(jc)) {
+            installFocusedBindings(jc);
+            if (!(jc instanceof JTabbedPane)) return;
+        }
+        if (root instanceof JComboBox<?>) return;
+        if (root instanceof Container container) {
+            for (int i = 0; i < container.getComponentCount(); i++) {
+                installControlBindings(container.getComponent(i));
+            }
+        }
+    }
+
+    private void installFocusedBindings(JComponent c) {
+        InputMap im = c.getInputMap(JComponent.WHEN_FOCUSED);
+        ActionMap am = c.getActionMap();
+
+        bindControlNav(im, am, "settingsPrevControl", KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), -1);
+        bindControlNav(im, am, "settingsNextControl", KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), +1);
+
+        if (c instanceof JSlider) {
+            return; // Left/Right keep their native value-adjust behaviour.
+        }
+        if (c instanceof JComboBox<?>) {
+            im.put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, 0), "settingsComboPrev");
+            im.put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), "settingsComboNext");
+            im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "settingsComboOpen");
+            am.put("settingsComboPrev", new AbstractAction() {
+                @Override public void actionPerformed(ActionEvent e) { cycleCombo((JComboBox<?>) c, -1); }
+            });
+            am.put("settingsComboNext", new AbstractAction() {
+                @Override public void actionPerformed(ActionEvent e) { cycleCombo((JComboBox<?>) c, +1); }
+            });
+            am.put("settingsComboOpen", new AbstractAction() {
+                @Override public void actionPerformed(ActionEvent e) { toggleComboPopup((JComboBox<?>) c); }
+            });
+            return;
+        }
+        if (c instanceof JTabbedPane) {
+            im.put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, 0), "settingsTabPrev");
+            im.put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), "settingsTabNext");
+            im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "settingsTabEnter");
+            am.put("settingsTabPrev", new AbstractAction() {
+                @Override public void actionPerformed(ActionEvent e) { cycleTab((JTabbedPane) c, -1); }
+            });
+            am.put("settingsTabNext", new AbstractAction() {
+                @Override public void actionPerformed(ActionEvent e) { cycleTab((JTabbedPane) c, +1); }
+            });
+            am.put("settingsTabEnter", new AbstractAction() {
+                @Override public void actionPerformed(ActionEvent e) { focusRelative(+1); }
+            });
+            return;
+        }
+        if (c instanceof AbstractButton) {
+            bindControlNav(im, am, "settingsPrevButtonLeft", KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, 0), -1);
+            bindControlNav(im, am, "settingsNextButtonRight", KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), +1);
+            im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "settingsButtonEnter");
+            am.put("settingsButtonEnter", new AbstractAction() {
+                @Override public void actionPerformed(ActionEvent e) {
+                    if (c instanceof KeyBindButton kbb && kbb.isCapturing()) return;
+                    ((AbstractButton) c).doClick();
+                }
+            });
+        }
+    }
+
+    private void bindControlNav(InputMap im, ActionMap am, String name, KeyStroke key, int delta) {
+        im.put(key, name);
+        am.put(name, new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) {
+                if (keyCaptureActive()) return;
+                focusRelative(delta);
+            }
+        });
+    }
+
+    private void focusRelative(int delta) {
+        if (keyCaptureActive()) return;
+        List<Component> controls = currentKeyboardControls();
+        if (controls.isEmpty()) return;
+        Component focus = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        int idx = focusedControlIndex(controls, focus);
+        if (idx < 0) {
+            controls.get(0).requestFocusInWindow();
+            return;
+        }
+        int n = controls.size();
+        int next = ((idx + delta) % n + n) % n;
+        controls.get(next).requestFocusInWindow();
+    }
+
+    private void activateFocusedControl() {
+        if (keyCaptureActive()) return;
+        Component control = focusedKeyboardControl();
+        if (control instanceof AbstractButton button) {
+            button.doClick();
+        } else if (control instanceof JComboBox<?> combo) {
+            toggleComboPopup(combo);
+        } else if (control instanceof JTabbedPane) {
+            focusRelative(+1);
+        }
+    }
+
+    private Component focusedKeyboardControl() {
+        Component focus = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        for (Component control : currentKeyboardControls()) {
+            if (focus == control || (focus != null && control instanceof Container
+                    && SwingUtilities.isDescendingFrom(focus, (Container) control))) {
+                return control;
+            }
+        }
+        return null;
+    }
+
+    private int focusedControlIndex(List<Component> controls, Component focus) {
+        if (focus == null) return -1;
+        for (int i = 0; i < controls.size(); i++) {
+            Component control = controls.get(i);
+            if (focus == control || (control instanceof Container
+                    && SwingUtilities.isDescendingFrom(focus, (Container) control))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private List<Component> currentKeyboardControls() {
+        List<Component> out = new ArrayList<>();
+        collectKeyboardControls(this, out);
+        return out;
+    }
+
+    private void collectKeyboardControls(Component c, List<Component> out) {
+        if (c == null || !c.isVisible() || !c.isEnabled()) return;
+        if (c instanceof JTabbedPane tabs) {
+            if (tabs.isShowing()) out.add(tabs);
+            Component selected = tabs.getSelectedComponent();
+            if (selected != null) collectKeyboardControls(selected, out);
+            return;
+        }
+        if (c != this && isKeyboardControl(c)) {
+            if (c.isShowing()) out.add(c);
+            return;
+        }
+        if (c instanceof Container container) {
+            for (int i = 0; i < container.getComponentCount(); i++) {
+                collectKeyboardControls(container.getComponent(i), out);
+            }
+        }
+    }
+
+    private boolean isKeyboardControl(Component c) {
+        return c instanceof JSlider
+                || c instanceof JComboBox<?>
+                || c instanceof JTabbedPane
+                || c instanceof AbstractButton;
+    }
+
+    private boolean keyCaptureActive() {
+        Component focus = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        KeyBindButton button = focusedKeyBindButton(focus);
+        return button != null && button.isCapturing();
+    }
+
+    private KeyBindButton focusedKeyBindButton(Component focus) {
+        if (focus == null) return null;
+        for (KeyBindButton button : keyBindButtons.values()) {
+            if (focus == button || SwingUtilities.isDescendingFrom(focus, button)) {
+                return button;
+            }
+        }
+        return null;
+    }
+
+    private void cycleCombo(JComboBox<?> combo, int delta) {
+        int n = combo.getItemCount();
+        if (n <= 0) return;
+        int next = ((combo.getSelectedIndex() + delta) % n + n) % n;
+        combo.setSelectedIndex(next);
+    }
+
+    private void toggleComboPopup(JComboBox<?> combo) {
+        if (combo.isPopupVisible()) combo.hidePopup();
+        else combo.showPopup();
+    }
+
+    private void cycleTab(JTabbedPane tabs, int delta) {
+        int n = tabs.getTabCount();
+        if (n <= 0) return;
+        int next = ((tabs.getSelectedIndex() + delta) % n + n) % n;
+        tabs.setSelectedIndex(next);
+        tabs.requestFocusInWindow();
+    }
 
     // ═══════════════════════════════════════════════════════════════
     // TAB BUILDERS
@@ -241,16 +474,16 @@ public class SettingsPanel extends JPanel {
         Settings s = Settings.get();
         addKeyBindRow(panel, "Move Left",      "moveLeft",    s.getKeyMoveLeft());
         addKeyBindRow(panel, "Move Right",     "moveRight",   s.getKeyMoveRight());
-        addKeyBindRow(panel, "Soft Drop",      "softDrop",    s.getKeySoftDrop());
+        addKeyBindRow(panel, "Move Down",      "moveDown",    s.getKeyMoveDown());
+        addKeyBindRow(panel, "Move Up",        "moveUp",      s.getKeyMoveUp());
         addKeyBindRow(panel, "Hard Drop",      "hardDrop",    s.getKeyHardDrop());
         addKeyBindRow(panel, "Rotate CW",      "rotateCW",    s.getKeyRotateCW());
         addKeyBindRow(panel, "Rotate CCW",     "rotateCCW",   s.getKeyRotateCCW());
-        addKeyBindRow(panel, "Rotate 180\u00b0", "rotate180",   s.getKeyRotate180());
         addKeyBindRow(panel, "Hold",           "hold",        s.getKeyHold());
         addKeyBindRow(panel, "Hold (Alt)",     "holdAlt",     s.getKeyHoldAlt());
         addKeyBindRow(panel, "Pause",          "pause",       s.getKeyPause());
         addKeyBindRow(panel, "Pause (Alt)",    "pauseAlt",    s.getKeyPauseAlt());
-        addKeyBindRow(panel, "Reset",          "reset",       s.getKeyReset());
+        addKeyBindRow(panel, "Exit Stage",     "exitStage",   s.getKeyExitStage());
         addKeyBindRow(panel, "Settings",       "settings",    s.getKeySettings());
 
         return wrapInScrollPane(panel);
@@ -507,16 +740,16 @@ public class SettingsPanel extends JPanel {
         // Key bindings
         keyBindButtons.get("moveLeft").setKeyCode(s.getKeyMoveLeft());
         keyBindButtons.get("moveRight").setKeyCode(s.getKeyMoveRight());
-        keyBindButtons.get("softDrop").setKeyCode(s.getKeySoftDrop());
+        keyBindButtons.get("moveDown").setKeyCode(s.getKeyMoveDown());
+        keyBindButtons.get("moveUp").setKeyCode(s.getKeyMoveUp());
         keyBindButtons.get("hardDrop").setKeyCode(s.getKeyHardDrop());
         keyBindButtons.get("rotateCW").setKeyCode(s.getKeyRotateCW());
         keyBindButtons.get("rotateCCW").setKeyCode(s.getKeyRotateCCW());
-        keyBindButtons.get("rotate180").setKeyCode(s.getKeyRotate180());
         keyBindButtons.get("hold").setKeyCode(s.getKeyHold());
         keyBindButtons.get("holdAlt").setKeyCode(s.getKeyHoldAlt());
         keyBindButtons.get("pause").setKeyCode(s.getKeyPause());
         keyBindButtons.get("pauseAlt").setKeyCode(s.getKeyPauseAlt());
-        keyBindButtons.get("reset").setKeyCode(s.getKeyReset());
+        keyBindButtons.get("exitStage").setKeyCode(s.getKeyExitStage());
         keyBindButtons.get("settings").setKeyCode(s.getKeySettings());
 
         // Fire change listeners to update labels
@@ -557,16 +790,16 @@ public class SettingsPanel extends JPanel {
         // Key bindings
         s.setKeyMoveLeft(keyBindButtons.get("moveLeft").getKeyCode());
         s.setKeyMoveRight(keyBindButtons.get("moveRight").getKeyCode());
-        s.setKeySoftDrop(keyBindButtons.get("softDrop").getKeyCode());
+        s.setKeyMoveDown(keyBindButtons.get("moveDown").getKeyCode());
+        s.setKeyMoveUp(keyBindButtons.get("moveUp").getKeyCode());
         s.setKeyHardDrop(keyBindButtons.get("hardDrop").getKeyCode());
         s.setKeyRotateCW(keyBindButtons.get("rotateCW").getKeyCode());
         s.setKeyRotateCCW(keyBindButtons.get("rotateCCW").getKeyCode());
-        s.setKeyRotate180(keyBindButtons.get("rotate180").getKeyCode());
         s.setKeyHold(keyBindButtons.get("hold").getKeyCode());
         s.setKeyHoldAlt(keyBindButtons.get("holdAlt").getKeyCode());
         s.setKeyPause(keyBindButtons.get("pause").getKeyCode());
         s.setKeyPauseAlt(keyBindButtons.get("pauseAlt").getKeyCode());
-        s.setKeyReset(keyBindButtons.get("reset").getKeyCode());
+        s.setKeyExitStage(keyBindButtons.get("exitStage").getKeyCode());
         s.setKeySettings(keyBindButtons.get("settings").getKeyCode());
 
         s.save();
@@ -707,7 +940,28 @@ public class SettingsPanel extends JPanel {
             });
         }
 
+        @Override
+        protected void processKeyEvent(KeyEvent e) {
+            if (capturing) {
+                if (e.getID() == KeyEvent.KEY_PRESSED) {
+                    if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                        capturing = false;
+                        updateText();
+                    } else {
+                        keyCode = e.getKeyCode();
+                        capturing = false;
+                        updateText();
+                    }
+                }
+                e.consume();
+                return;
+            }
+            super.processKeyEvent(e);
+        }
+
         int getKeyCode() { return keyCode; }
+
+        boolean isCapturing() { return capturing; }
 
         void setKeyCode(int code) {
             this.keyCode = code;

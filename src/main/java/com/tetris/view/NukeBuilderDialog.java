@@ -437,6 +437,11 @@ public class NukeBuilderDialog extends JPanel {
         refresh();
     }
 
+    /** Returns the current conceptual builder model for MAB setup integration. */
+    public NukeDesign getDesignForIntegration() {
+        return design;
+    }
+
     /** Action row beneath the slot list. The Close button was removed
      *  (StartMenu provides a Back button in the top bar) and the Reset
      *  button was promoted to that same top bar — so this row is now
@@ -1695,13 +1700,13 @@ public class NukeBuilderDialog extends JPanel {
         InputMap im = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         ActionMap am = getActionMap();
 
-        // Arrow-keys-only interaction model (plus ESC to close the dialog).
-        // No ENTER, no SPACE, no number keys, no letter shortcuts —
-        // every action is reachable with the four arrow keys alone.
+        // Arrow-key interaction model (plus ENTER to confirm/focus the
+        // highlighted column and ESC to close the dialog).
         bind(im, am, "prevItem",   KeyStroke.getKeyStroke("UP"),    e -> handleVertical(-1));
         bind(im, am, "nextItem",   KeyStroke.getKeyStroke("DOWN"),  e -> handleVertical(+1));
         bind(im, am, "prevHoriz",  KeyStroke.getKeyStroke("LEFT"),  e -> handleHorizontal(-1));
         bind(im, am, "nextHoriz",  KeyStroke.getKeyStroke("RIGHT"), e -> handleHorizontal(+1));
+        bind(im, am, "confirm",    KeyStroke.getKeyStroke("ENTER"), e -> handleConfirm());
         bind(im, am, "close",      KeyStroke.getKeyStroke("ESCAPE"),e -> onClose.run());
     }
 
@@ -1717,6 +1722,14 @@ public class NukeBuilderDialog extends JPanel {
      *  sub-design row is currently active. */
     private void handleHorizontal(int delta) {
         moveColumn(delta);
+    }
+
+    private void handleConfirm() {
+        if (focusedColumn == FocusCol.SLOTS) {
+            moveColumn(+1);
+        } else {
+            refreshFocusChrome();
+        }
     }
 
     private static void bind(InputMap im, ActionMap am, String key,

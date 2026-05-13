@@ -1,0 +1,6 @@
+MAB board-AI pace probe: 8 s (500 ticks)
+diff      targetPps     drops    measPps  ticks  
+EASY      0.52          5        0.60     500      go=false
+NORMAL    1.04          9        1.08     500      go=false
+HARD      1.74          3        0.36     500      go=false
+DEBUG     3.13          8        0.96     500      go=false

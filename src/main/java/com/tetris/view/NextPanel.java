@@ -90,15 +90,15 @@ public class NextPanel extends JPanel {
         int rowH = 16;
 
         String[][] rows = {
-            { keyName(s.getKeyMoveLeft()) + " / " + keyName(s.getKeyMoveRight()), "Move" },
-            { keyName(s.getKeySoftDrop()),  "Soft drop" },
+            { keyName(s.getKeyMoveLeft()) + "/" + keyName(s.getKeyMoveRight()), "Move L/R" },
+            { keyName(s.getKeyMoveDown()),  "Move Down" },
+            { keyName(s.getKeyMoveUp()),    "Move Up" },
             { keyName(s.getKeyHardDrop()),  "Hard drop" },
             { keyName(s.getKeyRotateCW()),  "Rotate \u21bb" },
             { keyName(s.getKeyRotateCCW()), "Rotate \u21ba" },
-            { keyName(s.getKeyRotate180()), "Rotate 180\u00b0" },
             { keyName(s.getKeyHold()),      "Hold" },
             { keyName(s.getKeyPause()),     "Pause" },
-            { keyName(s.getKeyReset()),     "Reset" },
+            { keyName(s.getKeyExitStage()), "Exit Stage" },
             { keyName(s.getKeySettings()),  "Settings" },
         };
         g2.setFont(Theme.FONT_MONO);

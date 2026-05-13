@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Modern Tetris
+Comment=Launch Modern Tetris (clean rebuild + run)
+Exec=bash -c 'cd "$(dirname "%k")" && ./run.sh; exec bash'
+Path=.
+Terminal=true
+Categories=Game;

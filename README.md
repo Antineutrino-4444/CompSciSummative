@@ -110,7 +110,7 @@ Instead of pure random, all 7 pieces are shuffled into a "bag" and dealt in orde
 A T-Spin is recognized when: (1) the piece is T, (2) the last move was a rotation, and (3) at least 3 of the 4 diagonal corners around the T center are occupied. A "Mini" T-Spin occurs when fewer than 2 "front-facing" corners are filled (unless the 4th wall kick test was used, which promotes it to a full T-Spin).
 
 ### Lock Delay
-When a piece lands on the ground, a 500ms timer starts. If the player moves or rotates the piece, the timer resets — up to 15 times. This allows finesse moves at the bottom without rushing, while still preventing infinite stalling.
+When a piece lands on the ground, a 500ms timer starts. If the player moves or rotates the piece, the timer resets — up to 15 times. Pieces landed or pressed down with soft drop use a faster 35% lock delay, so the default soft-drop lock time is about 175ms.
 
 ---
 

@@ -1,6 +1,26 @@
 package com.tetris.model;
 
+import com.tetris.events.GameEventListener;
+import com.tetris.events.GameEventListener.GarbageInsertedEvent;
+import com.tetris.events.GameEventListener.HoldUsedEvent;
+import com.tetris.events.GameEventListener.LinesClearedEvent;
+import com.tetris.events.GameEventListener.MoveKind;
+import com.tetris.events.GameEventListener.PauseChangedEvent;
+import com.tetris.events.GameEventListener.PieceLockedEvent;
+import com.tetris.events.GameEventListener.PieceMovedEvent;
+import com.tetris.events.GameEventListener.PieceSpawnedEvent;
+import com.tetris.events.GameEventListener.PreviewAdvancedEvent;
+import com.tetris.events.GameEventListener.ScoreUpdatedEvent;
+import com.tetris.events.GameEventListener.TopOutEvent;
+import com.tetris.events.GameEventListener.TopOutReason;
+import com.tetris.events.GarbageRowPattern;
+
+import java.awt.Color;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 /**
  * GameState.java
@@ -88,7 +108,7 @@ public class GameState {
     // ─────────────────────── Components ─────────────────────────
 
     private final Board board;
-    private final BagRandomizer bag;
+    private BagRandomizer bag;
     private final ScoreSystem scoreSystem;
 
     // ─────────────────────── Piece State ────────────────────────
@@ -110,6 +130,7 @@ public class GameState {
     /** Timestamp (millis) when the lock delay started. */
     private long lockDelayStart;
 
+
     /** Number of lock resets used for the current piece. */
     private int lockResets;
 
@@ -124,6 +145,30 @@ public class GameState {
     /** The wall kick test index used for the last rotation (0 = no kick, 1–4 = kick tests). */
     private int lastKickIndex;
 
+    // ─────────────────────── Step 22: All-Spin Tracking ──────────
+
+    /**
+     * Step 22 \u2014 placement-input categories used by the MAB all-spin
+     * rule. Distinct from {@link #lastMoveWasRotation} (which the legacy
+     * T-spin scoring relies on) so we can apply modern rules without
+     * changing single-player scoring.
+     */
+    public enum LastPlacementInput { NONE, ROTATE, MOVE, SOFT_DROP, GRAVITY, HARD_DROP }
+
+    private LastPlacementInput lastPlacementInput = LastPlacementInput.NONE;
+    /**
+     * Step 22 \u2014 true while the current piece is still eligible for
+     * an immobile spin: a rotation has happened since spawn (or since the
+     * last horizontal move / hold), and no horizontal translation has
+     * happened since that last rotation. Soft drop, hard drop, and
+     * gravity do not clear this flag.
+     */
+    private boolean spinCandidate = false;
+    private int successfulRotationCountThisPiece = 0;
+    private boolean movedHorizontallyAfterLastRotation = false;
+    /** Step 22 \u2014 whether the most recent lock was a hard drop. */
+    private boolean hardDroppedThisLock = false;
+
     // ─────────────────────── Game State ─────────────────────────
 
     private boolean gameOver;
@@ -134,6 +179,20 @@ public class GameState {
 
     /** Timestamp of the last gravity drop. */
     private long lastGravityDrop;
+
+    // ─────────────────────── External integration ──────────────
+
+    /** Default color used when external systems push garbage rows. */
+    private static final Color GARBAGE_COLOR = new Color(120, 120, 120);
+
+    /** Listeners observing gameplay events (Mutually Assured Blocks, etc.). */
+    private final List<GameEventListener> listeners = new CopyOnWriteArrayList<>();
+
+    /** Monotonic counter incremented each time a piece is spawned (queue index). */
+    private int pieceCounter = 0;
+
+    /** Identifier reported in TopOutEvent — single-player default. */
+    private String playerId = "p1";
 
     // ─────────────────────── Constructor ─────────────────────────
 
@@ -159,6 +218,28 @@ public class GameState {
         this(1);
     }
 
+    /**
+     * Step 21 — MAB-only hook to swap the piece source after construction.
+     *
+     * <p>Replaces the bag, clears the hold slot, and re-spawns the current
+     * piece from the new source so the player starts from the deterministic
+     * shared sequence. Must be called BEFORE the player ever sees the board
+     * (typically immediately after construction, before any input).
+     *
+     * <p>This is offline-only and must NOT be used by normal single-player
+     * Tetris; doing so would change observable randomization behavior.
+     */
+    public void replacePieceSourceForMabSharedSequence(BagRandomizer newBag) {
+        if (newBag == null) throw new IllegalArgumentException("newBag");
+        this.bag = newBag;
+        this.holdPiece = null;
+        this.holdUsed = false;
+        // pieceCounter increments inside spawnNextPiece(); rewind so the
+        // new sequence's piece #1 is reported as piece index 0 to listeners.
+        this.pieceCounter = 0;
+        spawnNextPiece();
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // PIECE SPAWNING
     // ═══════════════════════════════════════════════════════════════
@@ -171,11 +252,18 @@ public class GameState {
      */
     private void spawnNextPiece() {
         TetrominoType nextType = bag.next();
+        // Notify listeners that the preview queue advanced.
+        fire(l -> l.onPreviewAdvanced(new PreviewAdvancedEvent(
+                nextType,
+                bag.peek(Settings.get().getPreviewCount()))));
+
         currentPiece = Tetromino.spawn(nextType, Board.WIDTH);
 
         // Check for block-out (can't place the spawned piece)
         if (!board.isValidPosition(currentPiece)) {
             gameOver = true;
+            fire(l -> l.onTopOut(new TopOutEvent(
+                    playerId, TopOutReason.BLOCK_OUT, board.getGridCopy())));
             return;
         }
 
@@ -187,6 +275,18 @@ public class GameState {
         lastKickIndex = 0;
         holdUsed = false; // Reset hold flag only here (once per lock, not per hold)
         justSpawned = true; // Flag for IRS/IHS detection
+        // Step 22 — reset all-spin tracking for the new piece.
+        lastPlacementInput = LastPlacementInput.NONE;
+        spinCandidate = false;
+        successfulRotationCountThisPiece = 0;
+        movedHorizontallyAfterLastRotation = false;
+        hardDroppedThisLock = false;
+        pieceCounter++;
+
+        final int idx = pieceCounter - 1;
+        final TetrominoType spawnedType = nextType;
+        fire(l -> l.onPieceSpawned(new PieceSpawnedEvent(
+                spawnedType, idx, board.getGridCopy())));
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -204,7 +304,12 @@ public class GameState {
         if (board.isValidPosition(moved)) {
             currentPiece = moved;
             lastMoveWasRotation = false;
+            // Step 22 — horizontal movement cancels spin candidacy.
+            lastPlacementInput = LastPlacementInput.MOVE;
+            spinCandidate = false;
+            movedHorizontallyAfterLastRotation = true;
             onSuccessfulMove();
+            firePieceMoved(MoveKind.LEFT, 0);
             return true;
         }
         return false;
@@ -221,7 +326,12 @@ public class GameState {
         if (board.isValidPosition(moved)) {
             currentPiece = moved;
             lastMoveWasRotation = false;
+            // Step 22 — horizontal movement cancels spin candidacy.
+            lastPlacementInput = LastPlacementInput.MOVE;
+            spinCandidate = false;
+            movedHorizontallyAfterLastRotation = true;
             onSuccessfulMove();
+            firePieceMoved(MoveKind.RIGHT, 0);
             return true;
         }
         return false;
@@ -239,6 +349,8 @@ public class GameState {
         if (board.isValidPosition(moved)) {
             currentPiece = moved;
             lastMoveWasRotation = false;
+            // Step 22 — vertical motion does NOT cancel spin candidacy.
+            lastPlacementInput = LastPlacementInput.SOFT_DROP;
             scoreSystem.addSoftDrop(1);
             // Update lowest Y
             int currentY = currentPiece.getBoardPosition().getY();
@@ -246,8 +358,6 @@ public class GameState {
                 lowestY = currentY;
                 lockResets = 0;
             }
-            // Soft drop does NOT reset lock delay — only lateral moves and rotations do.
-            // Just check if we left the ground (to deactivate lock delay).
             Tetromino below = currentPiece.moveDown();
             if (board.isValidPosition(below)) {
                 lockDelayActive = false;
@@ -255,7 +365,12 @@ public class GameState {
                 lockDelayActive = true;
                 lockDelayStart = System.currentTimeMillis();
             }
+            firePieceMoved(MoveKind.SOFT_DROP, 0);
             return true;
+        }
+        if (!board.isValidPosition(currentPiece.moveDown()) && !lockDelayActive) {
+            lockDelayActive = true;
+            lockDelayStart = System.currentTimeMillis();
         }
         return false;
     }
@@ -274,6 +389,12 @@ public class GameState {
 
         currentPiece = ghost;
         lastMoveWasRotation = false;  // Hard drop is a translation
+        // Step 22 — hard drop is a locking command, not a spin-canceling
+        // placement move. Preserve spin candidacy so the player can rotate
+        // into a slot and hard-drop for spin credit.
+        lastPlacementInput = LastPlacementInput.HARD_DROP;
+        hardDroppedThisLock = true;
+        firePieceMoved(MoveKind.HARD_DROP, 0);
         lockPiece();
     }
 
@@ -288,8 +409,10 @@ public class GameState {
      */
     public boolean rotateCW() {
         if (!canAct()) return false;
-        return tryRotation(currentPiece.rotateCW(), currentPiece.getRotationState(),
+        boolean ok = tryRotation(currentPiece.rotateCW(), currentPiece.getRotationState(),
                 (currentPiece.getRotationState() + 1) % 4);
+        if (ok) firePieceMoved(MoveKind.ROTATE_CW, lastKickIndex);
+        return ok;
     }
 
     /**
@@ -299,8 +422,10 @@ public class GameState {
      */
     public boolean rotateCCW() {
         if (!canAct()) return false;
-        return tryRotation(currentPiece.rotateCCW(), currentPiece.getRotationState(),
+        boolean ok = tryRotation(currentPiece.rotateCCW(), currentPiece.getRotationState(),
                 (currentPiece.getRotationState() + 3) % 4);
+        if (ok) firePieceMoved(MoveKind.ROTATE_CCW, lastKickIndex);
+        return ok;
     }
 
     /**
@@ -322,7 +447,13 @@ public class GameState {
             currentPiece = rotated;
             lastMoveWasRotation = true;
             lastKickIndex = 0;
+            // Step 22 — spin candidacy from a 180° rotation as well.
+            lastPlacementInput = LastPlacementInput.ROTATE;
+            spinCandidate = true;
+            successfulRotationCountThisPiece++;
+            movedHorizontallyAfterLastRotation = false;
             onSuccessfulMove();
+            firePieceMoved(MoveKind.ROTATE_180, 0);
             return true;
         }
 
@@ -337,7 +468,12 @@ public class GameState {
                 // for 90° kicks; 180° kicks don't have an equivalent so we
                 // keep the index for stat tracking but don't promote.
                 lastKickIndex = i + 1;
+                lastPlacementInput = LastPlacementInput.ROTATE;
+                spinCandidate = true;
+                successfulRotationCountThisPiece++;
+                movedHorizontallyAfterLastRotation = false;
                 onSuccessfulMove();
+                firePieceMoved(MoveKind.ROTATE_180, lastKickIndex);
                 return true;
             }
         }
@@ -365,6 +501,11 @@ public class GameState {
             currentPiece = rotated;
             lastMoveWasRotation = true;
             lastKickIndex = 0;
+            // Step 22 — mark spin candidate; cleared by horizontal move/hold.
+            lastPlacementInput = LastPlacementInput.ROTATE;
+            spinCandidate = true;
+            successfulRotationCountThisPiece++;
+            movedHorizontallyAfterLastRotation = false;
             onSuccessfulMove();
             return true;
         }
@@ -377,6 +518,10 @@ public class GameState {
                 currentPiece = kicked;
                 lastMoveWasRotation = true;
                 lastKickIndex = i + 1;  // 1-indexed (0 = no kick)
+                lastPlacementInput = LastPlacementInput.ROTATE;
+                spinCandidate = true;
+                successfulRotationCountThisPiece++;
+                movedHorizontallyAfterLastRotation = false;
                 onSuccessfulMove();
                 return true;
             }
@@ -406,11 +551,13 @@ public class GameState {
         if (holdUsed) return false;  // Already used hold this piece
 
         TetrominoType currentType = currentPiece.getType();
+        TetrominoType incoming;
 
         if (holdPiece == null) {
             // Hold slot was empty → store current, spawn next from bag
             holdPiece = currentType;
             spawnNextPiece();
+            incoming = currentPiece == null ? null : currentPiece.getType();
         } else {
             // Swap: store current type, spawn the held type
             TetrominoType swapType = holdPiece;
@@ -418,6 +565,8 @@ public class GameState {
             currentPiece = Tetromino.spawn(swapType, Board.WIDTH);
             if (!board.isValidPosition(currentPiece)) {
                 gameOver = true;
+                fire(l -> l.onTopOut(new TopOutEvent(
+                        playerId, TopOutReason.BLOCK_OUT, board.getGridCopy())));
                 return false;
             }
             // Reset lock state for the swapped-in piece
@@ -426,9 +575,20 @@ public class GameState {
             lowestY = currentPiece.getBoardPosition().getY();
             lastMoveWasRotation = false;
             lastKickIndex = 0;
+            // Step 22 — hold clears spin candidacy for both the swapped-out
+            // and swapped-in piece.
+            lastPlacementInput = LastPlacementInput.NONE;
+            spinCandidate = false;
+            successfulRotationCountThisPiece = 0;
+            movedHorizontallyAfterLastRotation = false;
+            hardDroppedThisLock = false;
+            incoming = swapType;
         }
 
         holdUsed = true;
+        final TetrominoType outType = currentType;
+        final TetrominoType inType = incoming;
+        fire(l -> l.onHoldUsed(new HoldUsedEvent(outType, inType)));
         return true;
     }
 
@@ -454,14 +614,14 @@ public class GameState {
             lockResets = 0;
         }
 
-        updateLockDelay();
+        updateLockDelay(true);
     }
 
     /**
      * Updates the lock delay state based on whether the piece is resting
      * on the ground (can't move down).
      */
-    private void updateLockDelay() {
+    private void updateLockDelay(boolean allowReset) {
         Tetromino below = currentPiece.moveDown();
         boolean onGround = !board.isValidPosition(below);
 
@@ -470,7 +630,7 @@ public class GameState {
                 // Start a new lock delay
                 lockDelayActive = true;
                 lockDelayStart = System.currentTimeMillis();
-            } else if (lockResets < Settings.get().getMaxLockResets()) {
+            } else if (allowReset && lockResets < Settings.get().getMaxLockResets()) {
                 // Reset the lock timer (move/rotate on ground)
                 lockDelayStart = System.currentTimeMillis();
                 lockResets++;
@@ -526,8 +686,40 @@ public class GameState {
             }
         }
 
+        // ──── Step 22: All-spin immobile detection (before board write) ────
+        // The board does not yet contain this piece's cells, so testing
+        // translations on `currentPiece` against the board is correct.
+        boolean immobileSpin = false;
+        if (spinCandidate
+                && !movedHorizontallyAfterLastRotation
+                && successfulRotationCountThisPiece > 0
+                && currentPiece.getType() != TetrominoType.O
+                && SpinDetector.isImmobile(board, currentPiece)) {
+            immobileSpin = true;
+        }
+        boolean anySpin = isTSpin || isTSpinMini || immobileSpin;
+        // Build the human-readable spin label up-front (used by the
+        // detailed lock event below, regardless of line count).
+        final String spinLabel = !anySpin ? ""
+                : (isTSpin ? "T Spin"
+                        : (isTSpinMini ? "T Spin Mini"
+                                : (currentPiece.getType().name() + " Spin")));
+        final TetrominoType lockedTypeForSpin = currentPiece.getType();
+        final boolean tSpinFinal = isTSpin;
+        final boolean tSpinMiniFinal = isTSpinMini;
+        final boolean spinFinal = anySpin;
+        final boolean hardDroppedFinal = hardDroppedThisLock;
+
+        // Snapshot final cells + type before locking writes into the board.
+        final TetrominoType lockedType = currentPiece.getType();
+        final List<Position> finalCells = new ArrayList<>(Arrays.asList(currentPiece.getAbsoluteCells()));
+
         // ──── Lock the piece ────
         board.lockPiece(currentPiece);
+
+        // Notify listeners of the lock BEFORE line-clear shifting.
+        final Color[][] boardAfterLock = board.getGridCopy();
+        fire(l -> l.onPieceLocked(new PieceLockedEvent(lockedType, finalCells, boardAfterLock)));
 
         // ──── Check for lock-out (piece locked entirely in buffer zone) ────
         boolean allInBuffer = true;
@@ -539,22 +731,64 @@ public class GameState {
         }
         if (allInBuffer) {
             gameOver = true;
+            fire(l -> l.onTopOut(new TopOutEvent(
+                    playerId, TopOutReason.LOCK_OUT, board.getGridCopy())));
             return;
         }
 
         // ──── Clear lines ────
+        final List<Integer> rowIndices = new ArrayList<>(board.getLastClearedRowIndices());
         int linesCleared = board.clearLines();
+        // clearLines() refreshes the snapshot — read it AFTER the call.
+        rowIndices.clear();
+        rowIndices.addAll(board.getLastClearedRowIndices());
 
         // ──── All Clear / Perfect Clear detection ────
-        // tetr.io awards a flat 3500 × level when the board is completely
-        // empty after a line-clearing piece locks. This must be checked
-        // BEFORE spawning the next piece so the next piece's cells don't
-        // count as "occupied".
         boolean perfectClear = linesCleared > 0 && board.isCompletelyEmpty();
 
         // ──── Award score ────
         scoreSystem.onLineClear(linesCleared, isTSpin, isTSpinMini, perfectClear);
         scoreSystem.onPieceLocked();
+
+        // ──── Fire line-clear + score events ────
+        if (linesCleared > 0) {
+            final int cleared = linesCleared;
+            final boolean tSpin = isTSpin;
+            final boolean tSpinMini = isTSpinMini;
+            final boolean pc = perfectClear;
+            final boolean b2b = scoreSystem.isBackToBack();
+            final int combo = scoreSystem.getCombo();
+            fire(l -> l.onLinesCleared(new LinesClearedEvent(
+                    cleared, rowIndices,
+                    cleared == 4, tSpin, tSpinMini,
+                    b2b, pc, combo)));
+        }
+
+        // ──── Step 22: detailed unified lock result (always fires) ────
+        final int detailedLines = linesCleared;
+        final boolean detailedPC = perfectClear;
+        final boolean detailedB2B = scoreSystem.isBackToBack();
+        final int detailedCombo = scoreSystem.getCombo();
+        final int detailedPieces = pieceCounter;
+        fire(l -> l.onPieceLockedDetailed(new com.tetris.events.PieceLockResult(
+                lockedTypeForSpin,
+                detailedLines,
+                spinFinal,
+                tSpinFinal,
+                tSpinMiniFinal,
+                spinLabel,
+                detailedPC,
+                detailedB2B,
+                detailedCombo,
+                hardDroppedFinal,
+                detailedPieces)));
+
+        fire(l -> l.onScoreUpdated(new ScoreUpdatedEvent(
+                scoreSystem.getScore(),
+                scoreSystem.getCombo(),
+                scoreSystem.getB2bChain(),
+                scoreSystem.isBackToBack(),
+                scoreSystem.getLastAction())));
 
         // ──── Spawn next piece ────
         currentPiece = null;
@@ -668,8 +902,9 @@ public class GameState {
                     lockResets = 0;
                 }
                 changed = true;
+                firePieceMoved(MoveKind.GRAVITY, 0);
             }
-            updateLockDelay();
+            updateLockDelay(false);
             lastGravityDrop = now;
         }
 
@@ -687,7 +922,24 @@ public class GameState {
     // ═══════════════════════════════════════════════════════════════
 
     public void togglePause() {
-        paused = !paused;
+        setPaused(!paused, "toggle");
+    }
+
+    /** Pauses the game and notifies listeners with the supplied reason tag. */
+    public void pause(String reason) {
+        if (!paused) setPaused(true, reason);
+    }
+
+    /** Resumes the game and notifies listeners with the supplied reason tag. */
+    public void resume(String reason) {
+        if (paused) setPaused(false, reason);
+    }
+
+    private void setPaused(boolean newState, String reason) {
+        if (paused == newState) return;
+        paused = newState;
+        final String r = reason == null ? "" : reason;
+        fire(l -> l.onPauseChanged(new PauseChangedEvent(newState, r)));
     }
 
     public void restart() {
@@ -699,6 +951,13 @@ public class GameState {
     // ═══════════════════════════════════════════════════════════════
 
     public Board getBoard() { return board; }
+
+    /** Step 22 \u2014 probe-only: true if a spin would credit on lock right now. */
+    public boolean isSpinCandidatePending() {
+        return spinCandidate
+                && !movedHorizontallyAfterLastRotation
+                && successfulRotationCountThisPiece > 0;
+    }
     public Tetromino getCurrentPiece() { return currentPiece; }
     public TetrominoType getHoldPiece() { return holdPiece; }
     public boolean isHoldUsed() { return holdUsed; }
@@ -729,5 +988,150 @@ public class GameState {
      */
     private boolean canAct() {
         return !gameOver && !paused && currentPiece != null;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // EXTERNAL INTEGRATION API (Mutually Assured Blocks etc.)
+    // ═══════════════════════════════════════════════════════════════
+    // Everything in this section is purely additive: existing gameplay
+    // is unchanged whether or not any listeners are registered.
+
+    /** Registers a listener. Safe to call from any thread. */
+    public void addListener(GameEventListener listener) {
+        if (listener != null) listeners.add(listener);
+    }
+
+    /** Removes a previously registered listener. */
+    public void removeListener(GameEventListener listener) {
+        if (listener != null) listeners.remove(listener);
+    }
+
+    /** Number of currently registered listeners (mainly for tests). */
+    public int getListenerCount() {
+        return listeners.size();
+    }
+
+    /** Sets the player id reported in {@link TopOutEvent}. */
+    public void setPlayerId(String id) {
+        if (id != null && !id.isEmpty()) this.playerId = id;
+    }
+
+    /** Returns the player id used in events. */
+    public String getPlayerId() {
+        return playerId;
+    }
+
+    /**
+     * Pushes garbage rows into the bottom of the board. Each row is
+     * filled with a uniform garbage color except for {@code holeColumn}.
+     * Convenience overload — internally builds a repeated clean
+     * {@link GarbageRowPattern} and calls
+     * {@link #insertGarbagePattern(List, String)}.
+     *
+     * @param rows         number of garbage rows (no-op if &le; 0)
+     * @param holeColumn   column for the hole, clamped to [0, WIDTH-1]
+     * @return {@code true} if any rows were inserted
+     */
+    public boolean insertGarbage(int rows, int holeColumn) {
+        return insertGarbage(rows, holeColumn, "external");
+    }
+
+    /**
+     * As {@link #insertGarbage(int, int)} but tags the originating system
+     * (e.g. "nuke", "test") in the dispatched event.
+     */
+    public boolean insertGarbage(int rows, int holeColumn, String source) {
+        if (rows <= 0) return false;
+        int clamped = Math.max(0, Math.min(Board.WIDTH - 1, holeColumn));
+        return insertGarbagePattern(GarbageRowPattern.cleanRepeated(rows, clamped), source);
+    }
+
+    /**
+     * General patterned-garbage entry point. Each {@link GarbageRowPattern}
+     * specifies the hole columns (zero or more) and optional color/tag for
+     * one garbage row. The first element is inserted first and is shifted
+     * up as later rows are inserted, so the LAST element of {@code rows}
+     * ends up on the bottom-most row of the playfield.
+     *
+     * <p>Fires {@link GameEventListener#onGarbageInserted}, and — if the
+     * shift overflows the buffer or buries the active piece — also fires
+     * {@link GameEventListener#onTopOut} with reason
+     * {@link TopOutReason#GARBAGE_OVERFLOW}.
+     *
+     * @param rows    rows to insert (null/empty = no-op)
+     * @param source  free-form tag identifying the originator, e.g.
+     *                "nuke", "radiation", "test"
+     * @return {@code true} if any rows were inserted
+     */
+    public boolean insertGarbagePattern(List<GarbageRowPattern> rows, String source) {
+        if (rows == null || rows.isEmpty() || gameOver) return false;
+
+        boolean overflow = board.insertGarbageRows(rows, GARBAGE_COLOR);
+        int rowCount = rows.size();
+
+        // Lift the active piece by the same number of rows so it doesn't
+        // get clipped through the rising stack. If that's impossible the
+        // game tops out.
+        if (currentPiece != null) {
+            Tetromino lifted = currentPiece.translate(0, -rowCount);
+            if (board.isValidPosition(lifted)) {
+                currentPiece = lifted;
+                int y = currentPiece.getBoardPosition().getY();
+                if (y < lowestY) lowestY = y;
+            } else {
+                overflow = true;
+            }
+        }
+
+        // Build the per-row hole list snapshot for the event in the same
+        // top-to-bottom order they were inserted (i.e. matching the
+        // `rows` argument's iteration order).
+        List<List<Integer>> holesByRow = new ArrayList<>(rowCount);
+        for (GarbageRowPattern p : rows) {
+            holesByRow.add(p == null ? List.of() : List.copyOf(p.holeColumns()));
+        }
+        final int rCount = rowCount;
+        final List<List<Integer>> holesSnapshot = List.copyOf(holesByRow);
+        final String src = source == null ? "external" : source;
+        fire(l -> l.onGarbageInserted(new GarbageInsertedEvent(rCount, holesSnapshot, src)));
+
+        if (overflow) {
+            gameOver = true;
+            fire(l -> l.onTopOut(new TopOutEvent(
+                    playerId, TopOutReason.GARBAGE_OVERFLOW, board.getGridCopy())));
+        }
+        return true;
+    }
+
+    /**
+     * Returns the current stack height (number of rows from the bottom
+     * up to the highest occupied cell).
+     */
+    public int getBoardHeight() {
+        return board.getStackHeight();
+    }
+
+    /**
+     * Returns a defensive deep-copy of the current board grid. Indexed as
+     * {@code [row][col]}, with row 0 at the top of the buffer zone.
+     */
+    public Color[][] getBoardSnapshot() {
+        return board.getGridCopy();
+    }
+
+    // ─────────────────── private dispatch helpers ────────────────
+
+    private void fire(Consumer<GameEventListener> action) {
+        if (listeners.isEmpty()) return;
+        for (GameEventListener l : listeners) {
+            try { action.accept(l); }
+            catch (RuntimeException ignored) { /* a buggy listener must not break the engine */ }
+        }
+    }
+
+    private void firePieceMoved(MoveKind kind, int kickIndex) {
+        if (currentPiece == null || listeners.isEmpty()) return;
+        final TetrominoType type = currentPiece.getType();
+        fire(l -> l.onPieceMoved(new PieceMovedEvent(type, kind, kickIndex)));
     }
 }

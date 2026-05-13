@@ -81,6 +81,13 @@ public class GameView extends JPanel {
         gamePanel.requestFocusInWindow();
     }
 
+    /** Step 23 \u2014 expose sub-panels so the MAB battle shell can
+     *  re-host them in a different layout while still piggy-backing on
+     *  this view's repaint timer and key listener wiring. */
+    public GamePanel getGamePanel() { return gamePanel; }
+    public NextPanel getNextPanel() { return nextPanel; }
+    public SidePanel getSidePanel() { return sidePanel; }
+
     /** Stops the repaint timer. Idempotent. */
     public void shutdown() {
         if (disposed) return;

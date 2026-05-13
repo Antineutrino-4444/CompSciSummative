@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import com.tetris.events.GarbageRowPattern;
+
 /**
  * Board.java
  * ==========
@@ -327,5 +329,103 @@ public class Board {
      */
     public List<Color[]> getLastClearedRowColors() {
         return lastClearedRowColors;
+    }
+
+    // ─────────────────────────── External Integration ────────────
+    // The methods below exist so that external systems (e.g. the
+    // "Mutually Assured Blocks" strategy layer) can read the board
+    // and inject garbage without reaching into the grid directly.
+
+    /**
+     * Returns the height of the locked stack, measured from the bottom of
+     * the board. 0 means the playfield is empty; {@link #TOTAL_HEIGHT}
+     * means the topmost buffer row contains a locked cell.
+     */
+    public int getStackHeight() {
+        for (int y = 0; y < TOTAL_HEIGHT; y++) {
+            for (int x = 0; x < WIDTH; x++) {
+                if (grid[y][x] != null) return TOTAL_HEIGHT - y;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Pushes {@code rows} garbage lines into the bottom of the playfield,
+     * shifting the existing stack upward by the same amount. Each garbage
+     * row is filled with {@code garbageColor} except for column
+     * {@code holeColumn}, which stays empty.
+     *
+     * @param rows           number of garbage rows to insert (no-op if &le; 0)
+     * @param holeColumn     column index for the hole (clamped to [0, WIDTH-1])
+     * @param garbageColor   color used to render the garbage cells
+     * @return {@code true} if any locked cell was pushed off the top of
+     *         the buffer (caller may treat this as a top-out condition)
+     */
+    public boolean insertGarbageRows(int rows, int holeColumn, Color garbageColor) {
+        if (rows <= 0) return false;
+        int hole = Math.max(0, Math.min(WIDTH - 1, holeColumn));
+        boolean overflow = false;
+
+        for (int i = 0; i < rows; i++) {
+            // Detect overflow: anything in the top row will be lost on shift.
+            for (int x = 0; x < WIDTH; x++) {
+                if (grid[0][x] != null) { overflow = true; break; }
+            }
+            // Shift everything up by 1 row.
+            for (int y = 0; y < TOTAL_HEIGHT - 1; y++) {
+                System.arraycopy(grid[y + 1], 0, grid[y], 0, WIDTH);
+            }
+            // Write the new garbage row at the bottom.
+            for (int x = 0; x < WIDTH; x++) {
+                grid[TOTAL_HEIGHT - 1][x] = (x == hole) ? null : garbageColor;
+            }
+        }
+        return overflow;
+    }
+
+    /**
+     * Pushes a sequence of patterned garbage rows into the bottom of the
+     * playfield, supporting per-row hole layouts (e.g. radiation /
+     * messy garbage with multiple holes per row).
+     *
+     * <p>The first element of {@code patterns} is inserted first, then
+     * shifted up as later rows are inserted — so the LAST element of
+     * {@code patterns} ends up on the BOTTOM-most row of the playfield.
+     * If a row pattern's {@link GarbageRowPattern#color()} is {@code null},
+     * {@code defaultColor} is used for its filled cells. Hole indices
+     * outside {@code [0, WIDTH-1]} are silently ignored.
+     *
+     * @param patterns      rows to insert; null/empty means no-op
+     * @param defaultColor  fallback color for rows without an explicit color
+     * @return {@code true} if any locked cell was pushed off the top of
+     *         the buffer (caller may treat this as a top-out condition)
+     */
+    public boolean insertGarbageRows(List<GarbageRowPattern> patterns, Color defaultColor) {
+        if (patterns == null || patterns.isEmpty()) return false;
+        boolean overflow = false;
+
+        for (GarbageRowPattern pattern : patterns) {
+            // Detect overflow before shifting: anything in the top row will be lost.
+            for (int x = 0; x < WIDTH; x++) {
+                if (grid[0][x] != null) { overflow = true; break; }
+            }
+            // Shift everything up by 1 row.
+            for (int y = 0; y < TOTAL_HEIGHT - 1; y++) {
+                System.arraycopy(grid[y + 1], 0, grid[y], 0, WIDTH);
+            }
+            // Compute the per-column "is hole" flag for this row.
+            boolean[] hole = new boolean[WIDTH];
+            if (pattern != null) {
+                for (Integer h : pattern.holeColumns()) {
+                    if (h != null && h >= 0 && h < WIDTH) hole[h] = true;
+                }
+            }
+            Color color = (pattern != null && pattern.color() != null) ? pattern.color() : defaultColor;
+            for (int x = 0; x < WIDTH; x++) {
+                grid[TOTAL_HEIGHT - 1][x] = hole[x] ? null : color;
+            }
+        }
+        return overflow;
     }
 }

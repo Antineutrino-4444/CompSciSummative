@@ -1,6 +1,8 @@
 package com.tetris;
 
 import com.tetris.controller.GameController;
+import com.tetris.controller.GameLaunchMode;
+import com.tetris.model.Settings;
 import com.tetris.view.StartMenu;
 
 import javax.swing.SwingUtilities;
@@ -109,13 +111,21 @@ public class Main {
         // Create the controller and start on the EDT
         final int level = startLevel;
         SwingUtilities.invokeLater(() -> {
+            if (Boolean.getBoolean("tetris.controls.reset")) {
+                Settings.get().resetControlMappingsToDefaults();
+                Settings.get().setControlsWizardCompleted(false);
+                Settings.get().save();
+            }
             // Continuous menu: the StartMenu hosts every screen (settings,
             // nuke builder, the actual game) inside a CardLayout, so the
             // launcher window stays visible the whole session.
             StartMenu menu = new StartMenu(
-                    null,
                     level,
-                    GameController::new);
+                    (lvl, mode) -> new GameController(lvl, mode));
+            // Step 18 — wire the MAB PvE config-aware factory so the
+            // setup dialog can launch a configured PvE controller.
+            menu.setMabPveFactory(com.tetris.controller.GameController::new);
+            menu.setMabLocalPvpFactory(com.tetris.controller.GameController::new);
             menu.setVisible(true);
         });
     }

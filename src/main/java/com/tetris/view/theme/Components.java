@@ -38,6 +38,8 @@ public final class Components {
     public static enum ButtonStyle {
         /** Bold accent fill — used for the single dominant action on a screen. */
         PRIMARY,
+        /** Bold blue fill — used for the MAB / multiplayer entry point. */
+        PRIMARY_BLUE,
         /** Outlined / ghost — most actions. */
         SECONDARY,
         /** Subtle text-only — tertiary actions. */
@@ -196,30 +198,37 @@ public final class Components {
             });
         }
 
+        private static final Color BLUE_FILL        = new Color(0x1A, 0x5C, 0xCC);
+        private static final Color BLUE_BORDER      = new Color(0x4A, 0x9C, 0xFF);
+        private static final Color BLUE_BORDER_GLOW = new Color(0x80, 0xBF, 0xFF);
+
         private Color baseFill() {
             return switch (style) {
-                case PRIMARY   -> Theme.ACCENT;
-                case SECONDARY -> Theme.BG_2;
-                case TEXT      -> Theme.alpha(Theme.BG_2, 0);
-                case DANGER    -> Theme.alpha(Theme.DANGER, 50);
+                case PRIMARY      -> Theme.ACCENT;
+                case PRIMARY_BLUE -> BLUE_FILL;
+                case SECONDARY    -> Theme.BG_2;
+                case TEXT         -> Theme.alpha(Theme.BG_2, 0);
+                case DANGER       -> Theme.alpha(Theme.DANGER, 50);
             };
         }
 
         private Color borderColor() {
             return switch (style) {
-                case PRIMARY   -> Theme.ACCENT_BRIGHT;
-                case SECONDARY -> Theme.ACCENT_DIM;
-                case TEXT      -> Theme.alpha(Theme.ACCENT_DIM, 0);
-                case DANGER    -> Theme.DANGER;
+                case PRIMARY      -> Theme.ACCENT_BRIGHT;
+                case PRIMARY_BLUE -> BLUE_BORDER;
+                case SECONDARY    -> Theme.ACCENT_DIM;
+                case TEXT         -> Theme.alpha(Theme.ACCENT_DIM, 0);
+                case DANGER       -> Theme.DANGER;
             };
         }
 
         private Color textColor() {
             return switch (style) {
-                case PRIMARY   -> Theme.TEXT_ON_ACCENT;
-                case SECONDARY -> Theme.TEXT_PRIMARY;
-                case TEXT      -> Theme.TEXT_BODY;
-                case DANGER    -> Theme.DANGER;
+                case PRIMARY      -> Theme.TEXT_ON_ACCENT;
+                case PRIMARY_BLUE -> Color.WHITE;
+                case SECONDARY    -> Theme.TEXT_PRIMARY;
+                case TEXT         -> Theme.TEXT_BODY;
+                case DANGER       -> Theme.DANGER;
             };
         }
 
@@ -233,18 +242,22 @@ public final class Components {
             Color fill = baseFill();
             if (pressed)      fill = Theme.blend(fill, Color.BLACK, 0.20f);
             else if (hovered) fill = Theme.blend(fill, Color.WHITE, 0.10f);
+            else if (isFocusOwner()) fill = Theme.blend(fill, Theme.ACCENT_BRIGHT, 0.12f);
 
             g.setColor(fill);
             g.fillRoundRect(0, 0, w, h, Theme.RADIUS_M, Theme.RADIUS_M);
 
             // Border
-            g.setColor(borderColor());
+            g.setColor(isFocusOwner() ? Theme.ACCENT_BRIGHT : borderColor());
             g.drawRoundRect(0, 0, w - 1, h - 1, Theme.RADIUS_M, Theme.RADIUS_M);
+            if (isFocusOwner()) {
+                g.drawRoundRect(2, 2, w - 5, h - 5, Math.max(2, Theme.RADIUS_M - 2), Math.max(2, Theme.RADIUS_M - 2));
+            }
 
-            // Hover glow on primary
-            if (hovered && style == ButtonStyle.PRIMARY) {
+            // Hover glow on primary / primary-blue
+            if (hovered && (style == ButtonStyle.PRIMARY || style == ButtonStyle.PRIMARY_BLUE)) {
                 g.setComposite(AlphaComposite.SrcOver.derive(0.35f));
-                g.setColor(Theme.ACCENT_BRIGHT);
+                g.setColor(style == ButtonStyle.PRIMARY ? Theme.ACCENT_BRIGHT : BLUE_BORDER_GLOW);
                 g.drawRoundRect(-1, -1, w + 1, h + 1, Theme.RADIUS_M + 2, Theme.RADIUS_M + 2);
             }
 

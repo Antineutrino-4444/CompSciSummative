@@ -107,7 +107,6 @@ public class MainFrame extends JFrame {
         game.setFont(Theme.FONT_BODY);
 
         JMenuItem quit = new JMenuItem("Return to menu");
-        quit.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0));
         quit.addActionListener(e -> {
             if (confirmExit()) { repaintTimer.stop(); dispose(); }
         });
