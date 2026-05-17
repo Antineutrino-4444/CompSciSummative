@@ -7,13 +7,24 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
- * Step 16 — player-facing nuke preset entry. Wraps an existing
+ * Player-facing nuke preset entry. Wraps an existing
  * {@link NukeDesignFactory} factory method so the UI does not have to
- * construct {@link NukeDesign} records directly (the schema has many
- * required fields and DEFCON tables that were tuned in Step 3).
+ * construct {@link NukeDesign} records directly.
  *
- * <p>Custom point-and-click design construction is intentionally
- * deferred — see Step16.md, "intentionally not implemented yet".
+ * <p>The preset ladder mirrors the current MAB doctrine model and
+ * deliberately excludes MIRV / decoy / radar / warning concepts:
+ * <ol>
+ *   <li>Training Payload (placeholder)</li>
+ *   <li>Light Tactical Blast</li>
+ *   <li>Dirty Tactical Payload</li>
+ *   <li>EMP Disruptor</li>
+ *   <li>Bunker Buster</li>
+ *   <li>Concrete Blaster</li>
+ *   <li>Heavy Strategic Blast</li>
+ *   <li>Clean Fusion Strategic</li>
+ *   <li>Salted Payload</li>
+ *   <li>Doomsday Device</li>
+ * </ol>
  *
  * <p><b>Offline-only.</b>
  */
@@ -44,45 +55,47 @@ public final class MabNukePresetDefinition {
 
     // ─────────────────────── Built-in presets ────────────────
 
-    /**
-     * Returns the static preset list shown in the redesign panel. Uses
-     * existing {@link NukeDesignFactory} entries because their DEFCON
-     * tables and validation are already covered by Step 3 and the
-     * smoke simulation.
-     */
     public static List<MabNukePresetDefinition> defaults() {
         return List.of(
                 new MabNukePresetDefinition(
-                        "Placeholder Tactical",
-                        "Cheap fallback. Low yield, simple action code.",
+                        "Training Payload",
+                        "Cheap fallback. Low charge requirement, light impact.",
                         NukeDesignFactory::createDefaultPlaceholder),
                 new MabNukePresetDefinition(
-                        "Clean Fusion Strategic",
-                        "High blast, low radiation. Strategic-class doctrine.",
-                        NukeDesignFactory::createDefaultCleanFusion),
+                        "Light Tactical Blast",
+                        "Fast build. Short launch countdown. Low radiation, modest blast.",
+                        NukeDesignFactory::createDefaultTacticalBlast),
                 new MabNukePresetDefinition(
-                        "Dirty Tactical",
-                        "Tactical pressure. Heavy radiation, modest blast.",
-                        NukeDesignFactory::createDefaultDirtyBomb),
+                        "Dirty Tactical Payload",
+                        "Tactical pressure. Heavy delayed radiation waves.",
+                        NukeDesignFactory::createDefaultDirtyPayload),
                 new MabNukePresetDefinition(
-                        "Concrete Blaster",
-                        "Theater-class silo breaker. Heavy disarm + silo damage.",
-                        NukeDesignFactory::createDefaultConcreteBlaster),
-                new MabNukePresetDefinition(
-                        "MIRV Package",
-                        "Strategic MIRV. Multiple impact signatures.",
-                        NukeDesignFactory::createDefaultMirv),
-                new MabNukePresetDefinition(
-                        "EMP Special",
-                        "EMP-doctrine non-radiation strike.",
+                        "EMP Disruptor",
+                        "Low blast. Drains opponent charge, disrupts launch route.",
                         NukeDesignFactory::createDefaultEmp),
                 new MabNukePresetDefinition(
                         "Bunker Buster",
-                        "Deep-silo damage focus.",
+                        "Targets opponent silo / infrastructure. Moderate blast.",
                         NukeDesignFactory::createDefaultBunkerBuster),
                 new MabNukePresetDefinition(
-                        "Doomsday Demonstrator",
-                        "Doomsday-scale. Long timers, very expensive to charge.",
+                        "Concrete Blaster",
+                        "Anti-nuke role. Heavy disarm and silo damage.",
+                        NukeDesignFactory::createDefaultConcreteBlaster),
+                new MabNukePresetDefinition(
+                        "Heavy Strategic Blast",
+                        "Slow to arm. Decisive single-payload blast.",
+                        NukeDesignFactory::createDefaultHeavyBlast),
+                new MabNukePresetDefinition(
+                        "Clean Fusion Strategic",
+                        "Strong clean blast, low radiation, reliable.",
+                        NukeDesignFactory::createDefaultCleanFusion),
+                new MabNukePresetDefinition(
+                        "Salted Payload",
+                        "Extreme radiation identity. Long delayed waves.",
+                        NukeDesignFactory::createDefaultSaltedPayload),
+                new MabNukePresetDefinition(
+                        "Doomsday Device",
+                        "Doomsday-scale. Very expensive charge, long timers.",
                         NukeDesignFactory::createDefaultDoomsday)
         );
     }

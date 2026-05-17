@@ -860,6 +860,11 @@ public class MutuallyAssuredBlocksMatch {
         int newLevel = dcr.currentLevel();
         playerA.getNukeBuildState().refreshForDefcon(newLevel);
         playerB.getNukeBuildState().refreshForDefcon(newLevel);
+        // Step 26 (Nuke Builder integration) \u2014 refresh the simplified
+        // strategic state so the live HUD shows the new design-specific
+        // charge requirement and route goals after a DEFCON drop.
+        applyDesignToSimplifiedState(playerA);
+        applyDesignToSimplifiedState(playerB);
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("previousLevel", dcr.previousLevel());
         meta.put("currentLevel", newLevel);
@@ -879,6 +884,61 @@ public class MutuallyAssuredBlocksMatch {
     }
 
     // ─────────────────── Step 9: upgrade-point earning ─────────
+
+    /**
+     * Step 26 (Nuke Builder integration) — mirror the participant's
+     * currently equipped {@link com.tetris.mab.nuke.NukeDesign} into the
+     * simplified strategic state. Sets the design-specific charge
+     * requirement and launch-route goals (Tetris / spin) so the live HUD
+     * and probes always see the design's effective values.
+     */
+    public void applyDesignToSimplifiedState(ParticipantState participant) {
+        if (participant == null) return;
+        com.tetris.mab.NukeBuildState nb = participant.getNukeBuildState();
+        com.tetris.mab.clear.MabSimplifiedStrategicState s = participant.getSimplifiedState();
+        if (nb == null || s == null) return;
+        s.syncFromNuke(nb.getCurrentBuildCharge(),
+                Math.max(1, nb.getEffectiveBuildChargeRequired()));
+        s.setLaunchTetrisGoal(nb.getEffectiveLaunchTetrisGoal());
+        s.setLaunchSpinGoal(nb.getEffectiveLaunchSpinGoal());
+    }
+
+    /**
+     * Step 26 (Nuke Builder integration) — add raw escalation and
+     * trigger a full DEFCON refresh, including build-charge / route
+     * recomputation for both participants. Used by probes and any
+     * caller that needs to apply DEFCON pressure without going through
+     * a piece-clear event.
+     */
+    public DefconChangeResult addEscalationAndRefresh(int amount, String reason) {
+        DefconChangeResult dcr = defconState.addEscalation(amount, reason);
+        handleDefconChange(dcr);
+        return dcr;
+    }
+
+    /**
+     * Step 26 (Nuke Builder integration) — apply an entry-side warhead
+     * design from the setup screen. Updates {@link NukeBuildState} for
+     * the participant, then mirrors the design into the simplified
+     * strategic state so launch routes and charge requirement are
+     * design-specific from the very first piece.
+     */
+    public void applyWarheadDesign(ParticipantId pid,
+                                   com.tetris.mab.nuke.NukeDesign design) {
+        ParticipantState p = getParticipant(pid);
+        if (p == null || design == null) return;
+        p.getNukeBuildState().setDesign(design, defconState.getLevel());
+        applyDesignToSimplifiedState(p);
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("designId", design.getId());
+        meta.put("doctrine", design.getDoctrineType().name());
+        meta.put("size", design.getSizeCategory().name());
+        meta.put("chargeReq", p.getNukeBuildState().getEffectiveBuildChargeRequired());
+        meta.put("tetrisGoal", p.getNukeBuildState().getEffectiveLaunchTetrisGoal());
+        meta.put("spinGoal", p.getNukeBuildState().getEffectiveLaunchSpinGoal());
+        log("MAB_WARHEAD_DESIGN_APPLIED", pid,
+                design.getDisplayName(), meta);
+    }
 
     private void maybeAwardLineClearUpgradePoints(ParticipantState participant) {
         int total = participant.getLinesClearedTotal();

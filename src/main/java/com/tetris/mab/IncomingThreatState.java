@@ -75,6 +75,16 @@ public class IncomingThreatState {
     public NukeSizeCategory getSizeCategory() { return sizeCategory; }
     public int getWarningPiecesTotal() { return warningPiecesTotal; }
     public int getWarningPiecesRemaining() { return warningPiecesRemaining; }
+
+    /**
+     * Pieces between launch and impact for this incoming threat — the
+     * length of the intercept window. Player-facing label is "IMPACT IN
+     * N PIECES", never "warning time".
+     */
+    public int getImpactDelayPiecesTotal() { return warningPiecesTotal; }
+
+    /** Pieces remaining until impact for this incoming threat. */
+    public int getImpactDelayPiecesRemaining() { return warningPiecesRemaining; }
     public String getFlightTimerId() { return flightTimerId; }
     public ThreatStatus getStatus() { return status; }
     public boolean isIntercepted() { return intercepted; }

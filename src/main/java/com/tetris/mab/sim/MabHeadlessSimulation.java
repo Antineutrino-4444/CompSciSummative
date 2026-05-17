@@ -238,6 +238,16 @@ public final class MabHeadlessSimulation {
         MutuallyAssuredBlocksMatch match = MutuallyAssuredBlocksMatch.createLocalPvpShared(
                 a, b, MatchDifficulty.NORMAL, 14026L);
         match.startMatch();
+        // Step 26 — apply per-participant warhead designs if the config
+        // specifies them. Charge requirement and launch route are now
+        // design-specific, so this is how nuke-builder-balance scenarios
+        // pin a particular doctrine for each side.
+        if (cfg.playerADesign() != null) {
+            match.applyWarheadDesign(ParticipantId.PLAYER_A, cfg.playerADesign());
+        }
+        if (cfg.playerBDesign() != null) {
+            match.applyWarheadDesign(ParticipantId.PLAYER_B, cfg.playerBDesign());
+        }
         Setup s = new Setup(a, b, match,
                 new LinkedHashMap<>(), new long[]{Long.MIN_VALUE}, new int[]{0});
         tally(s);

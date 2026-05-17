@@ -358,7 +358,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
         bay.setOpaque(true);
         bay.setBackground(MabUiTheme.SHELL_PANEL_BG);
         bay.setBorder(new LineBorder(MabUiTheme.GRID_LINE, 1));
-        JLabel header = new JLabel("INTEL", SwingConstants.RIGHT);
+        JLabel header = new JLabel("STATUS", SwingConstants.RIGHT);
         header.setFont(MabUiTheme.TERM_TINY);
         header.setForeground(MabUiTheme.TEXT_FAINT);
         header.setBorder(new EmptyBorder(8, 8, 4, 12));
@@ -369,7 +369,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
         body.setLayout(new java.awt.GridLayout(0, 1, 0, 6));
         body.setBorder(new EmptyBorder(6, 10, 10, 10));
         for (String row : new String[]{"AI :: ONLINE", "PROFILE :: NORMAL", "RNG :: SHARED",
-                "DOCTRINE :: BAL", "RADAR :: PASSIVE"}) {
+                "DOCTRINE :: BAL", "MODE :: OFFLINE"}) {
             JLabel l = new JLabel(row, SwingConstants.RIGHT);
             l.setFont(MabUiTheme.TERM_TINY);
             l.setForeground(MabUiTheme.TEXT_FAINT);
@@ -379,10 +379,51 @@ public final class MabBattleShellPanel extends JLayeredPane {
         return bay;
     }
 
+    /**
+     * Step 26 — derive a compact warhead-profile line for the station
+     * banner. Format:
+     *
+     * <pre>
+     *   DESIGN: NAME | DOCTRINE | CHG cur/req | BLT/RAD/EMP/DIS/SIL
+     * </pre>
+     *
+     * Stays under ~70 chars so it fits the banner's sub-line at
+     * 1366×768 without clipping. Uses only safe game-mechanical labels.
+     */
+    private static String compactWarheadLine(MutuallyAssuredBlocksMatch match,
+                                             ParticipantId pid) {
+        if (match == null || pid == null) return "";
+        com.tetris.mab.ParticipantState p = match.getParticipant(pid);
+        if (p == null || p.getNukeBuildState() == null) return "";
+        com.tetris.mab.NukeBuildState nb = p.getNukeBuildState();
+        com.tetris.mab.nuke.NukeDesign d = nb.getCurrentDesign();
+        if (d == null) return "";
+        return String.format("%s | %s | %d/%d | B%d R%d E%d D%d S%d",
+                shortName(d.getDisplayName()),
+                d.getDoctrineType().displayLabel().toUpperCase(),
+                nb.getCurrentBuildCharge(),
+                nb.getEffectiveBuildChargeRequired(),
+                d.getBlastRating(),
+                d.getRadiationRating(),
+                d.getEmpRating(),
+                d.getDisarmRating(),
+                d.getSiloDamageRating());
+    }
+
+    private static String shortName(String n) {
+        if (n == null || n.isEmpty()) return "—";
+        return n.length() <= 22 ? n : n.substring(0, 22);
+    }
+
     /** Single fan-out refresh entry point for the controller's tick. */
     public void refreshAll(MutuallyAssuredBlocksMatch match) {
         if (match == null) return;
         currentMatch = match;
+        // Step 26 — push the live warhead profile line into each banner
+        // BEFORE refresh, so the banner's setSubB call sees the current
+        // design name.
+        playerBanner.setNukeDesignLine(compactWarheadLine(match, humanSide));
+        opponentBanner.setNukeDesignLine(compactWarheadLine(match, opponentSideId));
         playerBanner.refresh(match, humanSide, true);
         opponentBanner.refresh(match, opponentSideId, false);
         opsDeck.refresh(match, humanSide, opponentSideId);

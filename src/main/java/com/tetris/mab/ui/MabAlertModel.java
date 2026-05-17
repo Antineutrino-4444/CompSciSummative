@@ -34,15 +34,16 @@ public final class MabAlertModel {
         if (me != null) {
             if (me.impactReadyThreatCount() > 0) {
                 out.add(new MabAlert(0, MabAlertSeverity.CRITICAL,
-                        "Impact ready",
-                        "An incoming threat has reached impact. Use intercept or civil "
-                                + "defense, or it will resolve on the next tick."));
+                        "IMPACT PENDING",
+                        "Inbound impact is about to resolve. SPIN TO INTERCEPT, "
+                                + "or civil defense, or it lands next tick."));
             } else if (me.incomingThreatCount() > 0) {
                 out.add(new MabAlert(0, MabAlertSeverity.CRITICAL,
-                        "Incoming threat",
-                        "Threats inbound: " + me.incomingThreatCount()
-                                + ". Warning pieces remaining (first): "
-                                + me.firstIncomingThreatWarningPiecesRemaining() + "."));
+                        "INCOMING IMPACT",
+                        "Impacts inbound: " + me.incomingThreatCount()
+                                + ". IMPACT IN "
+                                + me.firstIncomingThreatWarningPiecesRemaining()
+                                + " PIECES."));
             }
             if (me.impactReadyLaunchCount() > 0) {
                 out.add(new MabAlert(0, MabAlertSeverity.WARNING,
@@ -65,11 +66,9 @@ public final class MabAlertModel {
                         "You have " + me.upgradePoints() + " upgrade point(s). "
                                 + "Open Upgrades when safe to spend them."));
             }
-            if (me.intelStale()) {
-                out.add(new MabAlert(0, MabAlertSeverity.WARNING,
-                        "Intel stale",
-                        "Opponent intel is stale — run a Radar Scan to refresh."));
-            }
+            // Legacy intel-staleness alert removed — the MAB design has
+            // no radar / intel UI, so there is nothing for the player to
+            // refresh.
             if (me.pendingConfirmationActionId() != null) {
                 out.add(new MabAlert(0, MabAlertSeverity.WARNING,
                         "Confirmation pending",
@@ -105,10 +104,10 @@ public final class MabAlertModel {
                         "Your launch authorized", e.message());
             case "INCOMING_THREAT_CREATED":
                 return new MabAlert(e.sequenceNumber(), MabAlertSeverity.CRITICAL,
-                        "Incoming threat", e.message());
+                        "INCOMING IMPACT", e.message());
             case "IMPACT_READY":
                 return new MabAlert(e.sequenceNumber(), MabAlertSeverity.CRITICAL,
-                        "Impact ready", e.message());
+                        "IMPACT PENDING", e.message());
             case "IMPACT_RESOLVED":
                 return new MabAlert(e.sequenceNumber(),
                         own ? MabAlertSeverity.WARNING : MabAlertSeverity.SUCCESS,
@@ -127,17 +126,12 @@ public final class MabAlertModel {
                 return new MabAlert(e.sequenceNumber(), MabAlertSeverity.WARNING,
                         "Intercept partial / failed", e.message());
             case "RADAR_SCAN_COMPLETED":
-                return new MabAlert(e.sequenceNumber(), MabAlertSeverity.INFO,
-                        "Radar scan complete", e.message());
             case "RADAR_SCAN_REJECTED":
-                return new MabAlert(e.sequenceNumber(), MabAlertSeverity.WARNING,
-                        "Radar scan rejected", e.message());
             case "DECOY_ACTIVATED":
-                if (opponent) return new MabAlert(e.sequenceNumber(),
-                        MabAlertSeverity.WARNING,
-                        "Opponent decoy", e.message());
-                return new MabAlert(e.sequenceNumber(), MabAlertSeverity.INFO,
-                        "Decoy active", e.message());
+                // Legacy radar / decoy events are no longer surfaced to
+                // the player. The MAB design intentionally has no radar,
+                // intel, or decoy player-facing UI.
+                return null;
             case "UPGRADE_APPLIED":
                 return new MabAlert(e.sequenceNumber(), MabAlertSeverity.SUCCESS,
                         "Upgrade applied", e.message());
