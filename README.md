@@ -20,15 +20,15 @@ java -jar target/modern-tetris-1.0.0.jar 5
 
 | Key | Action |
 |---|---|
-| ← → | Move left / right |
-| ↓ | Soft drop |
-| Space | Hard drop (instant lock) |
-| ↑ | Rotate clockwise |
-| Z | Rotate counter-clockwise |
-| A | Rotate 180° |
-| C / Shift | Hold piece |
-| P / Escape | Pause / resume |
-| R | Reset (anytime) |
+| A / D | Move left / right |
+| S | Soft drop |
+| R | Hard drop / confirm |
+| Q | Rotate clockwise |
+| F | Rotate counter-clockwise |
+| E | Hold piece |
+| K | Pause / resume |
+| Z | Exit stage |
+| X | Reset (anytime) |
 
 ## Features Implemented
 
@@ -51,7 +51,7 @@ java -jar target/modern-tetris-1.0.0.jar 5
 - **SDF (Soft Drop Factor)** — 6× gravity speed (from config.ttc: handling.sdf = 6)
 - **IRS (Initial Rotation System)** — tap mode: pre-rotate on spawn
 - **IHS (Initial Hold System)** — tap mode: pre-hold on spawn
-- **Reset** — R key resets the game at any time (not just game over/paused)
+- **Reset** - X key resets the game at any time (not just game over/paused)
 
 ### Scoring System
 - **Line clears**: Single (100), Double (300), Triple (500), Tetris (800) × level

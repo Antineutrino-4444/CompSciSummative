@@ -23,6 +23,7 @@ import com.tetris.view.MainFrame;
 import com.tetris.view.SettingsPanel;
 
 import com.tetris.view.DevConsolePanel;
+import com.tetris.view.PerfOverlayPanel;
 
 import javax.swing.JLayeredPane;
 import javax.swing.SwingUtilities;
@@ -91,6 +92,17 @@ public class GameController {
 
     // ─────────────── Dev console ──────────────────────────────────
     private DevConsolePanel devConsole;
+
+    // ─────────────── F3 performance overlay ───────────────────────
+    private PerfOverlayPanel perfOverlay;
+
+    // ─────────────── Cheat menu ───────────────────────────────────
+    private com.tetris.view.CheatMenuPanel cheatMenu;
+
+    // ─────────────── Global debug dispatcher (embedded mode) ──────
+    private java.awt.KeyEventDispatcher globalDebugDispatcher;
+    private final StringBuilder consoleHwBuf = new StringBuilder();
+    private static final String CONSOLE_HOTWORD = "debug";
 
     // ─────────────── FPS tracking ─────────────────────────────────
     private long   fpsBucketStart  = 0;
@@ -232,6 +244,15 @@ public class GameController {
 
     /** Stops both timers. Safe to call multiple times. */
     public void stop() {
+        if (globalDebugDispatcher != null) {
+            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                    .removeKeyEventDispatcher(globalDebugDispatcher);
+            globalDebugDispatcher = null;
+        }
+        if (cheatMenu != null) {
+            cheatMenu.setVisible(false);
+            cheatMenu = null;
+        }
         closeMabIntegrations();
         stopTimers();
         if (gameView != null) {
@@ -254,6 +275,51 @@ public class GameController {
     public javax.swing.JComponent startEmbedded(Runnable onExit) {
         Runnable exitAction = () -> { stop(); if (onExit != null) onExit.run(); };
         this.exitStageCallback = exitAction;
+
+        // Install global dispatcher first (FIFO — fires before any MAB adapter
+        // added later) so F3, backtick, and the "debug" hotword work in all modes.
+        globalDebugDispatcher = e -> {
+            if (e.getID() != java.awt.event.KeyEvent.KEY_PRESSED) return false;
+            int code = e.getKeyCode();
+            if (code == java.awt.event.KeyEvent.VK_F3) {
+                togglePerfOverlay();
+                return true;
+            }
+            if (code == java.awt.event.KeyEvent.VK_BACK_QUOTE) {
+                consoleHwBuf.setLength(0);
+                toggleDevConsole();
+                return true;
+            }
+            if (isDevConsoleOpen()) {
+                if (code == java.awt.event.KeyEvent.VK_ENTER) {
+                    devConsole.submitCurrentInput();
+                    return true;
+                }
+                if (devConsole != null) {
+                    SwingUtilities.invokeLater(devConsole::focusInput);
+                }
+            }
+            // Hotword tracking — returns false so game controls still receive letters.
+            if (code >= java.awt.event.KeyEvent.VK_A
+                    && code <= java.awt.event.KeyEvent.VK_Z
+                    && !isDevConsoleOpen()) {
+                char c = (char) ('a' + (code - java.awt.event.KeyEvent.VK_A));
+                consoleHwBuf.append(c);
+                if (consoleHwBuf.length() > CONSOLE_HOTWORD.length())
+                    consoleHwBuf.deleteCharAt(0);
+                if (consoleHwBuf.toString().equals(CONSOLE_HOTWORD)) {
+                    consoleHwBuf.setLength(0);
+                    toggleDevConsole();
+                }
+            } else if (code < java.awt.event.KeyEvent.VK_A
+                    || code > java.awt.event.KeyEvent.VK_Z) {
+                consoleHwBuf.setLength(0);
+            }
+            return false;
+        };
+        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                .addKeyEventDispatcher(globalDebugDispatcher);
+
         gameView = new GameView(gameState, inputHandler, exitAction);
         startTimers();
         openMabIntegrations();
@@ -289,6 +355,12 @@ public class GameController {
                     () -> toggleMabMatchPause("local-pvp"),
                     () -> {
                         if (localPvpInputRouter != null) localPvpInputRouter.releaseAll();
+                        if (mabBackToMenuCallback != null) {
+                            SwingUtilities.invokeLater(mabBackToMenuCallback);
+                        }
+                    },
+                    () -> {
+                        if (localPvpInputRouter != null) localPvpInputRouter.releaseAll();
                         if (mabRestartCallback != null) {
                             SwingUtilities.invokeLater(mabRestartCallback);
                         }
@@ -299,12 +371,14 @@ public class GameController {
             mabEmbeddedRefreshTimer = new Timer(100, e -> {
                 try {
                     if (mabMatch != null) {
-                        if (!mabMatch.isPaused()) {
+                        boolean devConsoleOpen = isDevConsoleOpen();
+                        if (!devConsoleOpen && !mabMatch.isPaused()) {
                             mabMatch.resolveAllImpactReady();
                             mabMatch.pruneCompletedThreats();
                         }
                         shellRef.refreshAll(mabMatch);
-                        if (!mabMatch.isPaused()
+                        if (!devConsoleOpen
+                                && !mabMatch.isPaused()
                                 && !shellRef.isUpgradeOverlayVisible()
                                 && !shellRef.isResultVisible()) {
                             var draft = mabMatch.tickUpgradeDrafts();
@@ -314,19 +388,38 @@ public class GameController {
                                 var inv = matchRef
                                         .getParticipant(draft.getParticipantId())
                                         .getUpgradeInventory();
+                                final com.tetris.mab.ParticipantId draftOwner = draft.getParticipantId();
                                 shellRef.showUpgradeOverlay(draft, inv, card -> {
+                                    if (card.hasTag("redesign_nuke")) {
+                                        java.awt.Window owner =
+                                                javax.swing.SwingUtilities.getWindowAncestor(shellRef);
+                                        String modalTitle = draftOwner == ParticipantId.PLAYER_A
+                                                ? "PLAYER 1 — REDESIGN YOUR NUKE"
+                                                : "PLAYER 2 — REDESIGN YOUR NUKE";
+                                        MabNukeDesignSelection newDesign = showNukeBuilderModal(modalTitle, owner);
+                                        int defcon = matchRef.getDefconState() != null
+                                                ? matchRef.getDefconState().getLevel() : 5;
+                                        try {
+                                            matchRef.getParticipant(draftOwner)
+                                                    .getNukeBuildState()
+                                                    .redesign(newDesign.getDesign(), defcon, 0.5);
+                                        } catch (RuntimeException ignored2) {}
+                                    }
                                     matchRef.applyHumanUpgradeChoice(card);
                                     shellRef.hideUpgradeOverlay();
                                     matchRef.closeUpgradePause("upgrade_draft");
+                                    shellRef.requestGameFocus();
                                 });
                             }
-                            // Detect DEFCON escalation → show nuke redesign for each player.
+                            // Detect DEFCON escalation → both players redesign their nuke.
                             int currentDefcon = mabMatch.getDefconState() != null
                                     ? mabMatch.getDefconState().getLevel() : pvpLastKnownDefcon;
                             if (currentDefcon < pvpLastKnownDefcon) {
                                 pvpLastKnownDefcon = currentDefcon;
                                 final var matchRef = mabMatch;
                                 matchRef.openUpgradePause("nuke_redesign");
+                                // Reset redesign card availability for next DEFCON level.
+                                resetNukeRedesignCardAvailability(matchRef);
                                 java.awt.Window owner =
                                         javax.swing.SwingUtilities.getWindowAncestor(shellRef);
                                 MabNukeDesignSelection p1 = showNukeBuilderModal(
@@ -427,13 +520,14 @@ public class GameController {
                 mabEmbeddedRefreshTimer = new Timer(100, e -> {
                     try {
                         if (mabMatch != null) {
-                            if (!mabMatch.isPaused()) {
+                            boolean devConsoleOpen = isDevConsoleOpen();
+                            if (!devConsoleOpen && !mabMatch.isPaused()) {
                                 mabMatch.resolveAllImpactReady();
                                 mabMatch.pruneCompletedThreats();
                             }
                             shellRef.refreshAll(mabMatch);
-                            // Step 24 — level-up upgrade draft polling.
-                            if (!mabMatch.isPaused()
+                            if (!devConsoleOpen
+                                    && !mabMatch.isPaused()
                                     && !shellRef.isUpgradeOverlayVisible()
                                     && !shellRef.isResultVisible()) {
                                 var draft = mabMatch.tickUpgradeDrafts();
@@ -443,11 +537,50 @@ public class GameController {
                                     var inv = matchRef
                                             .getParticipant(draft.getParticipantId())
                                             .getUpgradeInventory();
+                                    final com.tetris.mab.ParticipantId draftOwner = draft.getParticipantId();
                                     shellRef.showUpgradeOverlay(draft, inv, card -> {
+                                        if (card.hasTag("redesign_nuke")) {
+                                            java.awt.Window owner =
+                                                    javax.swing.SwingUtilities.getWindowAncestor(shellRef);
+                                            MabNukeDesignSelection newDesign = showNukeBuilderModal(
+                                                    "PLAYER 1 — REDESIGN YOUR NUKE", owner);
+                                            int defcon = matchRef.getDefconState() != null
+                                                    ? matchRef.getDefconState().getLevel() : 5;
+                                            try {
+                                                matchRef.getParticipant(draftOwner)
+                                                        .getNukeBuildState()
+                                                        .redesign(newDesign.getDesign(), defcon, 0.5);
+                                            } catch (RuntimeException ignored2) {}
+                                        }
                                         matchRef.applyHumanUpgradeChoice(card);
                                         shellRef.hideUpgradeOverlay();
                                         matchRef.closeUpgradePause("upgrade_draft");
+                                        shellRef.requestGameFocus();
                                     });
+                                }
+                                // Detect DEFCON escalation → player 1 redesigns their nuke.
+                                int currentDefcon = mabMatch.getDefconState() != null
+                                        ? mabMatch.getDefconState().getLevel() : pvpLastKnownDefcon;
+                                if (currentDefcon < pvpLastKnownDefcon) {
+                                    pvpLastKnownDefcon = currentDefcon;
+                                    final var matchRef = mabMatch;
+                                    matchRef.openUpgradePause("nuke_redesign");
+                                    resetNukeRedesignCardAvailability(matchRef);
+                                    java.awt.Window owner =
+                                            javax.swing.SwingUtilities.getWindowAncestor(shellRef);
+                                    MabNukeDesignSelection p1 = showNukeBuilderModal(
+                                            "PLAYER 1 — REDESIGN NUKE (DEFCON " + currentDefcon + ")",
+                                            owner);
+                                    int defcon = currentDefcon;
+                                    try {
+                                        matchRef.getParticipant(ParticipantId.PLAYER_A)
+                                                .getNukeBuildState()
+                                                .redesign(p1.getDesign(), defcon, 0.5);
+                                    } catch (RuntimeException ignored) {}
+                                    matchRef.closeUpgradePause("nuke_redesign");
+                                    shellRef.requestGameFocus();
+                                } else {
+                                    pvpLastKnownDefcon = currentDefcon;
                                 }
                             }
                         }
@@ -556,6 +689,7 @@ public class GameController {
                     final long[] lastLog = { 0L };
                     mabBoardAiTimer = new Timer(PHYSICS_INTERVAL_MS, e -> {
                         try {
+                            if (isDevConsoleOpen()) return;
                             driverRef.tick();
                             // Heartbeat ~ once per second so users can see
                             // the visible-board AI is actually ticking.
@@ -667,6 +801,18 @@ public class GameController {
         return result[0];
     }
 
+    /** Removes the redesign_nuke card from both participants' inventories so
+     *  it can be offered again at the new DEFCON level. */
+    private void resetNukeRedesignCardAvailability(MutuallyAssuredBlocksMatch match) {
+        if (match == null) return;
+        try {
+            var invA = match.getParticipant(ParticipantId.PLAYER_A).getUpgradeInventory();
+            if (invA != null) invA.removeUpgrade("redesign_nuke");
+            var invB = match.getParticipant(ParticipantId.PLAYER_B).getUpgradeInventory();
+            if (invB != null) invB.removeUpgrade("redesign_nuke");
+        } catch (RuntimeException ignored) {}
+    }
+
     private void closeMabIntegrations() {
         if (mabEmbeddedRefreshTimer != null) {
             mabEmbeddedRefreshTimer.stop();
@@ -757,6 +903,7 @@ public class GameController {
 
     /** Physics tick — runs at fixed 120 Hz. Updates game state only. */
     private void physicsTick() {
+        if (isDevConsoleOpen()) return;
         gameState.update();
         if (launchMode == GameLaunchMode.MAB_LOCAL_PVP && mabPlayerBState != null) {
             mabPlayerBState.update();
@@ -775,15 +922,26 @@ public class GameController {
         }
         fpsFrameCount++;
 
-        // 1. Process input (DAS/ARR for held keys)
-        if (launchMode == GameLaunchMode.MAB_LOCAL_PVP && localPvpInputRouter != null) {
-            localPvpInputRouter.processInput();
-        } else {
-            inputHandler.processInput();
+        // 1. Process input (DAS/ARR for held keys).
+        // Skip entirely when a keyboard-modal overlay is visible: processInput() calls
+        // drainPendingKeyEvents() which removes events from the AWT queue before they
+        // reach the KeyEventDispatcher chain, so the overlay's dispatcher never sees
+        // them and navigation appears broken.  The overlay has its own dispatcher that
+        // handles input correctly when processInput() is not draining the queue.
+        boolean modalOverlayUp = mabBattleShell != null
+                && mabBattleShell.isKeyboardModalOverlayVisible();
+        boolean devConsoleOpen = isDevConsoleOpen();
+        if (!modalOverlayUp && !devConsoleOpen) {
+            if (launchMode == GameLaunchMode.MAB_LOCAL_PVP && localPvpInputRouter != null) {
+                localPvpInputRouter.processInput();
+            } else {
+                inputHandler.processInput();
+            }
         }
 
         // 2. IRS/IHS: apply queued rotation/hold on freshly spawned pieces
-        if (launchMode != GameLaunchMode.MAB_LOCAL_PVP && gameState.wasJustSpawned()) {
+        if (!devConsoleOpen && launchMode != GameLaunchMode.MAB_LOCAL_PVP
+                && gameState.wasJustSpawned()) {
             Settings s = Settings.get();
             String irsMode = s.getIrsMode();
             String ihsMode = s.getIhsMode();
@@ -821,6 +979,9 @@ public class GameController {
 
         // 3. Repaint
         if (mainFrame != null) mainFrame.repaint();
+        if (perfOverlay != null && perfOverlay.isVisible()) {
+            perfOverlay.update(buildPerfString());
+        }
         if (gameView  != null) gameView.repaint();
         if (mabBattleShell != null) mabBattleShell.repaint();
     }
@@ -910,17 +1071,12 @@ public class GameController {
     /**
      * Restarts the game with a fresh state.
      *
-     * <p>Step 24 reset-key behaviour:
+     * <p>Reset-key behavior:
      * <ul>
-     *   <li>{@code MAB_PVE} — pressing R now restarts the entire MAB
-     *       match (both player and AI boards) by invoking the menu's
-     *       {@code mabRestartCallback}. Falls back to the legacy
-     *       single-board restart if no callback is wired (offline
-     *       headless tests).</li>
-     *   <li>All other modes (NORMAL_TETRIS / "PvP" single-player and
-     *       any future local 1v1 PvP) — pressing R does nothing.
-     *       Players asked for an explicit no-op so accidental R
-     *       presses can't wipe their game.</li>
+     *   <li>MAB modes restart the entire match by invoking the menu's
+     *       {@code mabRestartCallback}. Falls back to a single-board
+     *       reset when no callback is wired.</li>
+     *   <li>Normal Tetris resets the single board in place.</li>
      * </ul>
      */
     public void restart() {
@@ -972,7 +1128,11 @@ public class GameController {
         return gameState.getScoreSystem().getGravityInterval();
     }
 
-    // ─────────────────────── Dev console ─────────────────────────────────
+    // ─────────────────────── Dev console & perf overlay ──────────────────
+
+    public boolean isDevConsoleOpen() {
+        return devConsole != null && devConsole.isOpen();
+    }
 
     /** Toggle the dev console open/closed. Called by InputHandler on ` / ~ key. */
     public void toggleDevConsole() {
@@ -996,63 +1156,252 @@ public class GameController {
                 devConsole.revalidate();
             }
         }
+        boolean opening = !devConsole.isOpen();
+        if (opening) releaseGameplayInputs();
         devConsole.toggle();
     }
 
-    private java.awt.Window resolveWindow() {
-        if (mainFrame != null) return mainFrame;
-        if (gameView  != null) return SwingUtilities.getWindowAncestor(gameView);
-        if (mabBattleShell != null) return SwingUtilities.getWindowAncestor(mabBattleShell);
-        return null;
+    private void releaseGameplayInputs() {
+        if (inputHandler != null) inputHandler.releaseAll();
+        if (localPvpInputRouter != null) localPvpInputRouter.releaseAll();
     }
 
-    private String handleConsoleCommand(String cmd) {
-        return switch (cmd.toLowerCase().trim()) {
-            case "debug" -> buildDebugString();
-            default -> "unknown command: " + cmd + "  (type 'help' for commands)";
-        };
+    /** Toggle the F3 performance overlay. Called by InputHandler on F3 key. */
+    public void togglePerfOverlay() {
+        if (perfOverlay == null) {
+            perfOverlay = new PerfOverlayPanel();
+        }
+        java.awt.Window win = resolveWindow();
+        if (win != null) {
+            javax.swing.RootPaneContainer rpc = (win instanceof javax.swing.RootPaneContainer r) ? r : null;
+            if (rpc != null) {
+                JLayeredPane lp = rpc.getRootPane().getLayeredPane();
+                if (perfOverlay.getParent() != lp) {
+                    lp.add(perfOverlay, JLayeredPane.DRAG_LAYER);
+                }
+                // Fill the full layered pane so paintComponent can position the block.
+                perfOverlay.setBounds(0, 0, lp.getWidth(), lp.getHeight());
+                perfOverlay.revalidate();
+            }
+        }
+        boolean nowVisible = !perfOverlay.isVisible();
+        perfOverlay.setVisible(nowVisible);
+        if (nowVisible) perfOverlay.update(buildPerfString());
     }
 
-    private String buildDebugString() {
+    private String buildPerfString() {
         Runtime rt = Runtime.getRuntime();
         long heapUsed  = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
         long heapTotal = rt.totalMemory() / (1024 * 1024);
         long heapMax   = rt.maxMemory()   / (1024 * 1024);
-
         com.tetris.model.ScoreSystem sc = gameState.getScoreSystem();
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("╔══════════════════════════════════════════════════╗\n");
-        sb.append("║                  DEBUG STATS                    ║\n");
-        sb.append("╠══════════════════════════════════════════════════╣\n");
+        String modeStr = (mabMatch != null)
+                ? launchMode + "  match-paused=" + mabMatch.isPaused()
+                : launchMode.toString();
 
-        sb.append("║ [TIMING]                                         \n");
-        sb.append(String.format("║   Physics timer   : 120 Hz  (8 ms fixed)%n"));
-        sb.append(String.format("║   Render interval : %d ms  (detected %d Hz)%n",
-                renderIntervalMs, 1000 / Math.max(1, renderIntervalMs)));
-        sb.append(String.format("║   Render FPS      : %d fps  (last second)%n", lastRenderFps));
-
-        sb.append("║ [GAME STATE]                                     \n");
-        sb.append(String.format("║   Level           : %d%n", sc.getLevel()));
-        sb.append(String.format("║   Score           : %,d%n", sc.getScore()));
-        sb.append(String.format("║   Lines cleared   : %d%n", sc.getTotalLinesCleared()));
-        sb.append(String.format("║   Gravity interval: %d ms/row%n", getGravityInterval()));
-        sb.append(String.format("║   Paused          : %b%n", gameState.isPaused()));
-        sb.append(String.format("║   Game over       : %b%n", gameState.isGameOver()));
-
-        sb.append("║ [MAB STATE]                                      \n");
-        if (mabMatch != null) {
-            sb.append(String.format("║   Mode            : MAB PvE (%s)%n", launchMode));
-            sb.append(String.format("║   Match paused    : %b%n", mabMatch.isPaused()));
-        } else {
-            sb.append(String.format("║   Mode            : %s%n", launchMode));
-        }
-
-        sb.append("║ [MEMORY]                                         \n");
-        sb.append(String.format("║   Heap used       : %d MB%n", heapUsed));
-        sb.append(String.format("║   Heap total      : %d MB%n", heapTotal));
-        sb.append(String.format("║   Heap max        : %d MB%n", heapMax));
-        sb.append("╚══════════════════════════════════════════════════╝");
-        return sb.toString();
+        return "§h F3  PERFORMANCE\n"
+             + String.format(" FPS      %d  (target %d Hz)", lastRenderFps, 1000 / Math.max(1, renderIntervalMs)) + "\n"
+             + String.format(" Frame    %d ms  |  Physics 120 Hz", renderIntervalMs) + "\n"
+             + "§h\n"
+             + String.format(" Level    %d  |  Lines %d", sc.getLevel(), sc.getTotalLinesCleared()) + "\n"
+             + String.format(" Score    %,d", sc.getScore()) + "\n"
+             + String.format(" Gravity  %d ms/row  |  Paused %b", getGravityInterval(), gameState.isPaused()) + "\n"
+             + "§h\n"
+             + String.format(" Heap     %d / %d MB  (max %d MB)", heapUsed, heapTotal, heapMax) + "\n"
+             + String.format(" Mode     %s", modeStr);
     }
+
+    private java.awt.Window resolveWindow() {
+        if (mainFrame != null) return mainFrame;
+        if (gameView != null) {
+            java.awt.Window w = SwingUtilities.getWindowAncestor(gameView);
+            if (w != null) return w;
+        }
+        if (mabBattleShell != null) {
+            java.awt.Window w = SwingUtilities.getWindowAncestor(mabBattleShell);
+            if (w != null) return w;
+        }
+        return null;
+    }
+
+    private String handleConsoleCommand(String raw) {
+        String[] parts = raw.trim().split("\\s+", 2);
+        String verb = parts[0].toLowerCase();
+        String arg  = parts.length > 1 ? parts[1].trim() : "";
+        return switch (verb) {
+            case "fps"      -> lastRenderFps + " fps  (render interval " + renderIntervalMs + " ms)";
+            case "gc"       -> { Runtime.getRuntime().gc(); yield "GC requested."; }
+            case "debug"    -> {
+                gameState.setGravityFrozen(true);
+                SwingUtilities.invokeLater(this::toggleCheatMenu);
+                yield "Gravity frozen. Cheat menu opened.";
+            }
+            case "freeze"   -> { gameState.setGravityFrozen(true);  yield "Gravity frozen."; }
+            case "unfreeze" -> { gameState.setGravityFrozen(false); yield "Gravity unfrozen."; }
+            case "state"    -> mabMatch == null ? "Not in a MAB match." : consoleMabState();
+            case "charge"   -> consoleCharge(arg);
+            case "launch"   -> consoleLaunch(arg);
+            case "override" -> consoleActiveDoctrine("override");
+            case "emp"      -> consoleActiveDoctrine("emp");
+            case "threat"   -> consoleThreat();
+            case "resolve"  -> consoleResolve();
+            case "points"   -> consolePoints(arg);
+            case "clock"    -> consoleClock(arg);
+            default         -> "unknown command: " + raw + "  (type 'help' for commands)";
+        };
+    }
+
+    private boolean requireMab(StringBuilder err) {
+        if (mabMatch == null) { err.append("Not in a MAB match."); return false; }
+        return true;
+    }
+
+    private String consoleMabState() {
+        com.tetris.mab.ParticipantState p =
+                mabMatch.getParticipant(com.tetris.mab.ParticipantId.PLAYER_A);
+        if (p == null) return "P1 state unavailable.";
+        com.tetris.mab.NukeBuildState nb = p.getNukeBuildState();
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("── P1 CHARGE ──%n  %d / %d  armed=%b%n",
+                nb.getCurrentBuildCharge(),
+                nb.getEffectiveBuildChargeRequired(),
+                nb.isArmed()));
+        sb.append(String.format("── P1 UPGRADE POINTS ──%n  %d%n",
+                p.getUpgradeState().getUpgradePoints()));
+        sb.append("── DOCTRINES ──\n");
+        for (var opt : mabMatch.getActiveDoctrineOptions(com.tetris.mab.ParticipantId.PLAYER_A)) {
+            sb.append(String.format("  %-16s owned=%-5b available=%-5b  %s%n",
+                    opt.type().displayName(), opt.owned(), opt.available(), opt.reason()));
+        }
+        int inc = mabMatch.countLiveIncomingThreats(com.tetris.mab.ParticipantId.PLAYER_A);
+        int imp = mabMatch.countImpactReadyThreats(com.tetris.mab.ParticipantId.PLAYER_A);
+        sb.append(String.format("── THREATS ──%n  live=%d  impact-ready=%d%n", inc, imp));
+        com.tetris.mab.DefconState ds = mabMatch.getDefconState();
+        if (ds != null)
+            sb.append(String.format("── DEFCON ──%n  level=%d  progress=%.0f%%%n",
+                    ds.getLevel(), ds.getProgressToNextThreshold() * 100));
+        return sb.toString().trim();
+    }
+
+    private String consoleCharge(String arg) {
+        StringBuilder err = new StringBuilder();
+        if (!requireMab(err)) return err.toString();
+        if (arg.equalsIgnoreCase("full") || arg.isEmpty()) {
+            boolean ok = mabMatch.debugArmCurrentNuke(com.tetris.mab.ParticipantId.PLAYER_A);
+            return ok ? "P1 nuke charge filled to armed threshold." : "Failed (wrong phase?).";
+        }
+        try {
+            int n = Integer.parseInt(arg);
+            boolean ok = mabMatch.debugAddNukeCharge(com.tetris.mab.ParticipantId.PLAYER_A, n);
+            return ok ? "Added " + n + " charge to P1." : "Failed (wrong phase or amount ≤ 0).";
+        } catch (NumberFormatException e) {
+            return "Usage: charge full  |  charge <amount>";
+        }
+    }
+
+    private String consoleLaunch(String arg) {
+        StringBuilder err = new StringBuilder();
+        if (!requireMab(err)) return err.toString();
+        if (arg.equalsIgnoreCase("override") || arg.equalsIgnoreCase("mo")) {
+            return consoleActiveDoctrine("override");
+        }
+        boolean ok = mabMatch.debugStartLaunch(com.tetris.mab.ParticipantId.PLAYER_A);
+        return ok ? "P1 launch started (normal)." : "Launch failed (wrong phase?).";
+    }
+
+    private String consoleActiveDoctrine(String type) {
+        StringBuilder err = new StringBuilder();
+        if (!requireMab(err)) return err.toString();
+        com.tetris.mab.upgrade.draft.MabActiveDoctrineType dt =
+                type.equalsIgnoreCase("emp")
+                        ? com.tetris.mab.upgrade.draft.MabActiveDoctrineType.EMP
+                        : com.tetris.mab.upgrade.draft.MabActiveDoctrineType.MANUAL_OVERRIDE;
+        com.tetris.mab.upgrade.draft.MabActiveDoctrineUseResult r =
+                mabMatch.useActiveDoctrine(com.tetris.mab.ParticipantId.PLAYER_A, dt);
+        return r.title() + " :: " + r.detail();
+    }
+
+    private String consoleThreat() {
+        StringBuilder err = new StringBuilder();
+        if (!requireMab(err)) return err.toString();
+        String id = mabMatch.debugInjectIncomingThreatForTesting(com.tetris.mab.ParticipantId.PLAYER_A);
+        return id == null ? "Threat injection failed (wrong phase?)." : "Threat injected: " + id;
+    }
+
+    private String consoleResolve() {
+        StringBuilder err = new StringBuilder();
+        if (!requireMab(err)) return err.toString();
+        java.util.List<?> results = mabMatch.debugResolveAllImpacts();
+        return results.isEmpty() ? "No impact-ready threats." : "Resolved " + results.size() + " impact(s).";
+    }
+
+    private String consolePoints(String arg) {
+        StringBuilder err = new StringBuilder();
+        if (!requireMab(err)) return err.toString();
+        int n = 100;
+        if (!arg.isEmpty()) {
+            try { n = Integer.parseInt(arg); }
+            catch (NumberFormatException e) { return "Usage: points [amount]  (default 100)"; }
+        }
+        boolean ok = mabMatch.debugAddUpgradePoints(com.tetris.mab.ParticipantId.PLAYER_A, n);
+        return ok ? "Added " + n + " upgrade points to P1." : "Failed.";
+    }
+
+    private String consoleClock(String arg) {
+        StringBuilder err = new StringBuilder();
+        if (!requireMab(err)) return err.toString();
+        int n = 10;
+        if (!arg.isEmpty()) {
+            try { n = Integer.parseInt(arg); }
+            catch (NumberFormatException e) { return "Usage: clock [pieces]  (default 10)"; }
+        }
+        int advanced = mabMatch.debugAdvanceStrategicClockOnly(com.tetris.mab.ParticipantId.PLAYER_A, n);
+        return "Advanced strategic clock by " + advanced + " piece(s) for P1.";
+    }
+
+    private void toggleCheatMenu() {
+        if (cheatMenu != null && cheatMenu.isVisible()) {
+            cheatMenu.setVisible(false);
+            return;
+        }
+        java.awt.Window win = resolveWindow();
+        if (win == null) return;
+        javax.swing.RootPaneContainer rpc =
+                (win instanceof javax.swing.RootPaneContainer r) ? r : null;
+        if (rpc == null) return;
+        JLayeredPane lp = rpc.getRootPane().getLayeredPane();
+
+        if (cheatMenu == null) {
+            java.util.List<com.tetris.mab.upgrade.draft.MabUpgradeCard> cards = null;
+            java.util.function.Consumer<com.tetris.mab.upgrade.draft.MabUpgradeCard> applyFn =
+                    card -> {};
+            if (mabMatch != null) {
+                try {
+                    cards = new com.tetris.mab.upgrade.draft.MabUpgradeDraftRegistry()
+                            .getAllCards();
+                    final var inv = mabMatch.getParticipant(ParticipantId.PLAYER_A)
+                            .getUpgradeInventory();
+                    applyFn = inv::addUpgrade;
+                } catch (RuntimeException ignored) {}
+            }
+            final var cardsFinal = cards;
+            final var applyFinal = applyFn;
+            cheatMenu = new com.tetris.view.CheatMenuPanel(
+                    () -> gameState.isGravityFrozen(),
+                    frozen -> gameState.setGravityFrozen(frozen),
+                    cardsFinal,
+                    applyFinal,
+                    () -> { if (cheatMenu != null) cheatMenu.setVisible(false); });
+        }
+        if (cheatMenu.getParent() != lp) {
+            lp.add(cheatMenu, JLayeredPane.POPUP_LAYER);
+        }
+        int cw = Math.min(lp.getWidth() - 40, 860);
+        int ch = Math.min(lp.getHeight() - 40, 520);
+        cheatMenu.setBounds((lp.getWidth() - cw) / 2, 20, cw, ch);
+        cheatMenu.revalidate();
+        cheatMenu.setVisible(true);
+    }
+
 }

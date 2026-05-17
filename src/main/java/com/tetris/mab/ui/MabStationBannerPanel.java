@@ -14,6 +14,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -43,6 +44,7 @@ public final class MabStationBannerPanel extends JPanel {
     private String subA = "";
     private String subB = "";
     private String nukeDesignLine = "";
+    private String comboHint = "";
 
     public MabStationBannerPanel(String stationTitle, boolean mirrored) {
         super(new BorderLayout());
@@ -72,7 +74,19 @@ public final class MabStationBannerPanel extends JPanel {
     public void setHeadline(String h) { this.headline = h == null ? "" : h; repaint(); }
     public void setSubA(String s) { this.subA = s == null ? "" : s; repaint(); }
     public void setSubB(String s) { this.subB = s == null ? "" : s; repaint(); }
-    public void setNukeDesignLine(String line) { this.nukeDesignLine = line == null ? "" : line; }
+    public void setNukeDesignLine(String line) {
+        this.nukeDesignLine = line == null ? "" : line;
+        repaint();
+    }
+
+    public void setComboHint(String hint) {
+        this.comboHint = hint == null ? "" : hint;
+        int h = comboHint.isEmpty() ? 88 : 112;
+        setPreferredSize(new Dimension(420, h));
+        setMinimumSize(new Dimension(280, comboHint.isEmpty() ? 70 : 90));
+        revalidate();
+        repaint();
+    }
 
     /** Convenience: derive everything from the live match. */
     public void refresh(MutuallyAssuredBlocksMatch match, ParticipantId pid,
@@ -181,6 +195,20 @@ public final class MabStationBannerPanel extends JPanel {
 
         Color color = stageColor();
 
+        g2.setPaint(new GradientPaint(0, 0, MabUiTheme.SHELL_PANEL_BG,
+                w, h, MabUiTheme.SHELL_DEEP_BG));
+        g2.fillRect(0, 0, w, h);
+        g2.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 26));
+        if (mirrored) {
+            g2.fillRect(w - 5, 0, 5, h);
+        } else {
+            g2.fillRect(0, 0, 5, h);
+        }
+        g2.setColor(new Color(255, 255, 255, 9));
+        for (int y = 2; y < h; y += 4) {
+            g2.drawLine(0, y, w, y);
+        }
+
         // Top row: station + STATE label
         g2.setFont(MabUiTheme.TERM_TINY);
         g2.setColor(MabUiTheme.TEXT_FAINT);
@@ -206,10 +234,14 @@ public final class MabStationBannerPanel extends JPanel {
             g2.drawString(stateLbl, w - padR - sw, padT + fmTop.getAscent());
         }
 
+        // Reserve space at bottom for doctrine hint strip when active
+        int stripH = comboHint.isEmpty() ? 0 : 24;
+
         // Headline (stencil, big, glowed)
-        g2.setFont(MabUiTheme.STENCIL_HEADLINE);
+        g2.setFont(fittedFont(g2, MabUiTheme.STENCIL_HEADLINE,
+                headline, w - padL - padR, 18f));
         FontMetrics fmH = g2.getFontMetrics();
-        int hy = h - padB - fmH.getDescent() - fmTop.getHeight() - 4;
+        int hy = h - padB - stripH - fmH.getDescent() - fmTop.getHeight() - 4;
         // Glow
         g2.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 70));
         for (int dx = -1; dx <= 1; dx++) {
@@ -224,30 +256,83 @@ public final class MabStationBannerPanel extends JPanel {
         // Sub-line
         g2.setFont(MabUiTheme.TERM_SMALL);
         FontMetrics fmS = g2.getFontMetrics();
-        int sy = h - padB;
+        int sy = h - padB - stripH;
         g2.setColor(MabUiTheme.TEXT);
         if (mirrored) {
-            int saW = fmS.stringWidth(subA);
-            g2.drawString(subA, padL, sy);
+            String right = ellipsize(g2, subB, Math.max(20, (w - padL - padR) / 2));
+            int sbW = fmS.stringWidth(right);
+            String left = ellipsize(g2, subA,
+                    Math.max(20, w - padL - padR - sbW - 24));
+            g2.drawString(left, padL, sy);
             String sep = "|";
             int sepW = fmS.stringWidth(sep);
-            int sbW = fmS.stringWidth(subB);
             g2.setColor(MabUiTheme.TEXT_FAINT);
             g2.drawString(sep, w - padR - sbW - 8 - sepW, sy);
             g2.setColor(MabUiTheme.TEXT);
-            g2.drawString(subB, w - padR - sbW, sy);
+            g2.drawString(right, w - padR - sbW, sy);
         } else {
-            g2.drawString(subA, padL, sy);
-            int saW = fmS.stringWidth(subA);
+            String left = ellipsize(g2, subA, Math.max(20, (w - padL - padR) / 2));
+            g2.drawString(left, padL, sy);
+            int saW = fmS.stringWidth(left);
             g2.setColor(MabUiTheme.TEXT_FAINT);
             String sep = "|";
             g2.drawString(sep, padL + saW + 8, sy);
             int sepW = fmS.stringWidth(sep);
             g2.setColor(MabUiTheme.TEXT);
-            g2.drawString(subB, padL + saW + 8 + sepW + 8, sy);
+            int bx = padL + saW + 8 + sepW + 8;
+            String right = ellipsize(g2, subB, Math.max(20, w - padR - bx));
+            g2.drawString(right, bx, sy);
+        }
+
+        // Doctrine combo hint strip
+        if (!comboHint.isEmpty()) {
+            int sy2 = h - stripH;
+            g2.setColor(new Color(
+                    MabUiTheme.C_AMBER.getRed(),
+                    MabUiTheme.C_AMBER.getGreen(),
+                    MabUiTheme.C_AMBER.getBlue(), 28));
+            g2.fillRect(0, sy2, w, stripH);
+            g2.setColor(MabUiTheme.C_AMBER_DIM);
+            g2.drawLine(0, sy2, w, sy2);
+            g2.setFont(MabUiTheme.STENCIL_SMALL);
+            FontMetrics fmHint = g2.getFontMetrics();
+            String txt = ellipsize(g2, comboHint, w - padL - padR);
+            int ty = sy2 + (stripH + fmHint.getAscent() - fmHint.getDescent()) / 2;
+            g2.setColor(MabUiTheme.C_AMBER);
+            if (mirrored) {
+                g2.drawString(txt, w - padR - fmHint.stringWidth(txt), ty);
+            } else {
+                g2.drawString(txt, padL, ty);
+            }
         }
 
         g2.dispose();
+    }
+
+    private static Font fittedFont(Graphics2D g2, Font base, String text,
+                                   int maxWidth, float minSize) {
+        if (text == null || text.isEmpty()) return base;
+        float size = base.getSize2D();
+        Font f = base;
+        while (size > minSize && g2.getFontMetrics(f).stringWidth(text) > maxWidth) {
+            size -= 1f;
+            f = base.deriveFont(size);
+        }
+        return f;
+    }
+
+    private static String ellipsize(Graphics2D g2, String text, int maxWidth) {
+        if (text == null) return "";
+        if (maxWidth <= 0) return "";
+        FontMetrics fm = g2.getFontMetrics();
+        if (fm.stringWidth(text) <= maxWidth) return text;
+        String dots = "...";
+        int dotsW = fm.stringWidth(dots);
+        String out = text;
+        while (out.length() > 1 && fm.stringWidth(out) + dotsW > maxWidth) {
+            out = out.substring(0, out.length() - 1);
+        }
+        return out.length() <= 1 ? dots : out + dots;
     }
 
     private void drawHeadline(Graphics2D g2, String text, int w,

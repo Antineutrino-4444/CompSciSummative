@@ -207,10 +207,20 @@ public class GamePanel extends JPanel {
 
         // ── Overlays ──
         if (gameState.isGameOver()) {
-            drawCenterOverlay(g2, "GAME OVER", "Press R to restart  •  ESC to menu", Theme.DANGER);
+            drawCenterOverlay(g2, "GAME OVER",
+                    "Press " + keyName(Settings.get().getKeyReset())
+                            + " to restart  •  "
+                            + keyName(Settings.get().getKeyExitStage()) + " to menu",
+                    Theme.DANGER);
         } else if (gameState.isPaused()) {
-            drawCenterOverlay(g2, "PAUSED", "Press P or ESC to resume", Theme.ACCENT);
+            drawCenterOverlay(g2, "PAUSED",
+                    "Press " + keyName(Settings.get().getKeyPause()) + " to resume",
+                    Theme.ACCENT);
         }
+    }
+
+    private static String keyName(int keyCode) {
+        return keyCode == 0 ? "UNBOUND" : java.awt.event.KeyEvent.getKeyText(keyCode).toUpperCase();
     }
 
     // ───────────────────── Clear animation ──────────────────────────

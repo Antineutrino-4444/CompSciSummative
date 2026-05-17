@@ -93,6 +93,13 @@ public final class DevConsolePanel extends JPanel {
         inputField.setFont(MONO);
         inputField.setBorder(BorderFactory.createEmptyBorder());
         inputField.addActionListener(e -> submitCommand());
+        inputField.getInputMap(JComponent.WHEN_FOCUSED)
+                .put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "submit-console-command");
+        inputField.getActionMap().put("submit-console-command", new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent e) {
+                submitCurrentInput();
+            }
+        });
         inputField.addKeyListener(new KeyAdapter() {
             @Override public void keyPressed(KeyEvent e) {
                 int code = e.getKeyCode();
@@ -104,7 +111,7 @@ public final class DevConsolePanel extends JPanel {
         inputRow.add(inputField, BorderLayout.CENTER);
         add(inputRow, BorderLayout.SOUTH);
 
-        printLine("Dev Console  —  type 'help' for commands", "muted");
+        printLine("Dev Console  —  ` to close  |  type 'help' for commands", "muted");
         printLine("─".repeat(60), "muted");
     }
 
@@ -125,6 +132,14 @@ public final class DevConsolePanel extends JPanel {
 
     public void toggle() {
         if (isOpen()) close(); else open();
+    }
+
+    public void submitCurrentInput() {
+        submitCommand();
+    }
+
+    public void focusInput() {
+        inputField.requestFocusInWindow();
     }
 
     // ── Internal ─────────────────────────────────────────────────────────
@@ -151,9 +166,32 @@ public final class DevConsolePanel extends JPanel {
     private String dispatchBuiltin(String cmd) {
         return switch (cmd.toLowerCase().trim()) {
             case "help" -> """
-                    help          — show this message
-                    debug         — dump game simulation stats
-                    clear         — clear console output
+                    CONSOLE COMMANDS
+                    ────────────────────────────────
+                    help            — show this message
+                    clear           — clear console output
+                    fps             — current render FPS
+                    gc              — run garbage collector
+                    freeze          — freeze piece gravity
+                    unfreeze        — unfreeze piece gravity
+                    debug           — freeze gravity + open cheat menu
+                    ────────────────────────────────
+                    MAB MATCH COMMANDS (PvE / PvP only)
+                    state           — show P1 charge / doctrine / threat state
+                    charge full     — fill P1 nuke charge to armed threshold
+                    charge <N>      — add N charge to P1 nuke
+                    launch          — force P1 launch (normal, arms nuke if needed)
+                    launch override — fire P1 MANUAL OVERRIDE doctrine launch
+                    override        — fire P1 MANUAL OVERRIDE active doctrine directly
+                    emp             — fire P1 EMP active doctrine
+                    threat          — inject a test incoming threat against P1
+                    resolve         — resolve all impact-ready threats now
+                    points [N]      — add N upgrade points to P1 (default 100)
+                    clock [N]       — advance P1 strategic clock N pieces (default 10)
+                    ────────────────────────────────
+                    SHORTCUTS
+                    ` / ~           — toggle this console
+                    F3              — toggle performance overlay
                     """;
             case "clear" -> { clearOutput(); yield ""; }
             default -> null;

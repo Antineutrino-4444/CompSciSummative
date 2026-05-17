@@ -65,8 +65,8 @@ public final class MabTacticalStripPanel extends JPanel {
 
         int liveIncoming = match.countLiveIncomingThreats(pid);
         int impactReady = match.countImpactReadyThreats(pid);
-        if (liveIncoming > 0) defense = DefenseStatus.INCOMING;
-        else if (impactReady > 0) defense = DefenseStatus.IMPACT;
+        if (impactReady > 0) defense = DefenseStatus.IMPACT;
+        else if (liveIncoming > 0) defense = DefenseStatus.INCOMING;
         else defense = DefenseStatus.SAFE;
 
         String last = s.lastClearText();
@@ -95,14 +95,15 @@ public final class MabTacticalStripPanel extends JPanel {
         g2.setFont(MabUiTheme.TERM_TINY);
         FontMetrics fmTag = g2.getFontMetrics();
         g2.setColor(MabUiTheme.TEXT_FAINT);
+        String docText = ellipsize(g2, doctrineSummary, Math.max(80, w / 2 - 20));
         if (mirrored) {
             int tagW = fmTag.stringWidth(stationTag);
             g2.drawString(stationTag, w - tagW - 14, fmTag.getAscent() + 4);
-            g2.drawString(doctrineSummary, 14, fmTag.getAscent() + 4);
+            g2.drawString(docText, 14, fmTag.getAscent() + 4);
         } else {
             g2.drawString(stationTag, 14, fmTag.getAscent() + 4);
-            int dsW = fmTag.stringWidth(doctrineSummary);
-            g2.drawString(doctrineSummary, w - dsW - 14, fmTag.getAscent() + 4);
+            int dsW = fmTag.stringWidth(docText);
+            g2.drawString(docText, w - dsW - 14, fmTag.getAscent() + 4);
         }
 
         // Layout: 4 columns (CHARGE 35%, LAUNCH 28%, DEFENSE 17%, LAST CLEAR 20%)
@@ -143,7 +144,7 @@ public final class MabTacticalStripPanel extends JPanel {
         paintLabel(g2, "CHARGE", x, labelY);
 
         String value = String.format("%03d / %03d", chargeCurrent, chargeRequired);
-        g2.setFont(MabUiTheme.TERM_BIG);
+        g2.setFont(fittedFont(g2, MabUiTheme.TERM_BIG, value, w, 12f));
         FontMetrics fmV = g2.getFontMetrics();
         boolean full = chargeCurrent >= chargeRequired;
         g2.setColor(full ? MabUiTheme.C_GREEN : MabUiTheme.C_CYAN);
@@ -229,7 +230,7 @@ public final class MabTacticalStripPanel extends JPanel {
             default:
                 value = "SAFE"; color = MabUiTheme.C_CYAN; break;
         }
-        g2.setFont(MabUiTheme.TERM_BIG);
+        g2.setFont(fittedFont(g2, MabUiTheme.TERM_BIG, value, w, 11f));
         FontMetrics fmV = g2.getFontMetrics();
         g2.setColor(color);
         g2.drawString(value, x, labelY + fmV.getAscent() + 4);
@@ -245,9 +246,33 @@ public final class MabTacticalStripPanel extends JPanel {
         g2.setColor(MabUiTheme.TEXT_BRIGHT);
         // Truncate if too wide
         String txt = lastClear;
-        while (fmV.stringWidth(txt) > w && txt.length() > 4) {
-            txt = txt.substring(0, txt.length() - 1);
-        }
+        txt = ellipsize(g2, txt, w);
         g2.drawString(txt, x, labelY + fmV.getAscent() + 4);
+    }
+
+    private static java.awt.Font fittedFont(Graphics2D g2, java.awt.Font base,
+                                            String text, int maxWidth,
+                                            float minSize) {
+        if (text == null) return base;
+        float size = base.getSize2D();
+        java.awt.Font f = base;
+        while (size > minSize && g2.getFontMetrics(f).stringWidth(text) > maxWidth) {
+            size -= 1f;
+            f = base.deriveFont(size);
+        }
+        return f;
+    }
+
+    private static String ellipsize(Graphics2D g2, String text, int maxWidth) {
+        if (text == null) return "";
+        FontMetrics fm = g2.getFontMetrics();
+        if (maxWidth <= 0 || fm.stringWidth(text) <= maxWidth) return text;
+        String dots = "...";
+        int dotsW = fm.stringWidth(dots);
+        String out = text;
+        while (out.length() > 1 && fm.stringWidth(out) + dotsW > maxWidth) {
+            out = out.substring(0, out.length() - 1);
+        }
+        return out.length() <= 1 ? dots : out + dots;
     }
 }

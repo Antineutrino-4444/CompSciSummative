@@ -104,6 +104,17 @@ public class InputHandler implements KeyListener {
         // ones are no-ops so DAS isn't restarted.
         if (!pressedKeys.add(code)) return;
 
+        // ── Global shortcuts — fire immediately in all game modes ──────────
+        // Handled here (not in processInput) so they work even in MAB PvP
+        // mode where processInput() is replaced by localPvpInputRouter.
+        if (code == KeyEvent.VK_F3) {
+            controller.togglePerfOverlay();
+            consumedKeys.add(code);
+        } else if (code == KeyEvent.VK_BACK_QUOTE) {
+            controller.toggleDevConsole();
+            consumedKeys.add(code);
+        }
+
         Settings s = Settings.get();
         if (s.isMoveLeft(code)) {
             leftFramesHeld = 0;
@@ -201,9 +212,8 @@ public class InputHandler implements KeyListener {
         if (isNewPress(s.getKeyPause()))    controller.togglePause();
         if (isNewPress(s.getKeyPauseAlt())) controller.handleEscapePause();
         if (isNewPress(s.getKeyExitStage())) controller.exitStage();
+        if (isNewPress(s.getKeyReset())) controller.restart();
         if (isNewPress(s.getKeySettings())) controller.openSettings();
-        // Dev console — backtick / tilde key (same physical key, different shift state).
-        if (isNewPress(KeyEvent.VK_BACK_QUOTE)) controller.toggleDevConsole();
 
         // ──── Frame-counting DAS / ARR ────
         int dasFrames = Math.max(1, (s.getDasDelay() + FRAME_INTERVAL_MS - 1) / FRAME_INTERVAL_MS);

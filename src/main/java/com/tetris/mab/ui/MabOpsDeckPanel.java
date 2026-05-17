@@ -64,6 +64,7 @@ public final class MabOpsDeckPanel extends JPanel {
 
     public void setMatchClock(long ms) {
         this.matchClockMs = Math.max(0L, ms);
+        repaint();
     }
 
     public void resetMatchClock() { this.matchClockMs = 0L; }
@@ -162,7 +163,7 @@ public final class MabOpsDeckPanel extends JPanel {
         drawThreatPips(g2, cx, cy, radarSize / 2 - 8, opponentThreats, MabUiTheme.C_RED, false);
         y += radarSize + 12;
 
-        int trackH = 38;
+        int trackH = 56;
         g2.setColor(MabUiTheme.SHELL_DEEP_BG);
         g2.fillRect(12, y, w - 24, trackH);
         g2.setColor(MabUiTheme.GRID_LINE);
@@ -170,12 +171,16 @@ public final class MabOpsDeckPanel extends JPanel {
         g2.setFont(MabUiTheme.TERM_TINY);
         g2.setColor(MabUiTheme.TEXT_FAINT);
         g2.drawString("THREAT TRACK", 18, y + 12);
-        g2.setColor(humanThreats > 0 ? MabUiTheme.C_AMBER : MabUiTheme.C_GREEN_DIM);
-        g2.drawString("P1 " + threatText(humanThreats, humanEtaPieces), 18, y + 26);
+        drawThreatLine(g2, "YOU", threatText(humanThreats, humanEtaPieces),
+                humanThreats > 0 ? MabUiTheme.C_AMBER : MabUiTheme.C_GREEN,
+                18, y + 28, w - 36);
+        drawThreatLine(g2, "RIVAL", threatText(opponentThreats, opponentEtaPieces),
+                opponentThreats > 0 ? MabUiTheme.C_RED : MabUiTheme.TEXT_FAINT,
+                18, y + 43, w - 36);
         String active = humanActiveDoctrineAvailable ? "ACTIVE: Q READY" : "ACTIVE: Q";
         g2.setColor(humanActiveDoctrineAvailable ? MabUiTheme.C_AMBER : MabUiTheme.TEXT_GHOST);
         FontMetrics tfm = g2.getFontMetrics();
-        g2.drawString(active, w - 18 - tfm.stringWidth(active), y + 26);
+        g2.drawString(active, w - 18 - tfm.stringWidth(active), y + 12);
         y += trackH + 8;
 
         // ── Mode plate ───────────────────────────────────────
@@ -224,6 +229,20 @@ public final class MabOpsDeckPanel extends JPanel {
         if (count <= 0) return "CLEAR";
         String eta = etaPieces < 0 ? "IMPACT" : "ETA " + etaPieces + "P";
         return count + "  " + eta;
+    }
+
+    private static void drawThreatLine(Graphics2D g2, String label, String value,
+                                       Color valueColor, int x, int y, int width) {
+        g2.setFont(MabUiTheme.TERM_TINY);
+        FontMetrics fm = g2.getFontMetrics();
+        String left = label == null ? "" : label;
+        String right = value == null ? "" : value;
+        g2.setColor(MabUiTheme.TEXT_FAINT);
+        g2.drawString(left, x, y);
+        int rw = fm.stringWidth(right);
+        int rx = Math.max(x + fm.stringWidth(left) + 12, x + width - rw);
+        g2.setColor(valueColor == null ? MabUiTheme.TEXT : valueColor);
+        g2.drawString(right, rx, y);
     }
 
     private static void drawThreatPips(Graphics2D g2, int cx, int cy,

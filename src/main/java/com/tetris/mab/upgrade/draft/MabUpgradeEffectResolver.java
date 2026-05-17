@@ -60,6 +60,7 @@ public final class MabUpgradeEffectResolver {
         m.put("tempo_jam", "DOCUMENTED_DEFERRED");
         m.put("defense_reactive_plating", "STATUS_EFFECT");
         m.put("defense_ablative_spin", "DOCUMENTED_DEFERRED");
+        m.put("redesign_nuke", "ACTIVE_EFFECT");
         return Collections.unmodifiableMap(m);
     }
 

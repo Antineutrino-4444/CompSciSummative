@@ -99,6 +99,7 @@ public class NextPanel extends JPanel {
             { keyName(s.getKeyHold()),      "Hold" },
             { keyName(s.getKeyPause()),     "Pause" },
             { keyName(s.getKeyExitStage()), "Exit Stage" },
+            { keyName(s.getKeyReset()),     "Reset" },
             { keyName(s.getKeySettings()),  "Settings" },
         };
         g2.setFont(Theme.FONT_MONO);

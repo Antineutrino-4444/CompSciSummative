@@ -32,6 +32,9 @@ public class MabOpponentBoardPanel extends JPanel {
 
     private final GameState opponent;
     private final GamePanel boardView;
+    private final JPanel northPanel;
+    private final JPanel boardWrap;
+    private final JPanel southPanel;
     private final JLabel headerLabel = new JLabel("Opponent AI", SwingConstants.CENTER);
     private final JLabel profileLabel = new JLabel(" ", SwingConstants.CENTER);
     private final JLabel statsLabel = new JLabel(" ", SwingConstants.CENTER);
@@ -46,6 +49,7 @@ public class MabOpponentBoardPanel extends JPanel {
     private MabAiDifficulty difficulty;
     private String balanceProfileName = "";
     private MabBoardAiDriver boardAi;
+    private boolean shellBoardMode = false;
 
     public MabOpponentBoardPanel(GameState opponent) {
         super(new BorderLayout(4, 4));
@@ -69,32 +73,56 @@ public class MabOpponentBoardPanel extends JPanel {
         aiPpsLabel.setFont(MabUiTheme.BODY_FONT);
         aiPpsLabel.setForeground(MabUiTheme.TEXT_MUTED);
 
-        JPanel north = new JPanel(new GridLayout(0, 1));
-        north.setOpaque(false);
-        north.add(headerLabel);
-        north.add(profileLabel);
-        add(north, BorderLayout.NORTH);
+        northPanel = new JPanel(new GridLayout(0, 1));
+        northPanel.setOpaque(false);
+        northPanel.add(headerLabel);
+        northPanel.add(profileLabel);
+        add(northPanel, BorderLayout.NORTH);
 
         boardView = new GamePanel(opponent);
         boardView.setPreferredSize(new Dimension(280, 560));
         boardView.setFocusable(false);
-        JPanel boardWrap = new JPanel(new BorderLayout());
+        boardWrap = new JPanel(new BorderLayout());
         boardWrap.setBackground(MabUiTheme.ROOT_BG);
         boardWrap.setBorder(BorderFactory.createLineBorder(MabUiTheme.DIVIDER, 1));
         boardWrap.add(boardView, BorderLayout.CENTER);
         add(boardWrap, BorderLayout.CENTER);
 
-        JPanel south = new JPanel(new GridLayout(0, 1));
-        south.setOpaque(false);
-        south.add(statsLabel);
-        south.add(aiPlanLabel);
-        south.add(aiPhaseLabel);
-        south.add(aiPpsLabel);
-        south.add(statusLabel);
-        add(south, BorderLayout.SOUTH);
+        southPanel = new JPanel(new GridLayout(0, 1));
+        southPanel.setOpaque(false);
+        southPanel.add(statsLabel);
+        southPanel.add(aiPlanLabel);
+        southPanel.add(aiPhaseLabel);
+        southPanel.add(aiPpsLabel);
+        southPanel.add(statusLabel);
+        add(southPanel, BorderLayout.SOUTH);
 
         setPreferredSize(new Dimension(320, 700));
     }
+
+    /**
+     * The battle shell already provides station chrome and tactical readouts.
+     * In that context this panel should act as a pure board surface so the
+     * opponent playfield matches the player's field and old AI/debug rows do
+     * not steal space from the 10x20 board.
+     */
+    public void setShellBoardMode(boolean enabled) {
+        if (shellBoardMode == enabled) return;
+        shellBoardMode = enabled;
+        northPanel.setVisible(!enabled);
+        southPanel.setVisible(!enabled);
+        setBorder(enabled ? BorderFactory.createEmptyBorder()
+                : MabUiTheme.padding(6, 6, 6, 6));
+        setOpaque(!enabled);
+        setBackground(enabled ? MabUiTheme.SHELL_DEEP_BG : MabUiTheme.PANEL_BG);
+        boardWrap.setBorder(enabled ? BorderFactory.createEmptyBorder()
+                : BorderFactory.createLineBorder(MabUiTheme.DIVIDER, 1));
+        boardWrap.setOpaque(!enabled);
+        revalidate();
+        repaint();
+    }
+
+    public boolean isShellBoardMode() { return shellBoardMode; }
 
     /** Step 20 Second Refinement — bind the visible board AI driver so
      *  the panel can render the current placement plan on each refresh. */

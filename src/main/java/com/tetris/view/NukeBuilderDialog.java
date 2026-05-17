@@ -3,6 +3,7 @@ package com.tetris.view;
 import com.tetris.model.nuke.NukeDesign;
 import com.tetris.model.nuke.NukePart;
 import com.tetris.model.nuke.NukeSlot;
+import com.tetris.model.Settings;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -1688,7 +1689,7 @@ public class NukeBuilderDialog extends JPanel {
     //  Left / Right → previous / next visible column
     //  Up   / Down  → previous / next item inside the focused column
     //  1..9         → jump to slot N (also focuses the slots column)
-    //  R            → reset all selections
+    //  Reset key    → reset all selections
     //  Esc          → close the dialog
 
     private void installKeyboardShortcuts() {
@@ -1708,6 +1709,8 @@ public class NukeBuilderDialog extends JPanel {
         bind(im, am, "nextHoriz",  KeyStroke.getKeyStroke("RIGHT"), e -> handleHorizontal(+1));
         bind(im, am, "confirm",    KeyStroke.getKeyStroke("ENTER"), e -> handleConfirm());
         bind(im, am, "close",      KeyStroke.getKeyStroke("ESCAPE"),e -> onClose.run());
+        bindResetShortcut(im, am, "resetP1", Settings.get().getKeyReset());
+        bindResetShortcut(im, am, "resetP2", Settings.get().getKeyP2Reset());
     }
 
     /** UP / DOWN router: moves the cursor inside whichever column is
@@ -1738,6 +1741,11 @@ public class NukeBuilderDialog extends JPanel {
         am.put(key, new AbstractAction() {
             @Override public void actionPerformed(java.awt.event.ActionEvent e) { action.accept(e); }
         });
+    }
+
+    private void bindResetShortcut(InputMap im, ActionMap am, String key, int keyCode) {
+        if (keyCode == 0) return;
+        bind(im, am, key, KeyStroke.getKeyStroke(keyCode, 0), e -> resetBuild());
     }
 
     /** LEFT / RIGHT — flip the keyboard focus between the two columns
