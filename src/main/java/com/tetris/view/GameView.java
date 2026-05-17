@@ -2,8 +2,6 @@ package com.tetris.view;
 
 import com.tetris.controller.InputHandler;
 import com.tetris.model.GameState;
-import com.tetris.view.theme.Components;
-import com.tetris.view.theme.Components.ButtonStyle;
 import com.tetris.view.theme.Theme;
 
 import javax.swing.*;
@@ -30,14 +28,12 @@ public class GameView extends JPanel {
     private final SidePanel sidePanel;
     private final NextPanel nextPanel;
     private final Timer repaintTimer;
-    private final Runnable onBack;
 
     /** True once {@link #shutdown()} has run, so we don't double-stop. */
     private boolean disposed = false;
 
     public GameView(GameState gameState, InputHandler inputHandler, Runnable onBack) {
         super(new BorderLayout(0, 0));
-        this.onBack = onBack != null ? onBack : () -> {};
 
         setBackground(Theme.BG_0);
         setBorder(new EmptyBorder(Theme.SPACE_M, Theme.SPACE_M, Theme.SPACE_M, Theme.SPACE_M));
@@ -46,7 +42,6 @@ public class GameView extends JPanel {
         sidePanel = new SidePanel(gameState);
         nextPanel = new NextPanel(gameState);
 
-        add(buildToolbar(), BorderLayout.NORTH);
         add(sidePanel, BorderLayout.WEST);
         add(gamePanel, BorderLayout.CENTER);
         add(nextPanel, BorderLayout.EAST);
@@ -95,36 +90,4 @@ public class GameView extends JPanel {
         repaintTimer.stop();
     }
 
-    private JPanel buildToolbar() {
-        JPanel bar = new JPanel(new BorderLayout());
-        bar.setBackground(Theme.BG_1);
-        bar.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.DIVIDER),
-                new EmptyBorder(Theme.SPACE_S, Theme.SPACE_M, Theme.SPACE_S, Theme.SPACE_M)));
-
-        JButton back = Components.button("\u25C2  BACK", ButtonStyle.SECONDARY);
-        back.addActionListener(e -> {
-            shutdown();
-            onBack.run();
-        });
-        bar.add(back, BorderLayout.WEST);
-
-        JLabel title = Components.label("MODERN TETRIS",
-                Theme.FONT_MONO_BOLD, Theme.ACCENT);
-        title.setHorizontalAlignment(SwingConstants.CENTER);
-        bar.add(title, BorderLayout.CENTER);
-
-        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, Theme.SPACE_S, 0));
-        right.setOpaque(false);
-
-        JButton settings = Components.button("\u2699  SETTINGS", ButtonStyle.TEXT);
-        settings.addActionListener(e -> {
-            SettingsPanel.showDialog(SwingUtilities.getWindowAncestor(this) instanceof JFrame f ? f : null);
-            requestGameFocus();
-        });
-        right.add(settings);
-
-        bar.add(right, BorderLayout.EAST);
-        return bar;
-    }
 }

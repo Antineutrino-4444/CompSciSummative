@@ -31,29 +31,32 @@ public final class LocalPlayerInputBindings {
 
     public static LocalPlayerInputBindings player1Defaults() {
         LocalPlayerInputBindings b = new LocalPlayerInputBindings(1);
-        b.keys.put(LocalPlayerAction.MOVE_LEFT,      KeyEvent.VK_LEFT);
-        b.keys.put(LocalPlayerAction.MOVE_RIGHT,     KeyEvent.VK_RIGHT);
-        b.keys.put(LocalPlayerAction.MOVE_DOWN,      KeyEvent.VK_DOWN);
-        b.keys.put(LocalPlayerAction.MOVE_UP,        KeyEvent.VK_UP);
-        b.keys.put(LocalPlayerAction.HARD_DROP,      KeyEvent.VK_SPACE);
-        b.keys.put(LocalPlayerAction.ROTATE_CW,      KeyEvent.VK_X);
-        b.keys.put(LocalPlayerAction.ROTATE_CCW,     KeyEvent.VK_Z);
-        b.keys.put(LocalPlayerAction.HOLD,           KeyEvent.VK_C);
-        b.keys.put(LocalPlayerAction.PAUSE,          KeyEvent.VK_P);
-        b.keys.put(LocalPlayerAction.EXIT_STAGE,     KeyEvent.VK_ESCAPE);
+        b.keys.put(LocalPlayerAction.MOVE_LEFT,      KeyEvent.VK_A);
+        b.keys.put(LocalPlayerAction.MOVE_RIGHT,     KeyEvent.VK_D);
+        b.keys.put(LocalPlayerAction.MOVE_DOWN,      KeyEvent.VK_S);
+        b.keys.put(LocalPlayerAction.MOVE_UP,        KeyEvent.VK_W);
+        b.keys.put(LocalPlayerAction.HARD_DROP,      KeyEvent.VK_R);
+        b.keys.put(LocalPlayerAction.ROTATE_CW,      KeyEvent.VK_Q);
+        b.keys.put(LocalPlayerAction.ROTATE_CCW,     KeyEvent.VK_F);
+        b.keys.put(LocalPlayerAction.HOLD,           KeyEvent.VK_E);
+        b.keys.put(LocalPlayerAction.PAUSE,          KeyEvent.VK_K);
+        b.keys.put(LocalPlayerAction.EXIT_STAGE,     KeyEvent.VK_Z);
+        b.keys.put(LocalPlayerAction.RESET,          KeyEvent.VK_X);
         return b;
     }
 
     public static LocalPlayerInputBindings player2Defaults() {
         LocalPlayerInputBindings b = new LocalPlayerInputBindings(2);
-        b.keys.put(LocalPlayerAction.MOVE_LEFT,  KeyEvent.VK_J);
-        b.keys.put(LocalPlayerAction.MOVE_RIGHT, KeyEvent.VK_L);
-        b.keys.put(LocalPlayerAction.MOVE_DOWN,  KeyEvent.VK_K);
-        b.keys.put(LocalPlayerAction.MOVE_UP,    KeyEvent.VK_I);
-        b.keys.put(LocalPlayerAction.HARD_DROP,  KeyEvent.VK_ENTER);
-        b.keys.put(LocalPlayerAction.ROTATE_CW,  KeyEvent.VK_O);
-        b.keys.put(LocalPlayerAction.ROTATE_CCW, KeyEvent.VK_U);
-        b.keys.put(LocalPlayerAction.HOLD,       KeyEvent.VK_SEMICOLON);
+        b.keys.put(LocalPlayerAction.MOVE_LEFT,  KeyEvent.VK_LEFT);
+        b.keys.put(LocalPlayerAction.MOVE_RIGHT, KeyEvent.VK_RIGHT);
+        b.keys.put(LocalPlayerAction.MOVE_DOWN,  KeyEvent.VK_DOWN);
+        b.keys.put(LocalPlayerAction.MOVE_UP,    KeyEvent.VK_UP);
+        b.keys.put(LocalPlayerAction.HARD_DROP,  KeyEvent.VK_P);
+        b.keys.put(LocalPlayerAction.ROTATE_CW,  KeyEvent.VK_U);
+        b.keys.put(LocalPlayerAction.ROTATE_CCW, KeyEvent.VK_O);
+        b.keys.put(LocalPlayerAction.HOLD,       KeyEvent.VK_I);
+        b.keys.put(LocalPlayerAction.EXIT_STAGE, KeyEvent.VK_Z);
+        b.keys.put(LocalPlayerAction.RESET,      KeyEvent.VK_J);
         return b;
     }
 
@@ -70,6 +73,7 @@ public final class LocalPlayerInputBindings {
         b.keys.put(LocalPlayerAction.HOLD,           s.getKeyHold());
         b.keys.put(LocalPlayerAction.PAUSE,          s.getKeyPause());
         b.keys.put(LocalPlayerAction.EXIT_STAGE,     s.getKeyExitStage());
+        b.keys.put(LocalPlayerAction.RESET,          s.getKeyReset());
         return b;
     }
 
@@ -84,6 +88,8 @@ public final class LocalPlayerInputBindings {
         b.keys.put(LocalPlayerAction.ROTATE_CW,  s.getKeyP2RotateCW());
         b.keys.put(LocalPlayerAction.ROTATE_CCW, s.getKeyP2RotateCCW());
         b.keys.put(LocalPlayerAction.HOLD,       s.getKeyP2Hold());
+        b.keys.put(LocalPlayerAction.EXIT_STAGE, s.getKeyP2ExitStage());
+        b.keys.put(LocalPlayerAction.RESET,      s.getKeyP2Reset());
         return b;
     }
 
@@ -99,6 +105,7 @@ public final class LocalPlayerInputBindings {
         s.setKeyHold(get(LocalPlayerAction.HOLD));
         s.setKeyPause(get(LocalPlayerAction.PAUSE));
         s.setKeyExitStage(get(LocalPlayerAction.EXIT_STAGE));
+        s.setKeyReset(get(LocalPlayerAction.RESET));
     }
 
     public void applyToSettingsPlayer2(Settings s) {
@@ -111,6 +118,8 @@ public final class LocalPlayerInputBindings {
         s.setKeyP2RotateCW(get(LocalPlayerAction.ROTATE_CW));
         s.setKeyP2RotateCCW(get(LocalPlayerAction.ROTATE_CCW));
         s.setKeyP2Hold(get(LocalPlayerAction.HOLD));
+        s.setKeyP2ExitStage(get(LocalPlayerAction.EXIT_STAGE));
+        s.setKeyP2Reset(get(LocalPlayerAction.RESET));
     }
 
     public boolean isAvailable(LocalPlayerAction action) {
@@ -181,7 +190,8 @@ public final class LocalPlayerInputBindings {
         if (a == null || b == null) return true;
         if (a.isOppositeOf(b)) return true;
         return a == LocalPlayerAction.PAUSE || b == LocalPlayerAction.PAUSE
-                || a == LocalPlayerAction.EXIT_STAGE || b == LocalPlayerAction.EXIT_STAGE;
+                || a == LocalPlayerAction.EXIT_STAGE || b == LocalPlayerAction.EXIT_STAGE
+                || a == LocalPlayerAction.RESET || b == LocalPlayerAction.RESET;
     }
 
     private static String buildConflictMessage(LocalPlayerAction existing,

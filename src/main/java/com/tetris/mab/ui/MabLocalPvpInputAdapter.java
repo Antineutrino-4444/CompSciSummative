@@ -83,6 +83,10 @@ public final class MabLocalPvpInputAdapter {
                 ? null
                 : SwingUtilities.getWindowAncestor(e.getComponent());
         if (attachedWindow != null && source != null && source != attachedWindow) return false;
+        if (e.getComponent() instanceof javax.swing.text.JTextComponent) {
+            router.releaseAll();
+            return false;
+        }
         if (shellRoot instanceof MabBattleShellPanel shell
                 && shell.isKeyboardModalOverlayVisible()) {
             router.releaseAll();

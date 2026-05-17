@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * StartMenu.java — decorated, resizable launcher window with an
+ * StartMenu.java â€” decorated, resizable launcher window with an
  * inline (continuous) navigation model.
  *
  * Rather than spawning a separate modal dialog for each entry, the
@@ -32,9 +32,9 @@ import java.util.Random;
  * window itself never closes until the player explicitly quits.
  *
  * Cards (managed by a {@link CardLayout}):
- *   "menu"     — the main entry buttons + falling-piece marquee
- *   "settings" — embedded SettingsPanel + Back button
- *   "nuke"     — embedded NukeBuilderDialog + Back button
+ *   "menu"     â€” the main entry buttons + falling-piece marquee
+ *   "settings" â€” embedded SettingsPanel + Back button
+ *   "nuke"     â€” embedded NukeBuilderDialog + Back button
  *
  * Class name is preserved so {@link com.tetris.Main} doesn't change.
  */
@@ -54,12 +54,12 @@ public class StartMenu extends JFrame {
     private final MarqueePanel marquee;
     private final Timer animTimer;
     private final java.util.function.IntFunction<GameController> controllerFactory;
-    /** Step 15 — optional factory used when launching MAB PvE. */
+    /** Step 15 â€” optional factory used when launching MAB PvE. */
     private final java.util.function.BiFunction<Integer, GameLaunchMode, GameController> modedFactory;
-    /** Step 18 — optional factory that constructs a controller from a {@link MabPveConfig}. */
+    /** Step 18 â€” optional factory that constructs a controller from a {@link MabPveConfig}. */
     private java.util.function.Function<MabPveConfig, GameController> mabPveFactory;
     private java.util.function.Function<MabLocalPvpConfig, GameController> mabLocalPvpFactory;
-    /** Step 18 — last-used PvE config so Restart can re-launch with the same selections. */
+    /** Step 18 â€” last-used PvE config so Restart can re-launch with the same selections. */
     private MabPveConfig lastMabPveConfig = MabPveConfig.defaults();
     private MabLocalPvpConfig lastMabLocalPvpConfig = MabLocalPvpConfig.defaults();
     private MabNukeDesignSelection currentMabNukeSelection = MabNukeDesignSelection.defaultSelection();
@@ -67,6 +67,7 @@ public class StartMenu extends JFrame {
     private GameController activeController;
     private JButton firstMenuButton;
     private final int startLevel;
+
 
     /**
      * Legacy constructor: kept so external callers that handed us a
@@ -78,10 +79,10 @@ public class StartMenu extends JFrame {
     }
 
     /**
-     * Step 15 — launcher entry point that supports the new
+     * Step 15 â€” launcher entry point that supports the new
      * {@link GameLaunchMode}. The supplied {@code modedFactory} is
      * used both for normal Play (mode=NORMAL_TETRIS) and for the new
-     * "Mutually Assured Blocks — PvE" button.
+     * "Mutually Assured Blocks â€” PvE" button.
      */
     public StartMenu(int startLevel,
                      java.util.function.BiFunction<Integer, GameLaunchMode, GameController> modedFactory) {
@@ -90,7 +91,7 @@ public class StartMenu extends JFrame {
     }
 
     /**
-     * Preferred constructor — when the caller hands us a controller
+     * Preferred constructor â€” when the caller hands us a controller
      * factory, the Play button hosts the game inside this same window
      * (continuous menu) instead of opening a new {@link MainFrame}.
      *
@@ -125,7 +126,7 @@ public class StartMenu extends JFrame {
         getContentPane().setBackground(Theme.BG_0);
 
         // Layered pane keeps the marquee behind the cards on the main
-        // page only — Settings / Nuke each get an opaque card so the
+        // page only â€” Settings / Nuke each get an opaque card so the
         // marquee animation doesn't bleed through their UI.
         JLayeredPane root = new JLayeredPane();
         root.setBackground(Theme.BG_0);
@@ -184,13 +185,26 @@ public class StartMenu extends JFrame {
             }
         });
 
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(e -> {
+            if (e.getID() != KeyEvent.KEY_PRESSED) return false;
+            if (CARD_GAME.equals(currentCard)) return false;
+            int hardDrop = Settings.get().getKeyHardDrop();
+            if (hardDrop == 0 || e.getKeyCode() != hardDrop) return false;
+            Component focus = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+            if (focus instanceof JButton btn && btn.isEnabled() && btn.isShowing()) {
+                btn.doClick();
+                return true;
+            }
+            return false;
+        });
+
         SwingUtilities.invokeLater(() -> showControlsWizardCard(true));
     }
 
     /** Tracks the currently-displayed card so ESC behaves correctly. */
     private String currentCard = CARD_MENU;
 
-    // ─────────────────────── Card switching ──────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Card switching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private void showMenuCard() {
         activeController = null;
@@ -258,37 +272,6 @@ public class StartMenu extends JFrame {
         SwingUtilities.invokeLater(nuke::requestFocusInWindow);
     }
 
-    private void showMabNukeBuilderCard(Runnable returnToSetup) {
-        for (Component c : cardHost.getComponents()) {
-            if (CARD_NUKE.equals(c.getName())) cardHost.remove(c);
-        }
-        Runnable back = returnToSetup == null ? this::showMenuCard : returnToSetup;
-        NukeBuilderDialog nuke = NukeBuilderDialog.createEmbedded(back);
-        JButton useDesign = Components.button("USE DESIGN", ButtonStyle.PRIMARY_BLUE);
-        JButton reset = Components.button("RESET", ButtonStyle.SECONDARY);
-        JButton defaultDesign = Components.button("DEFAULT", ButtonStyle.SECONDARY);
-        useDesign.addActionListener(e -> {
-            currentMabNukeSelection = MabNukeDesignSelection.fromBuilderDesign(
-                    nuke.getDesignForIntegration());
-            back.run();
-        });
-        reset.addActionListener(e -> nuke.resetBuild());
-        defaultDesign.addActionListener(e -> {
-            currentMabNukeSelection = MabNukeDesignSelection.defaultSelection();
-            back.run();
-        });
-        JPanel nukeCard = buildEmbeddedCard("MAB Nuke Design", nuke, back,
-                useDesign, reset, defaultDesign);
-        nukeCard.setName(CARD_NUKE);
-        cardHost.add(nukeCard, CARD_NUKE);
-
-        currentCard = CARD_NUKE;
-        marquee.setVisible(false);
-        animTimer.stop();
-        cards.show(cardHost, CARD_NUKE);
-        SwingUtilities.invokeLater(nuke::requestFocusInWindow);
-    }
-
     /** Shows the inline MAB mode-selection card (PvP / PvE / Back). */
     private void showMabSelectCard() {
         for (Component c : cardHost.getComponents()) {
@@ -296,8 +279,8 @@ public class StartMenu extends JFrame {
         }
 
         JButton pvp = Components.button("LOCAL PvP  :: SAME KEYBOARD", ButtonStyle.SECONDARY);
-        JButton pve = Components.button("☢  PvE  —  vs AI", ButtonStyle.PRIMARY_BLUE);
-        JButton back = Components.button("◂  BACK", ButtonStyle.SECONDARY);
+        JButton pve = Components.button("â˜¢  PvE  â€”  vs AI", ButtonStyle.PRIMARY_BLUE);
+        JButton back = Components.button("â—‚  BACK", ButtonStyle.SECONDARY);
 
         for (JButton b : new JButton[]{pvp, pve, back}) {
             b.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -382,20 +365,18 @@ public class StartMenu extends JFrame {
         addFormRow(form, gc, row++, "AI Difficulty",   diffSel);
         addFormRow(form, gc, row++, "Start Level",     levelSel);
         addFormRow(form, gc, row++, "Balance Profile", profSel);
-        addFormRow(form, gc, row,   "Nuke Design",
-                setupSummaryLabel(currentMabNukeSelection.getSummary()));
-
-        JButton start = Components.button("▶  START PvE", ButtonStyle.PRIMARY_BLUE);
-        JButton back  = Components.button("◂  BACK",       ButtonStyle.SECONDARY);
-        JButton nukeBuilder = Components.button("OPEN NUKE BUILDER", ButtonStyle.SECONDARY);
-        JButton nukeDefault = Components.button("RESET NUKE DEFAULT", ButtonStyle.SECONDARY);
-        for (JButton b : new JButton[]{start, nukeBuilder, nukeDefault, back}) {
+        JButton start = Components.button("â–¶  START PvE", ButtonStyle.PRIMARY_BLUE);
+        JButton back  = Components.button("â—‚  BACK",       ButtonStyle.SECONDARY);
+        for (JButton b : new JButton[]{start, back}) {
             b.setAlignmentX(Component.CENTER_ALIGNMENT);
             b.setMaximumSize(new Dimension(340, 50));
             b.setPreferredSize(new Dimension(340, 50));
         }
 
         start.addActionListener(e -> {
+            // Auto-launch nuke builder for player 1 before the match starts.
+            Window owner = SwingUtilities.getWindowAncestor(StartMenu.this);
+            currentMabNukeSelection = showNukeBuilderModal("PLAYER 1 — DESIGN YOUR NUKE", owner);
             com.tetris.mab.balance.MabBalanceProfile p = profSel.current();
             com.tetris.mab.ui.MabPveConfig cfg = com.tetris.mab.ui.MabPveConfig.fromSelections(
                     levelSel.current(),
@@ -407,11 +388,6 @@ public class StartMenu extends JFrame {
             lastMabPveConfig = cfg;
             launchMabPveWithConfig(cfg);
         });
-        nukeBuilder.addActionListener(e -> showMabNukeBuilderCard(this::showMabPveConfigCard));
-        nukeDefault.addActionListener(e -> {
-            currentMabNukeSelection = MabNukeDesignSelection.defaultSelection();
-            showMabPveConfigCard();
-        });
         back.addActionListener(e -> showMabSelectCard());
 
         JPanel body = new JPanel();
@@ -421,10 +397,6 @@ public class StartMenu extends JFrame {
                                        Theme.SPACE_XL, Theme.SPACE_XL));
         body.add(form);
         body.add(Components.vSpacer(Theme.SPACE_XL));
-        body.add(nukeBuilder);
-        body.add(Components.vSpacer(Theme.SPACE_S));
-        body.add(nukeDefault);
-        body.add(Components.vSpacer(Theme.SPACE_M));
         body.add(start);
         body.add(Components.vSpacer(Theme.SPACE_M));
         body.add(back);
@@ -437,8 +409,7 @@ public class StartMenu extends JFrame {
         marquee.setVisible(false);
         animTimer.stop();
         cards.show(cardHost, CARD_MAB_PVE_CONFIG);
-        installMixedNavigation(body, archSel, diffSel, levelSel, profSel,
-                nukeBuilder, nukeDefault, start, back);
+        installMixedNavigation(body, archSel, diffSel, levelSel, profSel, start, back);
         SwingUtilities.invokeLater(archSel::requestFocusInWindow);
     }
 
@@ -490,8 +461,8 @@ public class StartMenu extends JFrame {
         start.addActionListener(e -> {
             com.tetris.mab.balance.MabBalanceProfile p = profSel.current();
             Window owner = SwingUtilities.getWindowAncestor(this);
-            MabNukeDesignSelection p1Design = showNukeBuilderModal("PLAYER 1 — DESIGN YOUR NUKE", owner);
-            MabNukeDesignSelection p2Design = showNukeBuilderModal("PLAYER 2 — DESIGN YOUR NUKE", owner);
+            MabNukeDesignSelection p1Design = showNukeBuilderModal("PLAYER 1 â€” DESIGN YOUR NUKE", owner);
+            MabNukeDesignSelection p2Design = showNukeBuilderModal("PLAYER 2 â€” DESIGN YOUR NUKE", owner);
             MabLocalPvpConfig cfg = new MabLocalPvpConfig(
                     levelSel.current(),
                     "PLAYER 1",
@@ -618,7 +589,7 @@ public class StartMenu extends JFrame {
         return field;
     }
 
-    /** Step 15 — launches a fresh controller in the requested mode. */
+    /** Step 15 â€” launches a fresh controller in the requested mode. */
     private void showGameCard(GameLaunchMode mode) {
         GameController ctrl;
         if (mode == GameLaunchMode.MAB_PVE && modedFactory != null) {
@@ -633,7 +604,7 @@ public class StartMenu extends JFrame {
         mountController(ctrl);
     }
 
-    /** Step 18 — wires the optional MAB PvE config-aware factory. */
+    /** Step 18 â€” wires the optional MAB PvE config-aware factory. */
     public void setMabPveFactory(java.util.function.Function<MabPveConfig, GameController> factory) {
         this.mabPveFactory = factory;
     }
@@ -644,12 +615,12 @@ public class StartMenu extends JFrame {
         this.mabLocalPvpFactory = factory;
     }
 
-    /** Step 18 — opens the PvE setup dialog and, on confirm, launches MAB PvE
+    /** Step 18 â€” opens the PvE setup dialog and, on confirm, launches MAB PvE
      *  with the chosen {@link MabPveConfig}. Falls back to the legacy flow when
      *  no MAB PvE factory has been wired. */
     private void openMabPveSetup() {
         if (mabPveFactory == null) {
-            // No config-aware factory wired — fall back to existing path.
+            // No config-aware factory wired â€” fall back to existing path.
             showGameCard(GameLaunchMode.MAB_PVE);
             return;
         }
@@ -660,7 +631,7 @@ public class StartMenu extends JFrame {
         dialog.setVisible(true);
     }
 
-    /** Step 18 — builds a controller for the supplied PvE config and mounts it,
+    /** Step 18 â€” builds a controller for the supplied PvE config and mounts it,
      *  wiring restart/back-to-menu callbacks. */
     private void launchMabPveWithConfig(MabPveConfig cfg) {
         if (cfg == null || mabPveFactory == null) return;
@@ -694,7 +665,7 @@ public class StartMenu extends JFrame {
         mountController(ctrl);
     }
 
-    /** Step 18 — extracted shared mount logic. */
+    /** Step 18 â€” extracted shared mount logic. */
     private void mountController(GameController ctrl) {
         activeController = ctrl;
         // Always rebuild a fresh controller + view so each match starts clean.
@@ -716,7 +687,7 @@ public class StartMenu extends JFrame {
         SwingUtilities.invokeLater(ctrl::requestGameFocus);
     }
 
-    // ─────────────────────── Cards ──────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /** Wraps an embedded view in an opaque card with a Back button bar.
      *  Optional {@code extras} are placed on the right side of the bar
@@ -731,45 +702,6 @@ public class StartMenu extends JFrame {
         JPanel card = new JPanel(new BorderLayout(0, 0));
         card.setBackground(Theme.BG_0);
         card.setOpaque(true);
-
-        // Top bar: Back ◂  Title  [extras]
-        JPanel bar = new JPanel(new BorderLayout());
-        bar.setBackground(Theme.BG_1);
-        bar.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.DIVIDER),
-                new EmptyBorder(Theme.SPACE_S, Theme.SPACE_M, Theme.SPACE_S, Theme.SPACE_M)));
-
-        JButton back = Components.button("\u25C2  BACK", ButtonStyle.SECONDARY);
-        back.addActionListener(e -> {
-            if (onBack != null) onBack.run();
-            else showMenuCard();
-        });
-        back.setVisible(onBack != null);
-        bar.add(back, BorderLayout.WEST);
-
-        JLabel titleLbl = Components.label(title.toUpperCase(),
-                Theme.FONT_MONO_BOLD, Theme.ACCENT);
-        titleLbl.setHorizontalAlignment(SwingConstants.CENTER);
-        bar.add(titleLbl, BorderLayout.CENTER);
-
-        // Right side: stack of extra action buttons, or a spacer that
-        // matches the Back button's width so the title centres nicely.
-        JComponent right;
-        if (extras != null && extras.length > 0) {
-            JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, Theme.SPACE_S, 0));
-            rightPanel.setOpaque(false);
-            for (JButton b : extras) rightPanel.add(b);
-            right = rightPanel;
-        } else {
-            JPanel spacer = new JPanel();
-            spacer.setOpaque(false);
-            spacer.setPreferredSize(back.getPreferredSize());
-            right = spacer;
-        }
-        bar.add(right, BorderLayout.EAST);
-        installButtonNavigation(bar, navButtons(back, extras));
-
-        card.add(bar, BorderLayout.NORTH);
         card.add(body, BorderLayout.CENTER);
         return card;
     }
@@ -869,7 +801,7 @@ public class StartMenu extends JFrame {
         card.add(quit);
 
         card.add(Components.vSpacer(Theme.SPACE_XL));
-        JLabel footer = new JLabel("v1.0  \u2022  ARROWS SELECT  \u2022  ENTER CONFIRMS  \u2022  ESC BACK / QUIT");
+        JLabel footer = new JLabel("v1.0  \u2022  ARROWS SELECT  \u2022  HARD DROP / ENTER CONFIRMS  \u2022  ESC BACK / QUIT");
         footer.setFont(Theme.FONT_CAPTION);
         footer.setForeground(Theme.TEXT_FAINT);
         footer.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -987,11 +919,11 @@ public class StartMenu extends JFrame {
     }
 
     private void confirmQuit() {
-        // No prompt — quit immediately.
+        // No prompt â€” quit immediately.
         System.exit(0);
     }
 
-    // ─────────────────────── Mixed navigation (selectors + buttons) ──────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Mixed navigation (selectors + buttons) â”€â”€â”€â”€â”€â”€
 
     private void installMixedNavigation(JComponent scope, JComponent... items) {
         InputMap im = scope.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
@@ -1056,7 +988,7 @@ public class StartMenu extends JFrame {
         }
     }
 
-    // ════════════════════ Cycle selector ════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• Cycle selector â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     private static final class CycleSelector<T> extends JPanel {
         private final java.util.List<T> options;
@@ -1074,8 +1006,8 @@ public class StartMenu extends JFrame {
             setFocusable(true);
             setLayout(new BorderLayout(Theme.SPACE_S, 0));
 
-            JLabel prev = arrow("◄");
-            JLabel next = arrow("►");
+            JLabel prev = arrow("â—„");
+            JLabel next = arrow("â–º");
 
             valueLabel = new JLabel(labelText(), SwingConstants.CENTER);
             valueLabel.setFont(Theme.FONT_BODY);
@@ -1157,7 +1089,7 @@ public class StartMenu extends JFrame {
         }
     }
 
-    // ════════════════════ Marquee panel ═════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• Marquee panel â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     private static final class MarqueePanel extends JPanel {
         private static final int CELL = 28;

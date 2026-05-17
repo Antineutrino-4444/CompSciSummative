@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MAB Command Deck</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="deck" aria-label="Mutually Assured Blocks command deck">
+    <canvas id="starfield" class="starfield" aria-hidden="true"></canvas>
+
+    <section class="station-strip" aria-label="battle state">
+      <article class="station station-player">
+        <div class="station-kicker">Station P1</div>
+        <h1>Build Charge</h1>
+        <div class="station-line">
+          <span>Charge <b id="playerChargeText">068 / 100</b></span>
+          <span>Silo <b id="playerSiloText">91%</b></span>
+        </div>
+      </article>
+
+      <article class="defcon-core" aria-label="defcon">
+        <div class="defcon-label">Defcon</div>
+        <strong id="defconValue">3</strong>
+        <div class="defcon-track" aria-hidden="true">
+          <span class="is-hot"></span>
+          <span class="is-hot"></span>
+          <span class="is-hot"></span>
+          <span></span>
+          <span></span>
+        </div>
+      </article>
+
+      <article class="station station-rival">
+        <div class="station-kicker">Station AI</div>
+        <h1 id="rivalHeadline">Threat Armed</h1>
+        <div class="station-line">
+          <span>Signal <b id="rivalSignalText">72%</b></span>
+          <span>ETA <b id="rivalEtaText">08 pieces</b></span>
+        </div>
+      </article>
+    </section>
+
+    <section class="combat-grid" aria-label="combat view">
+      <aside class="bay bay-left" aria-label="player reserve">
+        <div class="bay-title">Reserve</div>
+        <div class="piece-window">
+          <span>Hold</span>
+          <canvas id="holdCanvas" width="128" height="72" aria-label="held piece"></canvas>
+        </div>
+        <div class="piece-window next-stack">
+          <span>Next</span>
+          <canvas id="nextCanvas" width="128" height="220" aria-label="next pieces"></canvas>
+        </div>
+        <div class="meter">
+          <div class="meter-head"><span>Readiness</span><b id="readinessText">68%</b></div>
+          <div class="meter-rail"><span id="readinessFill"></span></div>
+        </div>
+      </aside>
+
+      <section class="board-frame player-field" aria-label="player field">
+        <header>
+          <span>Player Field</span>
+          <b id="playerMeta">LV 08 / Lines 142</b>
+        </header>
+        <canvas id="playerBoard" width="240" height="480" aria-label="player board"></canvas>
+      </section>
+
+      <section class="ops-core" aria-label="operations core">
+        <div class="radar-wrap">
+          <canvas id="radarCanvas" width="220" height="220" aria-label="radar"></canvas>
+          <div class="radar-readout">
+            <span>Threat Track</span>
+            <b id="threatCount">02 live</b>
+          </div>
+        </div>
+
+        <div class="command-lens" aria-label="combat priorities">
+          <div class="priority is-danger">
+            <span>Immediate</span>
+            <b id="primaryOrder">Spin Intercept</b>
+          </div>
+          <div class="priority">
+            <span>Doctrine</span>
+            <b id="doctrineState">Manual Override Ready</b>
+          </div>
+          <div class="priority">
+            <span>Launch Path</span>
+            <b id="launchPath">Tetris 3 / 4 - Spin 1 / 2</b>
+          </div>
+        </div>
+
+        <nav class="mode-switch" aria-label="command views">
+          <button class="is-active" data-panel="overview">Overview</button>
+          <button data-panel="intel">Intel</button>
+          <button data-panel="doctrine">Doctrine</button>
+          <button data-panel="launch">Launch</button>
+        </nav>
+      </section>
+
+      <section class="board-frame rival-field" aria-label="rival field">
+        <header>
+          <span>Rival Field</span>
+          <b id="rivalMeta">AI / Normal</b>
+        </header>
+        <canvas id="rivalBoard" width="240" height="480" aria-label="rival board"></canvas>
+      </section>
+
+      <aside class="bay bay-right" aria-label="rival telemetry">
+        <div class="bay-title">Telemetry</div>
+        <div class="telemetry-list">
+          <div><span>Profile</span><b>Balanced</b></div>
+          <div><span>Stack</span><b id="rivalStackText">12 high</b></div>
+          <div><span>Missile</span><b id="rivalMissileText">Armed</b></div>
+          <div><span>Scan</span><b id="scanText">Fresh</b></div>
+        </div>
+        <div class="meter heat">
+          <div class="meter-head"><span>Escalation</span><b id="heatText">64%</b></div>
+          <div class="meter-rail"><span id="heatFill"></span></div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="command-dock" aria-label="command dock">
+      <button class="dock-action" data-action="scan">
+        <span>Radar Scan</span>
+        <b>Acquire</b>
+      </button>
+      <button class="dock-action is-primary" data-action="intercept">
+        <span>Intercept</span>
+        <b>Commit Spin</b>
+      </button>
+      <button class="dock-action" data-action="launch">
+        <span>Launch</span>
+        <b>Hold Fire</b>
+      </button>
+      <div class="event-feed" aria-live="polite">
+        <span>Ops Feed</span>
+        <p id="eventFeed">Incoming package split across two lanes. Intercept window is open.</p>
+      </div>
+    </section>
+
+    <aside class="detail-panel is-collapsed" id="detailPanel" aria-label="selected command detail">
+      <header>
+        <span id="panelKicker">Overview</span>
+        <button id="collapsePanel" aria-label="collapse detail panel">-</button>
+      </header>
+      <h2 id="panelTitle">Theater Status</h2>
+      <p id="panelBody">
+        Your board owns the initiative but the rival launch is live. Keep the center lane clean,
+        preserve spin access, and spend doctrine only after the intercept window closes.
+      </p>
+      <div class="panel-grid" id="panelGrid">
+        <div><span>Incoming</span><b>2</b></div>
+        <div><span>Response</span><b>Ready</b></div>
+        <div><span>Charge</span><b>68%</b></div>
+        <div><span>Defcon</span><b>3</b></div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

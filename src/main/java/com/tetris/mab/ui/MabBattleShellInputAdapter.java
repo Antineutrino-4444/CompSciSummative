@@ -137,6 +137,10 @@ public final class MabBattleShellInputAdapter {
             inputHandler.releaseAll();
             return false;
         }
+        if (e.getComponent() instanceof javax.swing.text.JTextComponent) {
+            inputHandler.releaseAll();
+            return false;
+        }
         switch (e.getID()) {
             case KeyEvent.KEY_PRESSED:
                 trackCombo(e.getKeyCode());

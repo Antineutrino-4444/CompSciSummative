@@ -173,6 +173,7 @@ public class GameState {
 
     private boolean gameOver;
     private boolean paused;
+    private boolean gravityFrozen;
 
     /** Flag indicating a new piece was just spawned (for IRS/IHS). */
     private boolean justSpawned;
@@ -890,7 +891,8 @@ public class GameState {
 
         // Gravity: automatically drop the piece
         int interval = scoreSystem.getGravityInterval();
-        if (now - lastGravityDrop >= interval) {
+        if (gravityFrozen) { lastGravityDrop = now; }
+        else if (now - lastGravityDrop >= interval) {
             Tetromino moved = currentPiece.moveDown();
             if (board.isValidPosition(moved)) {
                 currentPiece = moved;
@@ -920,6 +922,13 @@ public class GameState {
     // ═══════════════════════════════════════════════════════════════
     // PAUSE / GAME STATE
     // ═══════════════════════════════════════════════════════════════
+
+    public boolean isGravityFrozen() { return gravityFrozen; }
+
+    public void setGravityFrozen(boolean frozen) {
+        this.gravityFrozen = frozen;
+        if (!frozen) lastGravityDrop = System.currentTimeMillis();
+    }
 
     public void togglePause() {
         setPaused(!paused, "toggle");

@@ -127,28 +127,31 @@ public class Settings {
     // Each action has a primary key and optional alternate key.
     // A value of 0 means "unbound".
 
-    private int keyMoveLeft     = KeyEvent.VK_LEFT;
-    private int keyMoveRight    = KeyEvent.VK_RIGHT;
-    private int keyMoveDown     = KeyEvent.VK_DOWN;
-    private int keyMoveUp       = KeyEvent.VK_UP;
-    private int keyHardDrop     = KeyEvent.VK_SPACE;
-    private int keyRotateCW     = KeyEvent.VK_X;
-    private int keyRotateCCW    = KeyEvent.VK_Z;
-    private int keyHold         = KeyEvent.VK_C;
-    private int keyHoldAlt      = KeyEvent.VK_SHIFT;
-    private int keyPause        = KeyEvent.VK_P;
-    private int keyPauseAlt     = KeyEvent.VK_ESCAPE;
+    private int keyMoveLeft     = KeyEvent.VK_A;
+    private int keyMoveRight    = KeyEvent.VK_D;
+    private int keyMoveDown     = KeyEvent.VK_S;
+    private int keyMoveUp       = KeyEvent.VK_W;
+    private int keyHardDrop     = KeyEvent.VK_R;
+    private int keyRotateCW     = KeyEvent.VK_Q;
+    private int keyRotateCCW    = KeyEvent.VK_F;
+    private int keyHold         = KeyEvent.VK_E;
+    private int keyHoldAlt      = 0;
+    private int keyPause        = KeyEvent.VK_K;
+    private int keyPauseAlt     = 0;
     private int keySettings     = KeyEvent.VK_F1;
-    private int keyExitStage    = KeyEvent.VK_ESCAPE;
+    private int keyExitStage    = KeyEvent.VK_Z;
+    private int keyReset        = KeyEvent.VK_X;
 
-    private int keyP2MoveLeft   = KeyEvent.VK_J;
-    private int keyP2MoveRight  = KeyEvent.VK_L;
-    private int keyP2MoveDown   = KeyEvent.VK_K;
-    private int keyP2MoveUp     = KeyEvent.VK_I;
-    private int keyP2HardDrop   = KeyEvent.VK_ENTER;
-    private int keyP2RotateCW   = KeyEvent.VK_O;
-    private int keyP2RotateCCW  = KeyEvent.VK_U;
-    private int keyP2Hold       = KeyEvent.VK_SEMICOLON;
+    private int keyP2MoveLeft   = KeyEvent.VK_LEFT;
+    private int keyP2MoveRight  = KeyEvent.VK_RIGHT;
+    private int keyP2MoveDown   = KeyEvent.VK_DOWN;
+    private int keyP2MoveUp     = KeyEvent.VK_UP;
+    private int keyP2HardDrop   = KeyEvent.VK_P;
+    private int keyP2RotateCW   = KeyEvent.VK_U;
+    private int keyP2RotateCCW  = KeyEvent.VK_O;
+    private int keyP2Hold       = KeyEvent.VK_I;
+    private int keyP2ExitStage  = KeyEvent.VK_Z;
+    private int keyP2Reset      = KeyEvent.VK_J;
 
     private boolean controlsWizardCompleted = false;
 
@@ -208,6 +211,7 @@ public class Settings {
             keyPauseAlt    = intProp(p, "keys.pauseAlt",    keyPauseAlt,    0, 65535);
             keySettings    = intProp(p, "keys.settings",    keySettings,    0, 65535);
             keyExitStage   = intProp(p, "keys.exitStage",   keyExitStage,   0, 65535);
+            keyReset       = intProp(p, "keys.reset",       keyReset,       0, 65535);
 
             keyP2MoveLeft  = intProp(p, "keys.p2.moveLeft",  keyP2MoveLeft,  0, 65535);
             keyP2MoveRight = intProp(p, "keys.p2.moveRight", keyP2MoveRight, 0, 65535);
@@ -217,6 +221,8 @@ public class Settings {
             keyP2RotateCW  = intProp(p, "keys.p2.rotateCW",  keyP2RotateCW,  0, 65535);
             keyP2RotateCCW = intProp(p, "keys.p2.rotateCCW", keyP2RotateCCW, 0, 65535);
             keyP2Hold      = intProp(p, "keys.p2.hold",      keyP2Hold,      0, 65535);
+            keyP2ExitStage = intProp(p, "keys.p2.exitStage", keyP2ExitStage, 0, 65535);
+            keyP2Reset     = intProp(p, "keys.p2.reset",     keyP2Reset,     0, 65535);
 
             controlsWizardCompleted = boolProp(p, "controls.wizardCompleted",
                     controlsWizardCompleted);
@@ -267,6 +273,7 @@ public class Settings {
             p.setProperty("keys.pauseAlt",    String.valueOf(keyPauseAlt));
             p.setProperty("keys.settings",    String.valueOf(keySettings));
             p.setProperty("keys.exitStage",   String.valueOf(keyExitStage));
+            p.setProperty("keys.reset",       String.valueOf(keyReset));
 
             p.setProperty("keys.p2.moveLeft",  String.valueOf(keyP2MoveLeft));
             p.setProperty("keys.p2.moveRight", String.valueOf(keyP2MoveRight));
@@ -276,6 +283,8 @@ public class Settings {
             p.setProperty("keys.p2.rotateCW",  String.valueOf(keyP2RotateCW));
             p.setProperty("keys.p2.rotateCCW", String.valueOf(keyP2RotateCCW));
             p.setProperty("keys.p2.hold",      String.valueOf(keyP2Hold));
+            p.setProperty("keys.p2.exitStage", String.valueOf(keyP2ExitStage));
+            p.setProperty("keys.p2.reset",     String.valueOf(keyP2Reset));
             p.setProperty("controls.wizardCompleted", String.valueOf(controlsWizardCompleted));
 
             try (OutputStream out = Files.newOutputStream(SETTINGS_FILE)) {
@@ -294,37 +303,39 @@ public class Settings {
         lockDelay = 500;  maxLockResets = 15;  previewCount = 5;
         irsMode = "tap";  ihsMode = "tap";
         gridOpacity = 0.1;  boardOpacity = 0.85;  ghostOpacity = 0.55;
-        keyMoveLeft = KeyEvent.VK_LEFT;   keyMoveRight = KeyEvent.VK_RIGHT;
-        keyMoveDown = KeyEvent.VK_DOWN;   keyMoveUp = KeyEvent.VK_UP;
-        keyHardDrop = KeyEvent.VK_SPACE;
-        keyRotateCW = KeyEvent.VK_X;      keyRotateCCW = KeyEvent.VK_Z;
-        keyHold = KeyEvent.VK_C;          keyHoldAlt = KeyEvent.VK_SHIFT;
-        keyPause = KeyEvent.VK_P;         keyPauseAlt = KeyEvent.VK_ESCAPE;
+        keyMoveLeft = KeyEvent.VK_A;      keyMoveRight = KeyEvent.VK_D;
+        keyMoveDown = KeyEvent.VK_S;      keyMoveUp = KeyEvent.VK_W;
+        keyHardDrop = KeyEvent.VK_R;
+        keyRotateCW = KeyEvent.VK_Q;      keyRotateCCW = KeyEvent.VK_F;
+        keyHold = KeyEvent.VK_E;          keyHoldAlt = 0;
+        keyPause = KeyEvent.VK_K;         keyPauseAlt = 0;
         keySettings = KeyEvent.VK_F1;
-        keyExitStage = KeyEvent.VK_ESCAPE;
-        keyP2MoveLeft = KeyEvent.VK_J;    keyP2MoveRight = KeyEvent.VK_L;
-        keyP2MoveDown = KeyEvent.VK_K;    keyP2MoveUp = KeyEvent.VK_I;
-        keyP2HardDrop = KeyEvent.VK_ENTER;
-        keyP2RotateCW = KeyEvent.VK_O;    keyP2RotateCCW = KeyEvent.VK_U;
-        keyP2Hold = KeyEvent.VK_SEMICOLON;
+        keyExitStage = KeyEvent.VK_Z;     keyReset = KeyEvent.VK_X;
+        keyP2MoveLeft = KeyEvent.VK_LEFT; keyP2MoveRight = KeyEvent.VK_RIGHT;
+        keyP2MoveDown = KeyEvent.VK_DOWN; keyP2MoveUp = KeyEvent.VK_UP;
+        keyP2HardDrop = KeyEvent.VK_P;
+        keyP2RotateCW = KeyEvent.VK_U;    keyP2RotateCCW = KeyEvent.VK_O;
+        keyP2Hold = KeyEvent.VK_I;
+        keyP2ExitStage = KeyEvent.VK_Z;   keyP2Reset = KeyEvent.VK_J;
         controlsWizardCompleted = false;
     }
 
     /** Resets only keyboard mappings and first-run calibration state. */
     public void resetControlMappingsToDefaults() {
-        keyMoveLeft = KeyEvent.VK_LEFT;   keyMoveRight = KeyEvent.VK_RIGHT;
-        keyMoveDown = KeyEvent.VK_DOWN;   keyMoveUp = KeyEvent.VK_UP;
-        keyHardDrop = KeyEvent.VK_SPACE;
-        keyRotateCW = KeyEvent.VK_X;      keyRotateCCW = KeyEvent.VK_Z;
-        keyHold = KeyEvent.VK_C;          keyHoldAlt = KeyEvent.VK_SHIFT;
-        keyPause = KeyEvent.VK_P;         keyPauseAlt = KeyEvent.VK_ESCAPE;
+        keyMoveLeft = KeyEvent.VK_A;      keyMoveRight = KeyEvent.VK_D;
+        keyMoveDown = KeyEvent.VK_S;      keyMoveUp = KeyEvent.VK_W;
+        keyHardDrop = KeyEvent.VK_R;
+        keyRotateCW = KeyEvent.VK_Q;      keyRotateCCW = KeyEvent.VK_F;
+        keyHold = KeyEvent.VK_E;          keyHoldAlt = 0;
+        keyPause = KeyEvent.VK_K;         keyPauseAlt = 0;
         keySettings = KeyEvent.VK_F1;
-        keyExitStage = KeyEvent.VK_ESCAPE;
-        keyP2MoveLeft = KeyEvent.VK_J;    keyP2MoveRight = KeyEvent.VK_L;
-        keyP2MoveDown = KeyEvent.VK_K;    keyP2MoveUp = KeyEvent.VK_I;
-        keyP2HardDrop = KeyEvent.VK_ENTER;
-        keyP2RotateCW = KeyEvent.VK_O;    keyP2RotateCCW = KeyEvent.VK_U;
-        keyP2Hold = KeyEvent.VK_SEMICOLON;
+        keyExitStage = KeyEvent.VK_Z;     keyReset = KeyEvent.VK_X;
+        keyP2MoveLeft = KeyEvent.VK_LEFT; keyP2MoveRight = KeyEvent.VK_RIGHT;
+        keyP2MoveDown = KeyEvent.VK_DOWN; keyP2MoveUp = KeyEvent.VK_UP;
+        keyP2HardDrop = KeyEvent.VK_P;
+        keyP2RotateCW = KeyEvent.VK_U;    keyP2RotateCCW = KeyEvent.VK_O;
+        keyP2Hold = KeyEvent.VK_I;
+        keyP2ExitStage = KeyEvent.VK_Z;   keyP2Reset = KeyEvent.VK_J;
         controlsWizardCompleted = false;
     }
 
@@ -364,6 +375,7 @@ public class Settings {
     public int getKeyPauseAlt()   { return keyPauseAlt; }
     public int getKeySettings()   { return keySettings; }
     public int getKeyExitStage()  { return keyExitStage; }
+    public int getKeyReset()      { return keyReset; }
 
     public int getKeyP2MoveLeft()   { return keyP2MoveLeft; }
     public int getKeyP2MoveRight()  { return keyP2MoveRight; }
@@ -373,6 +385,8 @@ public class Settings {
     public int getKeyP2RotateCW()   { return keyP2RotateCW; }
     public int getKeyP2RotateCCW()  { return keyP2RotateCCW; }
     public int getKeyP2Hold()           { return keyP2Hold; }
+    public int getKeyP2ExitStage()  { return keyP2ExitStage; }
+    public int getKeyP2Reset()      { return keyP2Reset; }
     public boolean isControlsWizardCompleted() { return controlsWizardCompleted; }
 
     // ═══════════════════════════════════════════════════════════════
@@ -411,6 +425,7 @@ public class Settings {
     public void setKeyPauseAlt(int v)   { keyPauseAlt = v; }
     public void setKeySettings(int v)   { keySettings = v; }
     public void setKeyExitStage(int v)  { keyExitStage = v; }
+    public void setKeyReset(int v)      { keyReset = v; }
 
     public void setKeyP2MoveLeft(int v)   { keyP2MoveLeft = v; }
     public void setKeyP2MoveRight(int v)  { keyP2MoveRight = v; }
@@ -420,6 +435,8 @@ public class Settings {
     public void setKeyP2RotateCW(int v)   { keyP2RotateCW = v; }
     public void setKeyP2RotateCCW(int v)  { keyP2RotateCCW = v; }
     public void setKeyP2Hold(int v)             { keyP2Hold = v; }
+    public void setKeyP2ExitStage(int v)  { keyP2ExitStage = v; }
+    public void setKeyP2Reset(int v)      { keyP2Reset = v; }
     public void setControlsWizardCompleted(boolean completed) {
         controlsWizardCompleted = completed;
     }
@@ -440,6 +457,7 @@ public class Settings {
     public boolean isPause(int code)     { return code == keyPause || code == keyPauseAlt; }
     public boolean isSettings(int code)  { return code == keySettings; }
     public boolean isExitStage(int code) { return code == keyExitStage; }
+    public boolean isReset(int code)     { return code == keyReset; }
 
     public boolean isP2MoveLeft(int code)  { return code == keyP2MoveLeft; }
     public boolean isP2MoveRight(int code) { return code == keyP2MoveRight; }
@@ -449,6 +467,8 @@ public class Settings {
     public boolean isP2RotateCW(int code)  { return code == keyP2RotateCW; }
     public boolean isP2RotateCCW(int code) { return code == keyP2RotateCCW; }
     public boolean isP2Hold(int code)           { return code == keyP2Hold; }
+    public boolean isP2ExitStage(int code) { return code == keyP2ExitStage; }
+    public boolean isP2Reset(int code)     { return code == keyP2Reset; }
 
     // ─────────────────────── Private helpers ─────────────────────
 

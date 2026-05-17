@@ -23,6 +23,7 @@ public final class LocalInputRouter {
     private final GameState playerB;
     private final Settings settings;
     private final Runnable onPause;
+    private final Runnable onExit;
     private final Runnable onReset;
 
     private final PlayerKeys p1 = new PlayerKeys();
@@ -33,11 +34,21 @@ public final class LocalInputRouter {
                             Settings settings,
                             Runnable onPause,
                             Runnable onReset) {
+        this(playerA, playerB, settings, onPause, onReset, onReset);
+    }
+
+    public LocalInputRouter(GameState playerA,
+                            GameState playerB,
+                            Settings settings,
+                            Runnable onPause,
+                            Runnable onExit,
+                            Runnable onReset) {
         if (playerA == null || playerB == null) throw new IllegalArgumentException("gameState");
         this.playerA = playerA;
         this.playerB = playerB;
         this.settings = settings == null ? Settings.get() : settings;
         this.onPause = onPause;
+        this.onExit = onExit;
         this.onReset = onReset;
     }
 
@@ -78,7 +89,16 @@ public final class LocalInputRouter {
 
     private void processSharedActions() {
         if (p1.isNewPress(LocalPlayerAction.PAUSE) && onPause != null) onPause.run();
-        if (p1.isNewPress(LocalPlayerAction.EXIT_STAGE) && onReset != null) onReset.run();
+        boolean exitPressed = p1.isNewPress(LocalPlayerAction.EXIT_STAGE);
+        exitPressed = p2.isNewPress(LocalPlayerAction.EXIT_STAGE) || exitPressed;
+        if (exitPressed && onExit != null) {
+            onExit.run();
+        }
+        boolean resetPressed = p1.isNewPress(LocalPlayerAction.RESET);
+        resetPressed = p2.isNewPress(LocalPlayerAction.RESET) || resetPressed;
+        if (resetPressed && onReset != null) {
+            onReset.run();
+        }
     }
 
     private void processPlayer(PlayerKeys keys, GameState state) {
@@ -167,6 +187,7 @@ public final class LocalInputRouter {
         if (settings.isHold(code))          return LocalPlayerAction.HOLD;
         if (settings.isPause(code))         return LocalPlayerAction.PAUSE;
         if (settings.isExitStage(code))     return LocalPlayerAction.EXIT_STAGE;
+        if (settings.isReset(code))         return LocalPlayerAction.RESET;
         return null;
     }
 
@@ -179,6 +200,8 @@ public final class LocalInputRouter {
         if (settings.isP2RotateCW(code))      return LocalPlayerAction.ROTATE_CW;
         if (settings.isP2RotateCCW(code))     return LocalPlayerAction.ROTATE_CCW;
         if (settings.isP2Hold(code))          return LocalPlayerAction.HOLD;
+        if (settings.isP2ExitStage(code))     return LocalPlayerAction.EXIT_STAGE;
+        if (settings.isP2Reset(code))         return LocalPlayerAction.RESET;
         return null;
     }
 

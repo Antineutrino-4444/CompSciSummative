@@ -14,7 +14,7 @@ import com.tetris.mab.upgrade.draft.MabActiveDoctrineType;
  */
 final class DoctrineComboTracker {
 
-    private static final long TIMEOUT_MS = 1500;
+    private static final long TIMEOUT_MS = 800;
 
     private enum Path { NONE, MO, EMP }
 

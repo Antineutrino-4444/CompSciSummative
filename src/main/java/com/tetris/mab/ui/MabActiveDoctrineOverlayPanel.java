@@ -10,6 +10,7 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.InputMap;
 import javax.swing.JPanel;
 import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
@@ -19,11 +20,14 @@ import javax.swing.border.LineBorder;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -37,9 +41,12 @@ public final class MabActiveDoctrineOverlayPanel extends JPanel {
 
     private final JPanel optionRow = new JPanel(new GridLayout(1, 2, 16, 0));
     private final List<MabActiveDoctrineAvailability> options = new ArrayList<>();
+    private final List<MabActiveDoctrineAvailability> renderedOptions = new ArrayList<>();
+    private final List<JPanel> optionPanels = new ArrayList<>();
     private Consumer<MabActiveDoctrineType> useCallback;
     private Runnable closeCallback;
     private JLabel titleLabel;
+    private int selectedIndex = 0;
 
     public MabActiveDoctrineOverlayPanel() {
         super(new GridBagLayout());
@@ -83,6 +90,7 @@ public final class MabActiveDoctrineOverlayPanel extends JPanel {
         add(modal, new GridBagConstraints());
         installKeyboardActions();
         setVisible(false);
+        setEnabled(false);
     }
 
     @Override
@@ -108,12 +116,17 @@ public final class MabActiveDoctrineOverlayPanel extends JPanel {
         useCallback = onUse;
         closeCallback = onClose;
         optionRow.removeAll();
+        renderedOptions.clear();
+        optionPanels.clear();
         for (MabActiveDoctrineAvailability row : options) {
-            optionRow.add(buildOption(row));
+            addRenderedOption(row);
         }
         while (optionRow.getComponentCount() < 2) {
-            optionRow.add(buildEmptyOption());
+            addRenderedOption(null);
         }
+        selectedIndex = firstReadyIndex();
+        updateSelectionStyles();
+        setEnabled(true);
         setVisible(true);
         revalidate();
         repaint();
@@ -122,8 +135,12 @@ public final class MabActiveDoctrineOverlayPanel extends JPanel {
 
     public void dismiss() {
         setVisible(false);
+        setEnabled(false);
         optionRow.removeAll();
         options.clear();
+        renderedOptions.clear();
+        optionPanels.clear();
+        selectedIndex = 0;
         useCallback = null;
         closeCallback = null;
     }
@@ -140,15 +157,22 @@ public final class MabActiveDoctrineOverlayPanel extends JPanel {
         return false;
     }
 
-    private JPanel buildOption(MabActiveDoctrineAvailability row) {
+    private void addRenderedOption(MabActiveDoctrineAvailability row) {
+        int index = renderedOptions.size();
+        renderedOptions.add(row);
+        JPanel panel = buildOption(row, index);
+        optionPanels.add(panel);
+        optionRow.add(panel);
+    }
+
+    private JPanel buildOption(MabActiveDoctrineAvailability row, int index) {
         boolean ready = row != null && row.available();
         JPanel p = new JPanel();
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
         p.setOpaque(true);
-        p.setBackground(ready ? MabUiTheme.CARD_BG : MabUiTheme.SHELL_PANEL_BG);
-        p.setBorder(BorderFactory.createCompoundBorder(
-                new LineBorder(ready ? MabUiTheme.C_AMBER : MabUiTheme.GRID_LINE_HI, 1),
-                new EmptyBorder(14, 16, 14, 16)));
+        p.setBackground(optionBg(row, false));
+        p.setBorder(optionBorder(row, false));
+        p.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         JLabel name = new JLabel(row == null ? "EMPTY" : row.displayName());
         name.setFont(MabUiTheme.STENCIL_MID);
@@ -183,16 +207,18 @@ public final class MabActiveDoctrineOverlayPanel extends JPanel {
         use.setEnabled(ready);
         use.setAlignmentX(Component.LEFT_ALIGNMENT);
         if (row != null) {
-            use.addActionListener(e -> {
-                if (useCallback != null) useCallback.accept(row.type());
-            });
+            use.addActionListener(e -> executeOption(row));
         }
         p.add(use);
+        p.addMouseListener(new MouseAdapter() {
+            @Override public void mouseEntered(MouseEvent e) {
+                setSelectedIndex(index);
+            }
+            @Override public void mouseClicked(MouseEvent e) {
+                executeSelected();
+            }
+        });
         return p;
-    }
-
-    private JPanel buildEmptyOption() {
-        return buildOption(null);
     }
 
     private JButton styleButton(String text, boolean primary) {
@@ -212,12 +238,99 @@ public final class MabActiveDoctrineOverlayPanel extends JPanel {
     }
 
     private void installKeyboardActions() {
-        getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(
-                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "close");
+        InputMap im = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "close");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, 0), "prev");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "prev");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), "next");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "next");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "execute");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "execute");
         getActionMap().put("close", new AbstractAction() {
             @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (!isVisible()) return;
                 close();
             }
         });
+        getActionMap().put("prev", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                moveSelection(-1);
+            }
+        });
+        getActionMap().put("next", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                moveSelection(1);
+            }
+        });
+        getActionMap().put("execute", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                executeSelected();
+            }
+        });
+    }
+
+    private int firstReadyIndex() {
+        for (int i = 0; i < renderedOptions.size(); i++) {
+            MabActiveDoctrineAvailability row = renderedOptions.get(i);
+            if (row != null && row.available()) return i;
+        }
+        return 0;
+    }
+
+    private void moveSelection(int delta) {
+        if (!isVisible() || renderedOptions.isEmpty()) return;
+        int n = renderedOptions.size();
+        selectedIndex = ((selectedIndex + delta) % n + n) % n;
+        updateSelectionStyles();
+        requestFocusInWindow();
+    }
+
+    private void setSelectedIndex(int index) {
+        if (!isVisible() || index < 0 || index >= renderedOptions.size()) return;
+        selectedIndex = index;
+        updateSelectionStyles();
+        requestFocusInWindow();
+    }
+
+    private void executeSelected() {
+        if (!isVisible() || selectedIndex < 0 || selectedIndex >= renderedOptions.size()) return;
+        executeOption(renderedOptions.get(selectedIndex));
+    }
+
+    private void executeOption(MabActiveDoctrineAvailability row) {
+        if (row == null || !row.available() || useCallback == null) return;
+        useCallback.accept(row.type());
+    }
+
+    private void updateSelectionStyles() {
+        for (int i = 0; i < optionPanels.size(); i++) {
+            JPanel panel = optionPanels.get(i);
+            MabActiveDoctrineAvailability row = i < renderedOptions.size()
+                    ? renderedOptions.get(i) : null;
+            boolean selected = i == selectedIndex;
+            panel.setBackground(optionBg(row, selected));
+            panel.setBorder(optionBorder(row, selected));
+        }
+    }
+
+    private static Color optionBg(MabActiveDoctrineAvailability row, boolean selected) {
+        boolean ready = row != null && row.available();
+        if (selected && ready) return new Color(0x2A, 0x24, 0x08);
+        if (selected) return new Color(0x10, 0x1B, 0x28);
+        return ready ? MabUiTheme.CARD_BG : MabUiTheme.SHELL_PANEL_BG;
+    }
+
+    private static javax.swing.border.Border optionBorder(
+            MabActiveDoctrineAvailability row, boolean selected) {
+        boolean ready = row != null && row.available();
+        Color c = ready ? MabUiTheme.C_AMBER : MabUiTheme.GRID_LINE_HI;
+        if (selected) {
+            return BorderFactory.createCompoundBorder(
+                    new LineBorder(ready ? MabUiTheme.C_AMBER : MabUiTheme.C_CYAN_DIM, 2),
+                    new EmptyBorder(13, 15, 13, 15));
+        }
+        return BorderFactory.createCompoundBorder(
+                new LineBorder(c, 1),
+                new EmptyBorder(14, 16, 14, 16));
     }
 }

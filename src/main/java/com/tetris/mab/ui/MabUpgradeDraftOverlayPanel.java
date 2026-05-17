@@ -15,7 +15,9 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -50,6 +52,16 @@ public final class MabUpgradeDraftOverlayPanel extends JPanel {
     private MabUpgradeDraft activeDraft;
     private int selectedIndex = 0;
 
+    // KeyEventDispatcher installed while the overlay is showing so navigation
+    // keys are guaranteed to reach us before focus-based routing (which can
+    // miss the first event on a newly-visible panel).
+    private final KeyEventDispatcher overlayDispatcher = this::handleKeyEvent;
+    private boolean dispatcherInstalled = false;
+
+    // Auto-repeat guard: tracks keys currently held down so repeated KEY_PRESSED
+    // events (OS auto-repeat) don't cycle cards when the user just taps once.
+    private final Set<Integer> navKeysHeld = new HashSet<>();
+
     public MabUpgradeDraftOverlayPanel() {
         setOpaque(false);
         setLayout(new GridBagLayout());
@@ -75,7 +87,7 @@ public final class MabUpgradeDraftOverlayPanel extends JPanel {
         titleLabel.setForeground(MabUiTheme.C_CYAN);
         titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        subtitleLabel = new JLabel("LEVEL ?  —  SELECT ONE DOCTRINE  —  BOTH BOARDS PAUSED");
+        subtitleLabel = new JLabel("LEVEL ?  -  SELECT ONE DOCTRINE  -  BOTH BOARDS PAUSED");
         subtitleLabel.setFont(MabUiTheme.STENCIL_SMALL);
         subtitleLabel.setForeground(MabUiTheme.TEXT_FAINT);
         subtitleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -99,7 +111,7 @@ public final class MabUpgradeDraftOverlayPanel extends JPanel {
         modal.add(cardRow, BorderLayout.CENTER);
 
         // ── Footer ──
-        JLabel footer = new JLabel("◄ ► / ▲ ▼  SELECT    ENTER / SPACE  CONFIRM");
+        JLabel footer = new JLabel("ARROWS SELECT    HARD DROP / SPACE CONFIRM");
         footer.setFont(MabUiTheme.TERM_TINY);
         footer.setForeground(MabUiTheme.TEXT_GHOST);
         footer.setHorizontalAlignment(SwingConstants.CENTER);
@@ -131,8 +143,8 @@ public final class MabUpgradeDraftOverlayPanel extends JPanel {
         titleLabel.setText(isP2 ? "PLAYER 2 DOCTRINE LOADOUT" : "PLAYER 1 DOCTRINE LOADOUT");
         bindPlayerKeys(isP2);
         subtitleLabel.setText((isP2 ? "PLAYER 2" : "PLAYER 1")
-                + "  SELECTS ONE CARD  —  LV " + draft.getLevel()
-                + "  —  BOTH BOARDS PAUSED");
+                + "  SELECTS ONE CARD  -  LV " + draft.getLevel()
+                + "  -  BOTH BOARDS PAUSED");
         cardRow.removeAll();
         renderedCards.clear();
         renderedChoices.clear();
@@ -150,10 +162,21 @@ public final class MabUpgradeDraftOverlayPanel extends JPanel {
         setVisible(true);
         revalidate();
         repaint();
-        SwingUtilities.invokeLater(this::requestFocusInWindow);
+        if (!dispatcherInstalled) {
+            KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                    .addKeyEventDispatcher(overlayDispatcher);
+            dispatcherInstalled = true;
+        }
+        requestFocusInWindow();
     }
 
     public void dismiss() {
+        if (dispatcherInstalled) {
+            KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                    .removeKeyEventDispatcher(overlayDispatcher);
+            dispatcherInstalled = false;
+        }
+        navKeysHeld.clear();
         setVisible(false);
         cardRow.removeAll();
         renderedCards.clear();
@@ -301,7 +324,6 @@ public final class MabUpgradeDraftOverlayPanel extends JPanel {
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP,    0), "selectPrevious");
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), "selectNext");
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN,  0), "selectNext");
-        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "confirmSelection");
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "confirmSelection");
 
         am.put("selectPrevious", new AbstractAction() {
@@ -342,6 +364,64 @@ public final class MabUpgradeDraftOverlayPanel extends JPanel {
         if (confirm != 0) im.put(KeyStroke.getKeyStroke(confirm, 0), "confirmSelection");
     }
 
+    private boolean handleKeyEvent(KeyEvent e) {
+        if (!isVisible()) return false;
+        int code = e.getKeyCode();
+
+        // Release: clear held-key tracking; don't consume so other listeners stay happy.
+        if (e.getID() == KeyEvent.KEY_RELEASED) {
+            navKeysHeld.remove(code);
+            return false;
+        }
+        if (e.getID() != KeyEvent.KEY_PRESSED) return false;
+
+        // Determine whether this key is one we act on before checking repeat.
+        boolean isNav     = (code == KeyEvent.VK_LEFT || code == KeyEvent.VK_UP
+                          || code == KeyEvent.VK_RIGHT || code == KeyEvent.VK_DOWN);
+        boolean isConfirm = (code == KeyEvent.VK_SPACE);
+
+        // Player-configured bindings.
+        if (!isNav && !isConfirm && activeDraft != null) {
+            Settings s = Settings.get();
+            boolean p2  = activeDraft.getParticipantId() == ParticipantId.PLAYER_B;
+            int left    = p2 ? s.getKeyP2MoveLeft()  : s.getKeyMoveLeft();
+            int right   = p2 ? s.getKeyP2MoveRight() : s.getKeyMoveRight();
+            int up      = p2 ? s.getKeyP2MoveUp()    : s.getKeyMoveUp();
+            int down    = p2 ? s.getKeyP2MoveDown()  : s.getKeyMoveDown();
+            int confirm = p2 ? s.getKeyP2HardDrop()  : s.getKeyHardDrop();
+            if (left    != 0 && (code == left  || code == up))    isNav     = true;
+            if (right   != 0 && (code == right || code == down))  isNav     = true;
+            if (confirm != 0 &&  code == confirm)                  isConfirm = true;
+        }
+
+        if (!isNav && !isConfirm) return false;
+
+        // Consume auto-repeat silently: only act on the first press of each key.
+        boolean repeated = !navKeysHeld.add(code);
+        if (repeated) return true;
+
+        // Act on first press only.
+        if (isConfirm) {
+            confirmSelection(selectedIndex);
+            return true;
+        }
+        // isNav
+        if (code == KeyEvent.VK_LEFT || code == KeyEvent.VK_UP) {
+            moveSelection(-1);
+        } else if (code == KeyEvent.VK_RIGHT || code == KeyEvent.VK_DOWN) {
+            moveSelection(+1);
+        } else {
+            // Player-bound nav key: determine direction.
+            Settings s = Settings.get();
+            boolean p2 = activeDraft != null && activeDraft.getParticipantId() == ParticipantId.PLAYER_B;
+            int left  = p2 ? s.getKeyP2MoveLeft()  : s.getKeyMoveLeft();
+            int up    = p2 ? s.getKeyP2MoveUp()     : s.getKeyMoveUp();
+            if (code == left || code == up) moveSelection(-1);
+            else                            moveSelection(+1);
+        }
+        return true;
+    }
+
     private void moveSelection(int delta) {
         if (!isVisible() || renderedChoices.isEmpty()) return;
         int n = renderedChoices.size();
@@ -376,7 +456,7 @@ public final class MabUpgradeDraftOverlayPanel extends JPanel {
             if (i < selectionIndicators.size()) {
                 JLabel ind = selectionIndicators.get(i);
                 if (selected) {
-                    ind.setText("◂◂  ARMED  ▸▸");
+                    ind.setText(">>  ARMED  <<");
                     ind.setForeground(brighten(rarity, 80));
                 } else {
                     ind.setText(" ");

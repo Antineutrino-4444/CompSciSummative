@@ -27,11 +27,14 @@ import javax.swing.border.LineBorder;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.GradientPaint;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
-import java.awt.event.ActionListener;
+import java.awt.RenderingHints;
 import java.awt.event.KeyEvent;
 
 /**
@@ -82,10 +85,8 @@ public final class MabBattleShellPanel extends JLayeredPane {
     private final MabUpgradeDraftOverlayPanel upgradeOverlay;
     private final MabActiveDoctrineOverlayPanel activeDoctrineOverlay;
     private final MabDoctrineStatusOverlayPanel doctrineStatusOverlay;
-    private final JButton backButton;
-    private final JButton activeButton;
-    private final JButton statusButton;
     private final JLabel toastLabel;
+    private final JLabel pauseLabel;
     private boolean diagLogged = false;
     private MabBattleShellInputAdapter inputAdapter;
     private MabLocalPvpInputAdapter localPvpInputAdapter;
@@ -127,6 +128,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
         this.humanSide = humanSide;
         this.opponentSideId = opponentSideId;
         this.opponentIsAi = opponentIsAi;
+        this.opponentBoardPanel.setShellBoardMode(true);
 
         setOpaque(true);
         setBackground(MabUiTheme.SHELL_BG);
@@ -176,24 +178,16 @@ public final class MabBattleShellPanel extends JLayeredPane {
         toastLabel.setVisible(false);
         add(toastLabel, JLayeredPane.POPUP_LAYER);
 
-        statusButton = corneredButton("STATUS", e -> showDoctrineStatusOverlay());
-        statusButton.setFocusable(false);
-        add(statusButton, JLayeredPane.PALETTE_LAYER);
-
-        activeButton = corneredButton("ACTIVE COMMANDS",
-                e -> showActiveCommandsOverlay(humanSide));
-        activeButton.setFocusable(false);
-        activeButton.setVisible(false);
-        add(activeButton, JLayeredPane.PALETTE_LAYER);
-
-        backButton = corneredButton("\u2039 BACK", e -> {
-            // Always clear held movement before unmounting the shell so
-            // the next view never inherits a stuck direction.
-            clearHeldInputs();
-            if (onBackToMenu != null) onBackToMenu.run();
-        });
-        backButton.setFocusable(false);
-        add(backButton, JLayeredPane.PALETTE_LAYER);
+        pauseLabel = new JLabel("PAUSED - PRESS PAUSE TO RESUME", SwingConstants.CENTER);
+        pauseLabel.setOpaque(true);
+        pauseLabel.setBackground(new Color(4, 8, 14, 230));
+        pauseLabel.setForeground(MabUiTheme.C_AMBER);
+        pauseLabel.setFont(MabUiTheme.STENCIL_SMALL);
+        pauseLabel.setBorder(BorderFactory.createCompoundBorder(
+                new LineBorder(MabUiTheme.C_AMBER_DIM, 1),
+                new EmptyBorder(4, 12, 4, 12)));
+        pauseLabel.setVisible(false);
+        add(pauseLabel, JLayeredPane.POPUP_LAYER);
 
         // Decorative panels must NEVER steal focus or take part in
         // focus traversal — otherwise an arrow key on a focused
@@ -227,21 +221,14 @@ public final class MabBattleShellPanel extends JLayeredPane {
         if (upgradeOverlay != null) upgradeOverlay.setBounds(0, 0, w, h);
         if (activeDoctrineOverlay != null) activeDoctrineOverlay.setBounds(0, 0, w, h);
         if (doctrineStatusOverlay != null) doctrineStatusOverlay.setBounds(0, 0, w, h);
-        if (backButton != null) {
-            int bw = 96, bh = 22;
-            backButton.setBounds(w - bw - 14, 4, bw, bh);
-        }
-        if (activeButton != null) {
-            int bw = 92, bh = 22;
-            activeButton.setBounds(w - 96 - bw - 22, 4, bw, bh);
-        }
-        if (statusButton != null) {
-            int bw = 82, bh = 22;
-            statusButton.setBounds(w - 96 - 92 - bw - 30, 4, bw, bh);
-        }
         if (toastLabel != null) {
             int tw = Math.min(460, Math.max(260, w / 3));
-            toastLabel.setBounds((w - tw) / 2, 8, tw, 28);
+            int ty = pauseLabel != null && pauseLabel.isVisible() ? 60 : 34;
+            toastLabel.setBounds((w - tw) / 2, ty, tw, 28);
+        }
+        if (pauseLabel != null) {
+            int pw = Math.min(360, Math.max(230, w / 4));
+            pauseLabel.setBounds((w - pw) / 2, 30, pw, 24);
         }
         if (!diagLogged) {
             diagLogged = true;
@@ -249,6 +236,27 @@ public final class MabBattleShellPanel extends JLayeredPane {
             // resolved. Helpful for verifying the board got real bounds.
             SwingUtilities.invokeLater(this::logDiagnostics);
         }
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2 = (Graphics2D) g.create();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON);
+        int w = getWidth();
+        int h = getHeight();
+        g2.setPaint(new GradientPaint(0, 0, MabUiTheme.SHELL_BG,
+                0, Math.max(1, h), MabUiTheme.SHELL_DEEP_BG));
+        g2.fillRect(0, 0, w, h);
+
+        g2.setColor(new Color(0, 229, 224, 10));
+        for (int x = 0; x < w; x += 48) g2.drawLine(x, 0, x, h);
+        for (int y = 0; y < h; y += 48) g2.drawLine(0, y, w, y);
+
+        g2.setColor(new Color(255, 179, 0, 22));
+        g2.drawLine(12, 28, Math.max(12, w - 12), 28);
+        g2.dispose();
     }
 
     private void logDiagnostics() {
@@ -269,22 +277,34 @@ public final class MabBattleShellPanel extends JLayeredPane {
         System.out.println("[MAB-SHELL] focus requested player board");
     }
 
-    private JButton corneredButton(String text, ActionListener listener) {
-        JButton b = new JButton(text);
-        b.setFont(MabUiTheme.TERM_TINY);
-        b.setForeground(MabUiTheme.TEXT_FAINT);
-        b.setBackground(MabUiTheme.SHELL_PANEL_BG);
-        b.setOpaque(true);
-        b.setBorder(new LineBorder(MabUiTheme.GRID_LINE_HI, 1));
-        b.setFocusPainted(false);
-        b.addActionListener(listener);
-        return b;
+    private String buildComboHintForBanner(MutuallyAssuredBlocksMatch match,
+                                           ParticipantId pid) {
+        Settings s = Settings.get();
+        String cw   = KeyEvent.getKeyText(s.getKeyRotateCW());
+        String ccw  = KeyEvent.getKeyText(s.getKeyRotateCCW());
+        String drop = KeyEvent.getKeyText(s.getKeyHardDrop());
+        StringBuilder sb = new StringBuilder();
+        for (com.tetris.mab.upgrade.draft.MabActiveDoctrineAvailability opt
+                : match.getActiveDoctrineOptions(pid)) {
+            if (!opt.owned()) continue;
+            if (sb.length() > 0) sb.append("  ·  ");
+            switch (opt.type()) {
+                case MANUAL_OVERRIDE ->
+                    sb.append("OVERRIDE: ").append(cw).append(" ").append(ccw)
+                      .append(" ").append(cw).append(" ").append(ccw)
+                      .append(" ").append(drop);
+                case EMP ->
+                    sb.append("EMP: ").append(ccw).append(" ").append(cw)
+                      .append(" ").append(ccw).append(" ").append(cw)
+                      .append(" ").append(drop);
+            }
+        }
+        return sb.toString();
     }
 
     private JPanel buildMainGrid() {
         JPanel grid = new JPanel(new GridBagLayout());
-        grid.setOpaque(true);
-        grid.setBackground(MabUiTheme.SHELL_BG);
+        grid.setOpaque(false);
         grid.setBorder(new EmptyBorder(4, 12, 12, 12));
 
         GridBagConstraints gc = new GridBagConstraints();
@@ -327,8 +347,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
         grid.add(opponentStrip, gc);
 
         JPanel wrapper = new JPanel(new BorderLayout(0, 0));
-        wrapper.setOpaque(true);
-        wrapper.setBackground(MabUiTheme.SHELL_BG);
+        wrapper.setOpaque(false);
         wrapper.setBorder(new EmptyBorder(12, 0, 0, 0));
         wrapper.add(defconBar, BorderLayout.NORTH);
         wrapper.add(grid, BorderLayout.CENTER);
@@ -404,12 +423,13 @@ public final class MabBattleShellPanel extends JLayeredPane {
 
         com.tetris.mab.DefconState ds = match.getDefconState();
         if (ds != null) defconBar.refresh(ds.getLevel(), ds.getProgressToNextThreshold());
+        pauseLabel.setVisible(match.isPaused()
+                && !isKeyboardModalOverlayVisible()
+                && !match.isGameOver());
 
         long ms = System.currentTimeMillis() - startMillis;
         opsDeck.setMatchClock(ms);
-        activeButton.setVisible(match.hasAnyActiveDoctrineOwned(humanSide));
-        activeButton.setForeground(match.hasAnyActiveDoctrineAvailable(humanSide)
-                ? MabUiTheme.C_AMBER : MabUiTheme.TEXT_FAINT);
+        playerBanner.setComboHint(buildComboHintForBanner(match, humanSide));
     }
 
     public void requestGameFocus() {
@@ -629,7 +649,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
         requestGameFocus();
     }
 
-    boolean isKeyboardModalOverlayVisible() {
+    public boolean isKeyboardModalOverlayVisible() {
         return (upgradeOverlay != null && upgradeOverlay.isVisible())
                 || (resultOverlay != null && resultOverlay.isVisible())
                 || (activeDoctrineOverlay != null && activeDoctrineOverlay.isVisible())

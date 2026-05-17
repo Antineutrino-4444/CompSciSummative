@@ -440,8 +440,10 @@ public final class KeyMappingWizardPanel extends JPanel {
             case SUMMARY -> {
                 seqProgressLabel.setText("CALIBRATION COMPLETE");
                 seqActionLabel.setText("ALL DONE");
-                seqInstructionLabel.setText(
-                    "Press ENTER or click SAVE AND CONTINUE   |   BACKSPACE to revise last binding");
+                int p1Drop = capturedHardDropKey(p1Keys, P1_SEQ);
+                int p2Drop = capturedHardDropKey(p2Keys, P2_SEQ);
+                String dropHint = buildDropHint(p1Drop, p2Drop);
+                seqInstructionLabel.setText(dropHint + "   |   BACKSPACE to revise last binding");
                 if (saveAndContinueBtn != null) saveAndContinueBtn.setVisible(true);
             }
             default -> {}
@@ -516,6 +518,7 @@ public final class KeyMappingWizardPanel extends JPanel {
     // ─────────────────────────────────────────────────────────────────────────
 
     private boolean dispatchKey(KeyEvent e) {
+        if (!isShowing()) return false;
         if (e == null || e.getID() != KeyEvent.KEY_PRESSED) return false;
         switch (phase) {
             case P1_CAPTURE: return handleP1Key(e.getKeyCode());
@@ -576,8 +579,9 @@ public final class KeyMappingWizardPanel extends JPanel {
         if (code == KeyEvent.VK_UNDEFINED || code == 0) {
             return true;
         }
+        LocalPlayerAction p2Action = P2_SEQ[seqIdx];
         LocalPlayerAction p1c = findKeyIn(p1Keys, P1_SEQ, code, p1Keys.length);
-        if (p1c != null) {
+        if (p1c != null && !canShareAcrossPlayers(p1c, p2Action)) {
             showSeqWarning("That key is used by Player 1 for "
                 + p1c.getDisplayName().toUpperCase() + ". Choose a different key for Player 2.");
             return true;
@@ -593,7 +597,9 @@ public final class KeyMappingWizardPanel extends JPanel {
     }
 
     private boolean handleSummaryKey(int code) {
-        if (code == KeyEvent.VK_ENTER) {
+        int p1Drop = capturedHardDropKey(p1Keys, P1_SEQ);
+        int p2Drop = capturedHardDropKey(p2Keys, P2_SEQ);
+        if ((p1Drop != 0 && code == p1Drop) || (p2Drop != 0 && code == p2Drop)) {
             saveAndContinue();
             return true;
         }
@@ -626,6 +632,35 @@ public final class KeyMappingWizardPanel extends JPanel {
         return null;
     }
 
+    private static String buildDropHint(int p1Drop, int p2Drop) {
+        if (p1Drop != 0 && p2Drop != 0 && p1Drop != p2Drop) {
+            return "Press " + KeyEvent.getKeyText(p1Drop).toUpperCase()
+                + " (P1 hard drop) or " + KeyEvent.getKeyText(p2Drop).toUpperCase()
+                + " (P2 hard drop) to save";
+        } else if (p1Drop != 0) {
+            return "Press " + KeyEvent.getKeyText(p1Drop).toUpperCase() + " (hard drop) to save";
+        } else if (p2Drop != 0) {
+            return "Press " + KeyEvent.getKeyText(p2Drop).toUpperCase() + " (hard drop) to save";
+        }
+        return "Click SAVE AND CONTINUE to proceed";
+    }
+
+    private static int capturedHardDropKey(int[] keys, LocalPlayerAction[] seq) {
+        for (int i = 0; i < seq.length; i++) {
+            if (seq[i] == LocalPlayerAction.HARD_DROP) {
+                return (i < keys.length) ? keys[i] : 0;
+            }
+        }
+        return 0;
+    }
+
+    private static boolean canShareAcrossPlayers(LocalPlayerAction p1Action,
+                                                 LocalPlayerAction p2Action) {
+        return p1Action == p2Action
+            && (p1Action == LocalPlayerAction.EXIT_STAGE
+                || p1Action == LocalPlayerAction.RESET);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Save / continue
     // ─────────────────────────────────────────────────────────────────────────
@@ -650,6 +685,7 @@ public final class KeyMappingWizardPanel extends JPanel {
         player2.applyToSettingsPlayer2(s);
         s.setControlsWizardCompleted(true);
         s.save();
+        uninstallDispatcher();
         if (onComplete != null) onComplete.run();
     }
 
@@ -661,6 +697,7 @@ public final class KeyMappingWizardPanel extends JPanel {
         player2.applyToSettingsPlayer2(s);
         s.setControlsWizardCompleted(true);
         s.save();
+        uninstallDispatcher();
         if (onComplete != null) onComplete.run();
     }
 

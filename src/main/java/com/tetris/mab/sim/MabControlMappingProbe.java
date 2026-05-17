@@ -16,9 +16,9 @@ public final class MabControlMappingProbe {
         Settings s = Settings.get();
 
         boolean player1Defaults = LocalPlayerInputBindings.player1Defaults()
-                .get(LocalPlayerAction.MOVE_LEFT) == KeyEvent.VK_LEFT;
+                .get(LocalPlayerAction.MOVE_LEFT) == KeyEvent.VK_A;
         boolean player2Defaults = LocalPlayerInputBindings.player2Defaults()
-                .get(LocalPlayerAction.MOVE_LEFT) == KeyEvent.VK_J;
+                .get(LocalPlayerAction.MOVE_LEFT) == KeyEvent.VK_LEFT;
 
         LocalPlayerInputBindings p1 = LocalPlayerInputBindings.player1Defaults();
         boolean rebindingWorks = p1.rebind(LocalPlayerAction.MOVE_LEFT, KeyEvent.VK_B, false)
@@ -27,8 +27,9 @@ public final class MabControlMappingProbe {
                 p1.findConflict(LocalPlayerAction.MOVE_RIGHT, KeyEvent.VK_B);
         boolean duplicateDetected = conflict != null;
         p1.resetToDefaults();
-        boolean resetDefaults = p1.get(LocalPlayerAction.MOVE_LEFT) == KeyEvent.VK_LEFT
-                && p1.get(LocalPlayerAction.MOVE_RIGHT) == KeyEvent.VK_RIGHT;
+        boolean resetDefaults = p1.get(LocalPlayerAction.MOVE_LEFT) == KeyEvent.VK_A
+                && p1.get(LocalPlayerAction.MOVE_RIGHT) == KeyEvent.VK_D
+                && p1.get(LocalPlayerAction.RESET) == KeyEvent.VK_X;
 
         boolean originalWizardFlag = s.isControlsWizardCompleted();
         s.setControlsWizardCompleted(true);
@@ -40,7 +41,8 @@ public final class MabControlMappingProbe {
         boolean normalReadsP1 = settingsP1.get(LocalPlayerAction.HARD_DROP) == s.getKeyHardDrop();
         boolean pveReadsP1 = settingsP1.get(LocalPlayerAction.HOLD) == s.getKeyHold();
         boolean pvpReadsBoth = settingsP1.get(LocalPlayerAction.MOVE_LEFT) == s.getKeyMoveLeft()
-                && settingsP2.get(LocalPlayerAction.MOVE_RIGHT) == s.getKeyP2MoveRight();
+                && settingsP2.get(LocalPlayerAction.MOVE_RIGHT) == s.getKeyP2MoveRight()
+                && settingsP2.get(LocalPlayerAction.RESET) == s.getKeyP2Reset();
 
         boolean success = player1Defaults && player2Defaults && rebindingWorks
                 && duplicateDetected && resetDefaults && wizardFlag

@@ -12,12 +12,13 @@ public enum LocalPlayerAction {
     MOVE_RIGHT("Move right", true,  false),
     MOVE_DOWN("Move down",   true,  false),
     MOVE_UP("Move up",       true,  false),
-    HARD_DROP("Hard drop",   true,  false),
+    HARD_DROP("Hard drop / Confirm", true, false),
     ROTATE_CW("Rotate clockwise",      true,  false),
     ROTATE_CCW("Rotate counterclockwise", true, false),
     HOLD("Hold",             true,  false),
     PAUSE("Pause",           false, true),
-    EXIT_STAGE("Exit stage", false, true);
+    EXIT_STAGE("Exit stage", true,  true),
+    RESET("Reset",           true,  true);
 
     private final String displayName;
     private final boolean player2Supported;
@@ -52,7 +53,8 @@ public enum LocalPlayerAction {
     public static LocalPlayerAction[] player2Actions() {
         return new LocalPlayerAction[] {
                 MOVE_LEFT, MOVE_RIGHT, MOVE_DOWN, MOVE_UP,
-                HARD_DROP, ROTATE_CW, ROTATE_CCW, HOLD
+                HARD_DROP, ROTATE_CW, ROTATE_CCW, HOLD,
+                EXIT_STAGE, RESET
         };
     }
 }

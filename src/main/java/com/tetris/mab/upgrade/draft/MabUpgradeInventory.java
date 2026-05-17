@@ -81,6 +81,13 @@ public final class MabUpgradeInventory {
         return total;
     }
 
+    /** Removes all stacks of the card with the given id (e.g. to reset
+     *  a once-per-DEFCON-level card when the DEFCON level drops). */
+    public void removeUpgrade(String id) {
+        stacks.remove(id);
+        cards.remove(id);
+    }
+
     public void clear() {
         stacks.clear();
         cards.clear();

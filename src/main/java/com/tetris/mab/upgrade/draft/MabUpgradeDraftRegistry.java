@@ -445,5 +445,17 @@ public final class MabUpgradeDraftRegistry {
                 "Default: SKIP. If you have < 40 charge, CANCEL is greyed out.",
                 1, false, tags("tempo_emp"),
                 1.0, arch(WILDCARD), true));
+
+        // Weapons Modernization: opens the nuke builder mid-match for the owning player.
+        // maxStacks=1, not repeatable — the inventory entry is cleared on each DEFCON drop
+        // so the card can be offered once per DEFCON level.
+        add(new MabUpgradeCard("redesign_nuke", "Weapons Modernization", "REARM", "☢ II",
+                MabUpgradeCategory.POWER, MabUpgradeRarity.ADVANCED,
+                "Pause and redesign your nuclear warhead (once per DEFCON level).",
+                "Opens the Nuke Builder for you immediately. Your opponent's board is paused " +
+                "until you confirm your new design. The warhead upgrade takes effect on your " +
+                "next launch. Can be drawn once per DEFCON level.",
+                1, false, tags("redesign_nuke"),
+                1.2, arch(WILDCARD, RUSHER), true));
     }
 }

@@ -484,6 +484,7 @@ public class SettingsPanel extends JPanel {
         addKeyBindRow(panel, "Pause",          "pause",       s.getKeyPause());
         addKeyBindRow(panel, "Pause (Alt)",    "pauseAlt",    s.getKeyPauseAlt());
         addKeyBindRow(panel, "Exit Stage",     "exitStage",   s.getKeyExitStage());
+        addKeyBindRow(panel, "Reset",          "reset",       s.getKeyReset());
         addKeyBindRow(panel, "Settings",       "settings",    s.getKeySettings());
 
         return wrapInScrollPane(panel);
@@ -750,6 +751,7 @@ public class SettingsPanel extends JPanel {
         keyBindButtons.get("pause").setKeyCode(s.getKeyPause());
         keyBindButtons.get("pauseAlt").setKeyCode(s.getKeyPauseAlt());
         keyBindButtons.get("exitStage").setKeyCode(s.getKeyExitStage());
+        keyBindButtons.get("reset").setKeyCode(s.getKeyReset());
         keyBindButtons.get("settings").setKeyCode(s.getKeySettings());
 
         // Fire change listeners to update labels
@@ -800,6 +802,7 @@ public class SettingsPanel extends JPanel {
         s.setKeyPause(keyBindButtons.get("pause").getKeyCode());
         s.setKeyPauseAlt(keyBindButtons.get("pauseAlt").getKeyCode());
         s.setKeyExitStage(keyBindButtons.get("exitStage").getKeyCode());
+        s.setKeyReset(keyBindButtons.get("reset").getKeyCode());
         s.setKeySettings(keyBindButtons.get("settings").getKeyCode());
 
         s.save();
