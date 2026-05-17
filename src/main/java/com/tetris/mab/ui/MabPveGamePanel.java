@@ -210,7 +210,8 @@ public class MabPveGamePanel extends JPanel {
                 alertBanner.setText("UPGRADE PAUSE \u2014 click Open Upgrades in the dashboard");
             } else if (incoming > 0) {
                 alertBanner.setForeground(MabUiTheme.CRITICAL);
-                alertBanner.setText("WARNING \u2014 " + incoming + " incoming threat(s)");
+                alertBanner.setText("INCOMING IMPACT \u2014 " + incoming
+                        + " inbound \u00b7 SPIN TO INTERCEPT");
             } else {
                 alertBanner.setForeground(MabUiTheme.TEXT_MUTED);
                 alertBanner.setText("MAB PvE \u2014 dashboard below");

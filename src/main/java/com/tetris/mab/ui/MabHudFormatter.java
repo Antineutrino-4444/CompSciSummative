@@ -42,7 +42,6 @@ public final class MabHudFormatter {
             "LAUNCH_COUNTDOWN_STARTED",
             "LAUNCH_IN_FLIGHT",
             "LAUNCH_IMPACT_READY",
-            "THREAT_WARNING_STARTED",
             "THREAT_IMPACT_READY",
             "IMPACT_RESOLVED",
             "CIVIL_DEFENSE_ACTIVATED",
@@ -50,10 +49,9 @@ public final class MabHudFormatter {
             "CIVIL_DEFENSE_MITIGATION_APPLIED",
             "INTERCEPT_RESOLVED",
             "INTERCEPT_PARTIAL",
-            "RADAR_SCAN_COMPLETED",
-            "RADAR_DECOY_EFFECT_APPLIED",
-            "DECOY_ACTIVATED",
-            "DECOY_EXPIRED",
+            // Legacy radar / decoy events are not surfaced to the
+            // player. They remain in the event log only for replay /
+            // debug analysis.
             "UPGRADE_APPLIED",
             "UPGRADE_SIDE_EFFECT_APPLIED",
             "UPGRADE_APPLY_REJECTED",
@@ -88,7 +86,6 @@ public final class MabHudFormatter {
             "THREAT_PARTIALLY_INTERCEPTED",
             "INTERCEPT_STARTED",
             "INTERCEPT_FAILED",
-            "RADAR_SCAN_STARTED",
             "TOP_OUT",
             "MATCH_ENDED"
     ));

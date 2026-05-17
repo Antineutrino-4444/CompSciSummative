@@ -53,6 +53,10 @@ public final class MabSimulationRunner {
             runBalanceReportCommand(ticks == null ? 160 : ticks);
             return;
         }
+        if ("nuke-builder-balance".equals(scenario)) {
+            runNukeBuilderBalanceCommand(ticks == null ? 160 : ticks);
+            return;
+        }
 
         MabSimulationConfig cfg = switch (scenario) {
             case "smoke"          -> MabSimulationConfig.smoke();
@@ -111,6 +115,62 @@ public final class MabSimulationRunner {
         System.out.println();
         System.out.println("localPvpHeadlessSmoke=true");
         System.out.println("invariantFailures=" + invariantFailures);
+        System.out.println("success=" + (invariantFailures == 0));
+        if (invariantFailures != 0) System.exit(1);
+    }
+
+    /**
+     * Step 26 — Nuke Builder balance scenarios. Runs a fixed set of
+     * design-vs-design head-to-head matches and prints a compact
+     * scorecard for each. The intent is to show that builder-derived
+     * designs actually change the live MAB feel — different time-to-
+     * armed, different launch counts, different impact mix.
+     */
+    private static void runNukeBuilderBalanceCommand(int ticks) {
+        System.out.println("=== MAB Nuke Builder Balance Report (ticks=" + ticks + ") ===");
+        com.tetris.mab.nuke.NukeDesign[][] pairs = {
+                { com.tetris.mab.nuke.NukeDesignFactory.createDefaultTacticalBlast(),
+                  com.tetris.mab.nuke.NukeDesignFactory.createDefaultTacticalBlast() },
+                { com.tetris.mab.nuke.NukeDesignFactory.createDefaultTacticalBlast(),
+                  com.tetris.mab.nuke.NukeDesignFactory.createDefaultHeavyBlast() },
+                { com.tetris.mab.nuke.NukeDesignFactory.createDefaultDirtyPayload(),
+                  com.tetris.mab.nuke.NukeDesignFactory.createDefaultCleanFusion() },
+                { com.tetris.mab.nuke.NukeDesignFactory.createDefaultEmp(),
+                  com.tetris.mab.nuke.NukeDesignFactory.createDefaultHeavyBlast() },
+                { com.tetris.mab.nuke.NukeDesignFactory.createDefaultBunkerBuster(),
+                  com.tetris.mab.nuke.NukeDesignFactory.createDefaultDirtyPayload() },
+                { com.tetris.mab.nuke.NukeDesignFactory.createDefaultSaltedPayload(),
+                  com.tetris.mab.nuke.NukeDesignFactory.createDefaultTacticalBlast() },
+                { com.tetris.mab.nuke.NukeDesignFactory.createDefaultDoomsday(),
+                  com.tetris.mab.nuke.NukeDesignFactory.createDefaultTacticalBlast() },
+                { com.tetris.mab.nuke.NukeDesignFactory.createDefaultPlaceholder(),
+                  com.tetris.mab.nuke.NukeDesignFactory.createDefaultPlaceholder() },
+                { com.tetris.mab.nuke.NukeDesignFactory.createDefaultConcreteBlaster(),
+                  com.tetris.mab.nuke.NukeDesignFactory.createDefaultDirtyPayload() }
+        };
+        int invariantFailures = 0;
+        for (com.tetris.mab.nuke.NukeDesign[] pair : pairs) {
+            MabSimulationConfig cfg = MabSimulationConfig.aiVsAi(
+                    ticks, MabAiArchetype.BALANCED, MabAiArchetype.TACTICAL_SPAMMER,
+                    MabAiDifficulty.NORMAL)
+                    .withParticipantDesign(com.tetris.mab.ParticipantId.PLAYER_A, pair[0])
+                    .withParticipantDesign(com.tetris.mab.ParticipantId.PLAYER_B, pair[1]);
+            MabSimulationResult r = new MabHeadlessSimulation().run(cfg);
+            invariantFailures += r.invariantFailures().size();
+            System.out.println();
+            System.out.println("scenario=" + pair[0].getId() + "_vs_" + pair[1].getId());
+            System.out.println("  ticks=" + ticks + " runs=1");
+            System.out.println("  launches=" + r.launchCount()
+                    + " impacts=" + r.impactResolvedCount()
+                    + " garbage=" + r.garbageRowsApplied());
+            System.out.println("  chargeA=" + r.playerACharge()
+                    + " chargeB=" + r.playerBCharge()
+                    + " siloA=" + r.playerASiloIntegrity()
+                    + " siloB=" + r.playerBSiloIntegrity());
+            System.out.println("  invariantFailures=" + r.invariantFailures().size());
+        }
+        System.out.println();
+        System.out.println("totalInvariantFailures=" + invariantFailures);
         System.out.println("success=" + (invariantFailures == 0));
         if (invariantFailures != 0) System.exit(1);
     }

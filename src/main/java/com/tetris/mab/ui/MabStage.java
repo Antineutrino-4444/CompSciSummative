@@ -28,10 +28,10 @@ public enum MabStage {
     NUKE_READY           ("NUKE READY",         MabUiTheme.SUCCESS),
     LAUNCH_TETRIS_ROUTE  ("LAUNCH \u2022 TETRIS",  MabUiTheme.SUCCESS),
     LAUNCH_SPIN_ROUTE    ("LAUNCH \u2022 SPIN",    MabUiTheme.SUCCESS),
-    INCOMING_THREAT      ("INCOMING THREAT",    MabUiTheme.CRITICAL),
+    INCOMING_THREAT      ("INCOMING IMPACT",    MabUiTheme.CRITICAL),
     SPIN_INTERCEPT       ("SPIN INTERCEPT!",    MabUiTheme.WARNING),
     LAUNCH_FIRED         ("LAUNCH FIRED",       MabUiTheme.WARNING),
-    IMPACT_READY         ("IMPACT INCOMING",    MabUiTheme.CRITICAL),
+    IMPACT_READY         ("IMPACT PENDING",     MabUiTheme.CRITICAL),
     MATCH_OVER           ("MATCH OVER",         MabUiTheme.INFO);
 
     private final String headline;

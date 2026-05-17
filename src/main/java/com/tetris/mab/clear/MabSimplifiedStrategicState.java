@@ -100,6 +100,22 @@ public final class MabSimplifiedStrategicState {
         lastStrategicTrigger = LastTrigger.LAUNCH_PROGRESS_SPIN;
     }
 
+    /**
+     * Decrement Tetris launch-route progress by one pip, clamped at 0.
+     * Used by EMP-payload strategic disruption.
+     */
+    public void decrementTetrisProgress() {
+        if (launchTetrisProgress > 0) launchTetrisProgress--;
+    }
+
+    /**
+     * Decrement spin launch-route progress by one pip, clamped at 0.
+     * Used by EMP-payload strategic disruption.
+     */
+    public void decrementSpinProgress() {
+        if (launchSpinProgress > 0) launchSpinProgress--;
+    }
+
     public boolean shouldFireTetrisLaunch() {
         return nukeReady && launchTetrisProgress >= launchTetrisGoal;
     }

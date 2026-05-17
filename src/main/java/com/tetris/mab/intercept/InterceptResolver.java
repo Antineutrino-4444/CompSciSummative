@@ -115,25 +115,29 @@ public final class InterceptResolver {
     /**
      * Deterministic threat resistance:
      * <ul>
-     *   <li>Base from size category (MICRO=1 .. DOOMSDAY_SCALE=8)</li>
-     *   <li>+2 MIRV doctrine, +1 DECOY_PACKAGE doctrine, +2 DOOMSDAY doctrine</li>
-     *   <li>+1 if {@code detectionProfile >= 4}</li>
-     *   <li>+1 if {@code warningPiecesRemaining <= 1} (very late intercept)</li>
+     *   <li>Base from size category (MICRO=1 .. DOOMSDAY_SCALE=8).</li>
+     *   <li>Doctrine modifier via {@link NukeDesign#interceptDifficultyRating()}
+     *       — light tactical = 1, heavy / clean / dirty = 2, bunker /
+     *       concrete = 3, doomsday = 4. Older legacy doctrines
+     *       (MIRV / DECOY_PACKAGE) map through the same rating so no
+     *       MIRV-specific code path remains.</li>
+     *   <li>+1 if {@code impactDelay remaining <= 1} (very late intercept).</li>
+     *   <li>Stable designs (stability >= 7) are slightly easier to
+     *       intercept (-1); high-complexity designs are slightly
+     *       harder (+1 if complexity >= 7).</li>
      * </ul>
+     *
+     * <p>Detection profile is no longer consulted — radar / detection
+     * concepts have been removed from the MAB design.
      */
     public int computeThreatResistance(ActiveLaunchState launch, IncomingThreatState threat) {
         int base = baseResistanceFor(launch.getSizeCategory());
-        NukeDoctrineType doctrine = launch.getDoctrineType();
-        if (doctrine != null) {
-            switch (doctrine) {
-                case MIRV          -> base += 2;
-                case DECOY_PACKAGE -> base += 1;
-                case DOOMSDAY      -> base += 2;
-                default            -> { /* no modifier */ }
-            }
-        }
         NukeDesign design = launch.getNukeDesign();
-        if (design != null && design.getDetectionProfile() >= 4) base += 1;
+        if (design != null) {
+            base += design.interceptDifficultyRating();
+            if (design.getStabilityRating() >= 7) base -= 1;
+            if (design.getComplexityRating() >= 7) base += 1;
+        }
         if (threat != null && threat.getWarningPiecesRemaining() <= 1) base += 1;
         return Math.max(1, base);
     }

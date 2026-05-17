@@ -39,8 +39,6 @@ public final class MabMatchResultFormatter {
         sb.append("DEFCON reached       : ").append(s.getDefconLevel()).append('\n');
         sb.append("Launches authorized  : ").append(s.getLaunchesAuthorized()).append('\n');
         sb.append("Impacts resolved     : ").append(s.getImpactsResolved()).append('\n');
-        sb.append("Radar scans          : ").append(s.getRadarScans()).append('\n');
-        sb.append("Decoys activated     : ").append(s.getDecoysActivated()).append('\n');
         sb.append("Civil defense uses   : ").append(s.getCivilDefenseActivations()).append('\n');
         sb.append("Upgrades applied     : ").append(s.getUpgradesApplied()).append('\n');
         sb.append("AI decisions exec.   : ").append(s.getAiDecisionsExecuted()).append('\n');

@@ -332,18 +332,27 @@ public final class RadarScanCalculator {
     }
 
     private static NukeDoctrineType spoofDoctrine(NukeDoctrineType real) {
-        if (real == null) return NukeDoctrineType.DIRTY_BOMB;
+        // Legacy radar-intel spoofing helper. The current MAB design has
+        // no radar / intel UI, so this method is no longer reachable from
+        // live gameplay — it is retained only for binary compatibility
+        // with older intel probes. Returns a sensible single-payload
+        // doctrine for every input; never returns MIRV / DECOY_PACKAGE.
+        if (real == null) return NukeDoctrineType.HEAVY_BLAST;
         return switch (real) {
-            case CLEAN_FUSION     -> NukeDoctrineType.DIRTY_BOMB;
-            case DIRTY_BOMB       -> NukeDoctrineType.CLEAN_FUSION;
-            case SALTED_WARHEAD   -> NukeDoctrineType.CLEAN_FUSION;
-            case CONCRETE_BLASTER -> NukeDoctrineType.MIRV;
-            case MIRV             -> NukeDoctrineType.CONCRETE_BLASTER;
-            case BUNKER_BUSTER    -> NukeDoctrineType.CONCRETE_BLASTER;
-            case EMP_PAYLOAD      -> NukeDoctrineType.DECOY_PACKAGE;
-            case DECOY_PACKAGE    -> NukeDoctrineType.EMP_PAYLOAD;
-            case DOOMSDAY         -> NukeDoctrineType.MIRV;
-            case PLACEHOLDER      -> NukeDoctrineType.DIRTY_BOMB;
+            case CLEAN_FUSION         -> NukeDoctrineType.DIRTY_PAYLOAD;
+            case DIRTY_PAYLOAD,
+                 DIRTY_BOMB           -> NukeDoctrineType.CLEAN_FUSION;
+            case SALTED_PAYLOAD,
+                 SALTED_WARHEAD       -> NukeDoctrineType.CLEAN_FUSION;
+            case CONCRETE_BLASTER     -> NukeDoctrineType.HEAVY_BLAST;
+            case BUNKER_BUSTER        -> NukeDoctrineType.CONCRETE_BLASTER;
+            case EMP_PAYLOAD          -> NukeDoctrineType.TACTICAL_BLAST;
+            case TACTICAL_BLAST       -> NukeDoctrineType.HEAVY_BLAST;
+            case HEAVY_BLAST          -> NukeDoctrineType.CLEAN_FUSION;
+            case DOOMSDAY             -> NukeDoctrineType.HEAVY_BLAST;
+            case PLACEHOLDER          -> NukeDoctrineType.TACTICAL_BLAST;
+            // Legacy values, kept for binary compat — never produced.
+            case MIRV, DECOY_PACKAGE  -> NukeDoctrineType.HEAVY_BLAST;
         };
     }
 

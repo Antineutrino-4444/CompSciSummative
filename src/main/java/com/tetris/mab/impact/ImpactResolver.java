@@ -315,6 +315,54 @@ public final class ImpactResolver {
         }
         int siloAfter = defender.getSiloState().getIntegrity();
 
+        // ─── Apply EMP strategic disruption ───
+        // EMP is gameplay-level tempo disruption only. It NEVER touches
+        // radar, warning, or intel systems (those have been removed
+        // from the MAB design). Effects, in order:
+        //   1. extra charge drain on top of disarm,
+        //   2. route-progress loss (Tetris and spin pips),
+        //   3. launch-delay pieces added to any in-flight opponent launch.
+        com.tetris.mab.nuke.EmpProfile empProfile =
+                design == null ? null : design.getEmpProfile();
+        int empChargeDrain = 0;
+        int empRouteLoss = 0;
+        int empLaunchDelay = 0;
+        if (empProfile != null && !launch.isEmpWeakened()) {
+            int chargeBeforeEmp = defender.getNukeBuildState().getCurrentBuildCharge();
+            int rawDrain = Math.max(0, empProfile.chargeDrain());
+            if (launch.isManualOverride()) rawDrain = halfRoundedUp(rawDrain);
+            empChargeDrain = Math.min(chargeBeforeEmp, rawDrain);
+            if (empChargeDrain > 0) {
+                defender.getNukeBuildState().reduceCharge(empChargeDrain);
+            }
+            empRouteLoss = Math.max(0, empProfile.routeProgressLoss());
+            if (empRouteLoss > 0) {
+                com.tetris.mab.clear.MabSimplifiedStrategicState ss =
+                        defender.getSimplifiedState();
+                if (ss != null) {
+                    // Drain spin pips first (smaller pool), then Tetris pips.
+                    int remaining = empRouteLoss;
+                    while (remaining > 0 && ss.launchSpinProgress() > 0) {
+                        ss.decrementSpinProgress();
+                        remaining--;
+                    }
+                    while (remaining > 0 && ss.launchTetrisProgress() > 0) {
+                        ss.decrementTetrisProgress();
+                        remaining--;
+                    }
+                }
+            }
+            empLaunchDelay = Math.max(0, empProfile.launchDelayPieces());
+            if (empLaunchDelay > 0) {
+                for (ActiveLaunchState al : defender.getActiveLaunches()) {
+                    if (al.getPhase() == LaunchPhase.COUNTDOWN
+                            || al.getPhase() == LaunchPhase.IN_FLIGHT) {
+                        al.markEmpWeakened();
+                    }
+                }
+            }
+        }
+
         // ─── Mark resolved ───
         launch.markResolved();
         threat.markResolved();
@@ -343,6 +391,11 @@ public final class ImpactResolver {
         }
         if (grace.deferredAny()) {
             msg.append(" grace:").append(grace.toDebugString());
+        }
+        if (empChargeDrain > 0 || empRouteLoss > 0 || empLaunchDelay > 0) {
+            msg.append(" emp:chargeDrain=").append(empChargeDrain)
+               .append(",routeLoss=").append(empRouteLoss)
+               .append(",launchDelay=").append(empLaunchDelay);
         }
 
         return new ImpactResult(

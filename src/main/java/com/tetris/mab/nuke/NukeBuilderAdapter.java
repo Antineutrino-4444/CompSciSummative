@@ -9,11 +9,9 @@ import java.util.Map;
  * fully populated strategic {@link NukeDesign}. UI / dialog classes are
  * NOT depended on; the integration point is the plain DTO.
  *
- * <p>The existing in-game UI builder
- * ({@code com.tetris.view.NukeBuilderDialog} +
- * {@code com.tetris.model.nuke.NukeDesign}) is a slot/parts editor with
- * a different shape. It can be wired in later by mapping its output
- * onto a {@code BuilderNukeSpec} — that's the stable seam.
+ * <p>The current MAB design has no MIRV / decoy / radar / warning
+ * concept. Older fields on {@link BuilderNukeSpec} that referenced
+ * those systems are ignored by this adapter.
  */
 public class NukeBuilderAdapter {
 
@@ -23,46 +21,73 @@ public class NukeBuilderAdapter {
     public NukeDesign fromBuilderSpec(BuilderNukeSpec spec) {
         if (spec == null) return NukeDesignFactory.createDefaultPlaceholder();
 
-        // Doctrine resolution: the boolean flags only override when the
-        // doctrine string is null, blank, or already PLACEHOLDER.
+        // Doctrine resolution: prefer explicit doctrineType, fall back to
+        // builder hint flags, and finally to PLACEHOLDER. MIRV / DECOY
+        // are silently remapped to single-payload doctrines because the
+        // current MAB design does not produce them.
         NukeDoctrineType doctrine = NukeDoctrineType.fromString(spec.doctrineType());
         boolean doctrineWeak = doctrine == NukeDoctrineType.PLACEHOLDER;
-        if (spec.mirv() && doctrineWeak)  doctrine = NukeDoctrineType.MIRV;
-        if (spec.emp()  && doctrineWeak)  doctrine = NukeDoctrineType.EMP_PAYLOAD;
-        if (spec.decoy() && doctrineWeak) doctrine = NukeDoctrineType.DECOY_PACKAGE;
+        if (doctrineWeak) {
+            if (spec.doomsday())      doctrine = NukeDoctrineType.DOOMSDAY;
+            else if (spec.salted())   doctrine = NukeDoctrineType.SALTED_PAYLOAD;
+            else if (spec.bunker())   doctrine = NukeDoctrineType.BUNKER_BUSTER;
+            else if (spec.dirty())    doctrine = NukeDoctrineType.DIRTY_PAYLOAD;
+            else if (spec.clean())    doctrine = NukeDoctrineType.CLEAN_FUSION;
+            else if (spec.emp() > 3)  doctrine = NukeDoctrineType.EMP_PAYLOAD;
+            else if (spec.size() >= 60) doctrine = NukeDoctrineType.HEAVY_BLAST;
+            else                      doctrine = NukeDoctrineType.TACTICAL_BLAST;
+        }
+        if (!doctrine.isCurrent()) {
+            // Defensive: never let a legacy doctrine through.
+            doctrine = NukeDoctrineType.HEAVY_BLAST;
+        }
 
-        int build = Math.max(1, spec.size() > 0 ? spec.size() : 20);
+        int sizeReq = Math.max(1, spec.size() > 0 ? spec.size() : 20);
+        // Complexity tax — complex designs are slower to bring online.
+        int complexity = clamp(spec.complexity(), 0, 10);
+        int stability  = clamp(spec.stability(), 0, 10);
+        int complexityCharge = (complexity * sizeReq) / 20;        // up to +50%
+        int stabilityDiscount = (stability  * sizeReq) / 40;       // up to -25%
+        int build = Math.max(1, sizeReq + complexityCharge - stabilityDiscount);
         NukeSizeCategory size = NukeSizeCategory.fromBuildCharge(build);
 
-        // speed: 0..10ish → launch/warning time; higher = faster.
+        // speed: 0..10ish → launch/impact-delay timing; higher = faster.
         int speed = clamp(spec.speed(), 0, 10);
         int baseLaunchTime  = Math.max(MIN_TIME_PIECES, 10 - speed);
-        int baseWarningTime = Math.max(MIN_TIME_PIECES, 10 - speed);
-
-        // stealth: 0..10ish → detection profile; higher stealth = lower profile.
-        int stealth = clamp(spec.stealth(), 0, 10);
-        int detectionProfile = Math.max(0, 10 - stealth);
+        // Complexity drags out the impact delay (longer in-flight time).
+        int baseImpactDelay = Math.max(MIN_TIME_PIECES,
+                10 - speed + complexity / 3 - stability / 4);
 
         // Synthesize a base launch code from the rating numbers, clamped to 1..4.
         List<Integer> baseCode = synthesizeBaseCode(spec, doctrine);
 
-        Map<Integer, Integer> buildMap = NukeReadinessScaler.buildCharge(build, size);
+        Map<Integer, Integer> buildMap = NukeReadinessScaler.buildCharge(build, size,
+                complexity, stability);
         Map<Integer, List<Integer>> codeMap = NukeReadinessScaler.launchCode(baseCode, size);
-        Map<Integer, Integer> launchMap = NukeReadinessScaler.launchTime(baseLaunchTime, size);
-        Map<Integer, Integer> warnMap = NukeReadinessScaler.warningTime(baseWarningTime, size);
+        Map<Integer, Integer> launchMap = NukeReadinessScaler.launchTime(baseLaunchTime, size,
+                complexity, stability);
+        Map<Integer, Integer> impactDelayMap = NukeReadinessScaler.impactDelay(baseImpactDelay,
+                size, complexity, stability);
 
         // Profiles
         int blast = nonNeg(spec.blast());
         int rad = nonNeg(spec.radiation());
+        int emp = nonNeg(spec.emp());
         int disarm = nonNeg(spec.disarm());
         int silo = nonNeg(spec.siloDamage());
 
+        boolean dirtyDoctrine = doctrine == NukeDoctrineType.DIRTY_PAYLOAD
+                || doctrine == NukeDoctrineType.SALTED_PAYLOAD;
+        int waveCount = dirtyDoctrine ? Math.max(2, Math.min(4, 1 + rad / 2))
+                : (rad >= 3 ? 1 : 0);
+        int piecesBetweenWaves = dirtyDoctrine ? 4
+                : (doctrine == NukeDoctrineType.DOOMSDAY ? 6 : 5);
         GarbageProfile garbage = new GarbageProfile(
-                Math.max(1, blast),
+                Math.max(1, blast + Math.max(0, rad / 2)),
                 Math.max(1, Math.min(blast, 5)),
-                spec.mirv(),
-                spec.mirv() ? Math.max(2, blast) : 0,
-                spec.mirv() ? 2 : 0,
+                waveCount > 0,
+                waveCount,
+                piecesBetweenWaves,
                 doctrine == NukeDoctrineType.CONCRETE_BLASTER
                         || doctrine == NukeDoctrineType.BUNKER_BUSTER);
 
@@ -78,14 +103,10 @@ public class NukeBuilderAdapter {
                 doctrine == NukeDoctrineType.BUNKER_BUSTER || doctrine == NukeDoctrineType.CONCRETE_BLASTER,
                 doctrine == NukeDoctrineType.EMP_PAYLOAD || doctrine == NukeDoctrineType.CONCRETE_BLASTER);
 
-        MirvProfile mirvP = spec.mirv()
-                ? new MirvProfile(Math.max(2, blast), 1, 2)
-                : null;
-        EmpProfile empP = spec.emp()
-                ? new EmpProfile(Math.max(2, stealth / 2 + 2), Math.max(2, stealth / 3 + 1), true)
-                : null;
-        DecoyProfile decoyP = spec.decoy()
-                ? new DecoyProfile(true, true, true, Math.max(3, 6 - speed))
+        EmpProfile empP = (doctrine == NukeDoctrineType.EMP_PAYLOAD || emp >= 3)
+                ? EmpProfile.forDisruption(Math.max(3, emp + 1),
+                        Math.max(1, emp / 2 + 1),
+                        Math.max(1, emp / 3 + 1))
                 : null;
 
         String id = (spec.id() == null || spec.id().isBlank())
@@ -95,18 +116,17 @@ public class NukeBuilderAdapter {
 
         return new NukeDesign(
                 id, name, doctrine, size,
-                build, blast, rad, disarm, silo,
-                baseLaunchTime, baseWarningTime, detectionProfile,
+                build, blast, rad, disarm, silo, emp,
+                baseLaunchTime, baseImpactDelay,
+                stability, complexity,
                 baseCode,
-                buildMap, codeMap, launchMap, warnMap,
-                garbage, disarmP, siloP, mirvP, empP, decoyP,
+                buildMap, codeMap, launchMap, impactDelayMap,
+                garbage, disarmP, siloP, empP,
                 FullClearThresholdProfile.defaults());
     }
 
     /**
-     * Best-effort entry point for unknown builder outputs. Step-3 only
-     * the neutral {@link BuilderNukeSpec} path is stable; other
-     * inputs fall back to the placeholder design.
+     * Best-effort entry point for unknown builder outputs.
      */
     public NukeDesign fromExistingBuilderObject(Object builderOutput) {
         if (builderOutput instanceof BuilderNukeSpec spec) {
@@ -122,7 +142,6 @@ public class NukeBuilderAdapter {
     public BuilderNukeSpec toBuilderSpec(NukeDesign design) {
         if (design == null) return null;
         int speed = Math.max(0, 10 - design.getBaseLaunchTimePieces());
-        int stealth = Math.max(0, 10 - design.getDetectionProfile());
         return new BuilderNukeSpec(
                 design.getId(),
                 design.getDisplayName(),
@@ -130,13 +149,17 @@ public class NukeBuilderAdapter {
                 design.getBaseBuildChargeRequired(),
                 design.getBlastRating(),
                 design.getRadiationRating(),
+                design.getEmpRating(),
                 design.getDisarmRating(),
                 design.getSiloDamageRating(),
                 speed,
-                stealth,
-                design.getMirvProfile() != null,
-                design.getEmpProfile() != null,
-                design.getDecoyProfile() != null);
+                design.getStabilityRating(),
+                design.getComplexityRating(),
+                design.getDoctrineType() == NukeDoctrineType.DIRTY_PAYLOAD,
+                design.getDoctrineType() == NukeDoctrineType.SALTED_PAYLOAD,
+                design.getDoctrineType() == NukeDoctrineType.CLEAN_FUSION,
+                design.getDoctrineType() == NukeDoctrineType.BUNKER_BUSTER,
+                design.getDoctrineType() == NukeDoctrineType.DOOMSDAY);
     }
 
     // ──────────────────────── helpers ────────────────────────
@@ -144,8 +167,8 @@ public class NukeBuilderAdapter {
     private static List<Integer> synthesizeBaseCode(BuilderNukeSpec spec, NukeDoctrineType doctrine) {
         List<Integer> out = new ArrayList<>();
         int blast = clamp(spec.blast(), 1, 4);
-        int disarm = clamp(spec.disarm(), 1, 4);
-        int silo = clamp(spec.siloDamage(), 1, 4);
+        int disarm = clamp(Math.max(1, spec.disarm()), 1, 4);
+        int silo = clamp(Math.max(1, spec.siloDamage()), 1, 4);
         out.add(blast);
         out.add(disarm);
         if (doctrine == NukeDoctrineType.DOOMSDAY || spec.size() > 70) {

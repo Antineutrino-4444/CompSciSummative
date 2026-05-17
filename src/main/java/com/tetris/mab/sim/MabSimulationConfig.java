@@ -1,17 +1,24 @@
 package com.tetris.mab.sim;
 
+import com.tetris.mab.ParticipantId;
 import com.tetris.mab.ai.MabAiArchetype;
 import com.tetris.mab.ai.MabAiDifficulty;
 import com.tetris.mab.balance.MabBalanceProfile;
 import com.tetris.mab.balance.MabBalanceProfiles;
+import com.tetris.mab.nuke.NukeDesign;
 
 /**
- * Step 14 — immutable configuration for a single headless MAB
- * simulation run.
+ * Immutable configuration for a single headless MAB simulation run.
  *
  * <p>Null {@code mode} defaults to {@link MabSimulationMode#SMOKE}.
  * Null archetypes default to {@link MabAiArchetype#BALANCED}.
  * Null difficulty defaults to {@link MabAiDifficulty#NORMAL}.
+ *
+ * <p>Step 26 (Nuke Builder integration) — adds optional per-participant
+ * {@link NukeDesign} overrides. When set, the headless runner applies
+ * them via {@code MutuallyAssuredBlocksMatch.applyWarheadDesign} right
+ * after match construction so balance reports cover design-vs-design
+ * combinations.
  */
 public record MabSimulationConfig(
         MabSimulationMode mode,
@@ -25,7 +32,9 @@ public record MabSimulationConfig(
         boolean verboseEvents,
         int maxEventRows,
         String label,
-        String balanceProfileId) {
+        String balanceProfileId,
+        NukeDesign playerADesign,
+        NukeDesign playerBDesign) {
 
     public MabSimulationConfig {
         if (ticks < 0) throw new IllegalArgumentException("ticks must be >= 0");
@@ -48,7 +57,19 @@ public record MabSimulationConfig(
                                int maxEventRows, String label) {
         this(mode, ticks, a, b, d, enableA, enableB,
                 autoResolveImpacts, verboseEvents, maxEventRows, label,
-                MabBalanceProfiles.STANDARD_PVE);
+                MabBalanceProfiles.STANDARD_PVE, null, null);
+    }
+
+    /** Older 13-arg constructor (no per-participant designs). */
+    public MabSimulationConfig(MabSimulationMode mode, int ticks,
+                               MabAiArchetype a, MabAiArchetype b, MabAiDifficulty d,
+                               boolean enableA, boolean enableB,
+                               boolean autoResolveImpacts, boolean verboseEvents,
+                               int maxEventRows, String label,
+                               String balanceProfileId) {
+        this(mode, ticks, a, b, d, enableA, enableB,
+                autoResolveImpacts, verboseEvents, maxEventRows, label,
+                balanceProfileId, null, null);
     }
 
     public MabBalanceProfile balanceProfile() {
@@ -60,7 +81,19 @@ public record MabSimulationConfig(
         return new MabSimulationConfig(mode, ticks, playerAArchetype, playerBArchetype,
                 difficulty, enablePlayerAAi, enablePlayerBAi,
                 autoResolveImpacts, verboseEvents, maxEventRows, label,
-                (id == null || id.isBlank()) ? MabBalanceProfiles.STANDARD_PVE : id);
+                (id == null || id.isBlank()) ? MabBalanceProfiles.STANDARD_PVE : id,
+                playerADesign, playerBDesign);
+    }
+
+    /** Step 26 — set the participant's starting warhead design. */
+    public MabSimulationConfig withParticipantDesign(ParticipantId pid, NukeDesign design) {
+        if (pid == null) return this;
+        return new MabSimulationConfig(mode, ticks, playerAArchetype, playerBArchetype,
+                difficulty, enablePlayerAAi, enablePlayerBAi,
+                autoResolveImpacts, verboseEvents, maxEventRows, label,
+                balanceProfileId,
+                pid == ParticipantId.PLAYER_A ? design : playerADesign,
+                pid == ParticipantId.PLAYER_B ? design : playerBDesign);
     }
 
     public static MabSimulationConfig smoke() {
@@ -90,6 +123,9 @@ public record MabSimulationConfig(
     }
 
     public static MabSimulationConfig radarDecoy() {
+        // Legacy scenario name retained for backward compatibility. The
+        // current MAB design has no radar / decoy systems, so the
+        // scenario simply runs a balanced AI matchup.
         return new MabSimulationConfig(MabSimulationMode.RADAR_DECOY, 20,
                 MabAiArchetype.BALANCED, MabAiArchetype.MIRV_CONTROLLER,
                 MabAiDifficulty.NORMAL,
