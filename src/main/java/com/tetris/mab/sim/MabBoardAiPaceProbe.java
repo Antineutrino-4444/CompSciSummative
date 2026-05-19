@@ -25,14 +25,29 @@ public final class MabBoardAiPaceProbe {
             try { seconds = Math.max(2, Integer.parseInt(args[0])); }
             catch (NumberFormatException ignored) {}
         }
+        // Optional second arg "live" applies the GameController live-game
+        // constraint: the 30ms search-budget cap, on a slow level-1 board
+        // (GameState(1)). This mirrors what the PvE / AI-vs-AI launch modes
+        // actually wire up — slow gravity, no freeze. The legacy "frozen"
+        // and "cap" args remain for isolating individual constraints.
+        boolean liveMode = args.length > 1 && "live".equalsIgnoreCase(args[1]);
+        boolean frozenOnly = args.length > 1 && "frozen".equalsIgnoreCase(args[1]);
+        boolean capOnly = args.length > 1 && "cap".equalsIgnoreCase(args[1]);
+        // Mirrors GameController.LIVE_AI_SEARCH_BUDGET_MS. Keep in sync.
+        int liveBudgetMs = 30;
         int ticks = (int) Math.round(seconds * (1000.0 / 16.0));
-        System.out.println("MAB board-AI pace probe: " + seconds + " s (" + ticks + " ticks)");
+        System.out.println("MAB board-AI pace probe: " + seconds + " s ("
+                + ticks + " ticks)"
+                + (liveMode ? " [live: budgetCap=" + liveBudgetMs
+                        + "ms, slow gravity]" : ""));
         System.out.printf("%-8s  %-12s  %-7s  %-7s  %-7s%n",
                 "diff", "targetPps", "drops", "measPps", "ticks");
         for (MabAiDifficulty d : MabAiDifficulty.values()) {
-            GameState gs = new GameState(0);
+            GameState gs = new GameState(liveMode ? 1 : 0);
+            if (frozenOnly) gs.setGravityFrozen(true);
             MabBoardAiDriver ai = new MabBoardAiDriver(gs);
             ai.setDifficulty(d);
+            if (liveMode || capOnly) ai.capSearchTimeBudgetMillis(liveBudgetMs);
             long start = System.currentTimeMillis();
             for (int i = 0; i < ticks; i++) {
                 ai.tick();

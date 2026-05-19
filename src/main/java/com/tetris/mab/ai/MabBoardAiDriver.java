@@ -202,6 +202,7 @@ public final class MabBoardAiDriver {
         this.difficulty = d;
         this.settings = AiSearchSettings.forDifficulty(d);
         evaluator.setWellColumn(AiBoardModel.WIDTH - 1);
+        evaluator.setWeights(AiEvaluator.Weights.forDifficulty(d));
         this.search = new AiSearch(settings, evaluator, seedBase ^ 0x9E3779B97F4A7C15L);
     }
 

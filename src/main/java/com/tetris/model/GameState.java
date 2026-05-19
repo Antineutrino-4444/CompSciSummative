@@ -723,20 +723,10 @@ public class GameState {
         final Color[][] boardAfterLock = board.getGridCopy();
         fire(l -> l.onPieceLocked(new PieceLockedEvent(lockedType, finalCells, boardAfterLock)));
 
-        // ──── Check for lock-out (piece locked entirely in buffer zone) ────
-        boolean allInBuffer = true;
-        for (Position cell : currentPiece.getAbsoluteCells()) {
-            if (cell.getY() >= Board.BUFFER_HEIGHT) {
-                allInBuffer = false;
-                break;
-            }
-        }
-        if (allInBuffer) {
-            gameOver = true;
-            fire(l -> l.onTopOut(new TopOutEvent(
-                    playerId, TopOutReason.LOCK_OUT, board.getGridCopy())));
-            return;
-        }
+        // Lock-out (piece sitting entirely in the hidden buffer rows) is
+        // intentionally NOT a top-out in this game. Pieces can lock wherever
+        // they land; the only top-out condition is the next piece being
+        // unable to spawn (handled inside spawnNextPiece below).
 
         // ──── Clear lines ────
         final List<Integer> rowIndices = new ArrayList<>(board.getLastClearedRowIndices());
@@ -1080,10 +1070,11 @@ public class GameState {
      * up as later rows are inserted, so the LAST element of {@code rows}
      * ends up on the bottom-most row of the playfield.
      *
-     * <p>Fires {@link GameEventListener#onGarbageInserted}, and — if the
-     * shift overflows the buffer or buries the active piece — also fires
-     * {@link GameEventListener#onTopOut} with reason
-     * {@link TopOutReason#GARBAGE_OVERFLOW}.
+     * <p>Fires {@link GameEventListener#onGarbageInserted}. Rising garbage
+     * never tops the game out on its own: cells pushed past the buffer
+     * ceiling are discarded and the active piece is lifted as far as it
+     * fits. The game only ends when the next piece cannot spawn
+     * (block-out), checked in {@code spawnNextPiece}.
      *
      * @param rows    rows to insert (null/empty = no-op)
      * @param source  free-form tag identifying the originator, e.g.
@@ -1093,20 +1084,29 @@ public class GameState {
     public boolean insertGarbagePattern(List<GarbageRowPattern> rows, String source) {
         if (rows == null || rows.isEmpty() || gameOver) return false;
 
-        boolean overflow = board.insertGarbageRows(rows, GARBAGE_COLOR);
+        // Board insert may push locked cells past the top of the buffer;
+        // that's harmless here — only spawn obstruction tops the game out.
+        board.insertGarbageRows(rows, GARBAGE_COLOR);
         int rowCount = rows.size();
 
-        // Lift the active piece by the same number of rows so it doesn't
-        // get clipped through the rising stack. If that's impossible the
-        // game tops out.
+        // Lift the active piece by the same number of rows so it tracks
+        // with the rising stack. If a full lift would be invalid (the
+        // rising garbage overlaps the piece's footprint), try smaller
+        // lifts down to 0 so the piece settles in the highest valid
+        // position. If even 0 lift is invalid (rare; the active piece
+        // was sitting on a row that now has garbage on top of it), leave
+        // the piece in place — the only top-out condition is the next
+        // spawn being blocked, which is handled by spawnNextPiece.
         if (currentPiece != null) {
-            Tetromino lifted = currentPiece.translate(0, -rowCount);
-            if (board.isValidPosition(lifted)) {
-                currentPiece = lifted;
-                int y = currentPiece.getBoardPosition().getY();
-                if (y < lowestY) lowestY = y;
-            } else {
-                overflow = true;
+            for (int lift = rowCount; lift >= 0; lift--) {
+                Tetromino lifted = (lift == 0) ? currentPiece
+                        : currentPiece.translate(0, -lift);
+                if (board.isValidPosition(lifted)) {
+                    currentPiece = lifted;
+                    int y = currentPiece.getBoardPosition().getY();
+                    if (y < lowestY) lowestY = y;
+                    break;
+                }
             }
         }
 
@@ -1121,12 +1121,6 @@ public class GameState {
         final List<List<Integer>> holesSnapshot = List.copyOf(holesByRow);
         final String src = source == null ? "external" : source;
         fire(l -> l.onGarbageInserted(new GarbageInsertedEvent(rCount, holesSnapshot, src)));
-
-        if (overflow) {
-            gameOver = true;
-            fire(l -> l.onTopOut(new TopOutEvent(
-                    playerId, TopOutReason.GARBAGE_OVERFLOW, board.getGridCopy())));
-        }
         return true;
     }
 

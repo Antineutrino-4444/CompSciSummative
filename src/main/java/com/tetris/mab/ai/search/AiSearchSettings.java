@@ -46,27 +46,33 @@ public final class AiSearchSettings {
     }
 
     public static AiSearchSettings forDifficulty(MabAiDifficulty d) {
+        // Survival floor is uniform across every tier: hold enabled, beam
+        // wide enough to find safe placements, lookahead deep enough to
+        // avoid cul-de-sacs, mistakeRate fixed at 0. Tiers differ only in
+        // (a) speed (target pps), (b) route preference (flat survival vs.
+        // Tetris-well builder), (c) design-awareness, (d) lookahead depth
+        // used to plan attacks deeper, and (e) board-search budget.
         return switch (d) {
             case EASY -> new AiSearchSettings(
-                    /*beam*/  2, /*depth*/ 0,
+                    /*beam*/  2, /*depth*/ 1,
                     /*tuck*/  false, /*r180*/ false, /*hold*/ false,
-                    /*mistakes*/ 0.55,
+                    /*mistakes*/ 0.0,
                     new Pacing(1.0, 10, 3),
                     /*designAware*/ false, /*planLaunches*/ false,
-                    /*tetrisWell*/ false, /*timeMs*/ 10,
+                    /*tetrisWell*/ false, /*timeMs*/ 15,
                     /*rotFirst*/ true);
             case MEDIUM, NORMAL -> new AiSearchSettings(
                     /*beam*/  4, /*depth*/ 1,
                     /*tuck*/  false, /*r180*/ false, /*hold*/ true,
-                    /*mistakes*/ 0.15,
+                    /*mistakes*/ 0.0,
                     new Pacing(1.7, 6, 2),
-                    /*designAware*/ true, /*planLaunches*/ true,
+                    /*designAware*/ true, /*planLaunches*/ false,
                     /*tetrisWell*/ false, /*timeMs*/ 20,
                     /*rotFirst*/ true);
             case HARD -> new AiSearchSettings(
                     /*beam*/  8, /*depth*/ 2,
                     /*tuck*/  false, /*r180*/ false, /*hold*/ true,
-                    /*mistakes*/ 0.04,
+                    /*mistakes*/ 0.0,
                     new Pacing(2.6, 4, 2),
                     /*designAware*/ true, /*planLaunches*/ true,
                     /*tetrisWell*/ true, /*timeMs*/ 35,
@@ -74,7 +80,7 @@ public final class AiSearchSettings {
             case EXPERT -> new AiSearchSettings(
                     /*beam*/ 12, /*depth*/ 3,
                     /*tuck*/  false, /*r180*/ false, /*hold*/ true,
-                    /*mistakes*/ 0.01,
+                    /*mistakes*/ 0.0,
                     new Pacing(3.5, 2, 0),
                     /*designAware*/ true, /*planLaunches*/ true,
                     /*tetrisWell*/ true, /*timeMs*/ 40,

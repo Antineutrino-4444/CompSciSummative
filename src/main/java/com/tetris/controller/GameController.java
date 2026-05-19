@@ -86,7 +86,14 @@ public class GameController {
     /** Physics simulation: fixed 120 Hz. */
     private static final int PHYSICS_INTERVAL_MS = FrameRate.PHYSICS_INTERVAL_MS_ROUNDED;
     private static final int AI_FRAME_INTERVAL_MS = FrameRate.RENDER_INTERVAL_MS_ROUNDED;
-    private static final int LIVE_AI_SEARCH_BUDGET_MS = 4;
+    // Live AI search budget. Caps each replan to keep frame drops bounded.
+    // The original 4ms was too tight: every search aborted at root, so
+    // higher tiers couldn't see far enough to keep their Tetris well
+    // clean and topped themselves out within seconds. 30ms gives MASTER
+    // & EXPERT enough lookahead to plan around well-pollution while
+    // still bounding the worst-case frame at ~2 render intervals (and
+    // search only runs once per piece, not every tick).
+    private static final int LIVE_AI_SEARCH_BUDGET_MS = 30;
 
     /** Render interval (ms) matched to the primary display refresh rate. */
     private final int renderIntervalMs;
@@ -259,7 +266,14 @@ public class GameController {
         this.mabAiVsAiConfig = aiVsAiConfig == null
                 ? MabAiVsAiConfig.defaults()
                 : aiVsAiConfig;
-        this.gameState = new GameState(this.startLevel);
+        // In AI-vs-AI mode Player A's board is AI-driven, so pin it to
+        // level 1 gravity (slow). Slow gravity keeps the AI survivable and
+        // also acts as a safety net: if the placement planner ever wedges,
+        // gravity still drifts the piece down so the game progresses
+        // instead of stalling forever. Human-driven boards keep startLevel.
+        int playerALevel = (this.launchMode == GameLaunchMode.MAB_AI_VS_AI)
+                ? 1 : this.startLevel;
+        this.gameState = new GameState(playerALevel);
         this.gameState.addListener(sfxBridge);
         this.inputHandler = new InputHandler(this);
         this.renderIntervalMs = FrameRate.RENDER_INTERVAL_MS_ROUNDED;
@@ -621,7 +635,19 @@ public class GameController {
         if (!pve && !localPvp && !aiVsAi && !debugHudOptIn) return;
         try {
             if (mabMatch == null) {
-                mabPlayerBState = new GameState(startLevel);
+                // PvE/AI-vs-AI: Player B is an AI. Pin it to level 1
+                // gravity so the AI's survival floor is independent of the
+                // player's chosen startLevel and of DEFCON gravity
+                // escalation. Slow gravity is survivable for every tier
+                // (the AI positions and hard-drops well within a row's
+                // worth of fall time) and doubles as a safety net: a
+                // wedged placement planner still drifts the piece down,
+                // so the game progresses instead of stalling.
+                // Local PvP: Player B is a human; honour the player's
+                // chosen start level just like Player A.
+                boolean playerBIsAi = pve || aiVsAi;
+                int playerBStartLevel = playerBIsAi ? 1 : startLevel;
+                mabPlayerBState = new GameState(playerBStartLevel);
                 mabPlayerBState.addListener(sfxBridgeP2);
                 // Step 21: shared deterministic 7-bag — both players consume
                 // the SAME piece sequence in MAB modes (Player A's piece #n
@@ -1027,7 +1053,10 @@ public class GameController {
         panelB.setOpponentInfo(archB, diffB, mabAiVsAiConfig.getBalanceProfile());
 
         // Board AIs — one per side. Strategic context wired so they
-        // respect armed mode and incoming threats.
+        // respect armed mode and incoming threats. Both boards run on
+        // slow level-1 gravity (Player A pinned in the constructor,
+        // Player B in openMabIntegrations), which keeps each AI survivable
+        // and nudges any wedged placement down instead of stalling.
         mabBoardAiDriverA = new MabBoardAiDriver(gameState);
         mabBoardAiDriverA.setDifficulty(diffA);
         mabBoardAiDriverA.capSearchTimeBudgetMillis(LIVE_AI_SEARCH_BUDGET_MS);

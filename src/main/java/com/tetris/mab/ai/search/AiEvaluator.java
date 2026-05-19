@@ -1,5 +1,7 @@
 package com.tetris.mab.ai.search;
 
+import com.tetris.mab.ai.MabAiDifficulty;
+
 /**
  * Heuristic evaluator for an {@link AiBoardModel}. Returns a scalar
  * "goodness" score (higher = better) using a weighted sum of standard
@@ -8,6 +10,14 @@ package com.tetris.mab.ai.search;
  *
  * <p>Inspired by the well-known El-Tetris/Dellacherie features but
  * tuned for guideline play with B2B/Tetris/T-spin emphasis.
+ *
+ * <p>The survival features (aggregate height, holes, transitions, top-out
+ * risk) are uniformly strong across every difficulty preset — every tier
+ * is engineered to survive forever on a quiet board. Difficulty tiers
+ * differ on <em>route preference</em>: lower tiers play "flat" (happy to
+ * clear singles, no Tetris well, no spin-slot setup), higher tiers build
+ * Tetris wells and T-spin slots and react to incoming threats by setting
+ * up spin clears.
  */
 public final class AiEvaluator {
 
@@ -45,15 +55,94 @@ public final class AiEvaluator {
         public double armedSpinDriveBonus   = +14.0;
         /** Per pip of incoming threat (closer = stronger). */
         public double threatSpinUrgency     = +6.0;
+
+        /**
+         * Difficulty-keyed weight presets.
+         *
+         * <p>Every tier inherits the same survival features. Route /
+         * attack / intercept weights are gated by tier so that:
+         * <ul>
+         *   <li>EASY plays purely flat — clears anything available, never
+         *       reserves a Tetris well, never sets up spin slots, ignores
+         *       threats. Survives forever on a quiet board; contributes
+         *       no nuke charge from route-specific clears.</li>
+         *   <li>MEDIUM plays flat for stacking but is faintly aware of
+         *       incoming threats (small spin-slot interest).</li>
+         *   <li>HARD builds Tetris wells, sets up spin slots, reacts to
+         *       threats with partial spin urgency.</li>
+         *   <li>EXPERT/MASTER/DEBUG run the full attack-aware preset.</li>
+         * </ul>
+         */
+        public static Weights forDifficulty(MabAiDifficulty d) {
+            Weights w = new Weights();
+            if (d == null) return w;
+            switch (d) {
+                case EASY -> {
+                    // Flat survival only — no attack routing, no
+                    // intercept setup. Clearing singles is *good* here
+                    // because it keeps the stack low without forcing a
+                    // well-building gameplan the AI can't execute.
+                    w.deepWellBonus = 0;
+                    w.wellPollution = 0;
+                    w.wellColumnPref = 0;
+                    w.singleClearPen = 0;
+                    w.doubleClearPen = 0;
+                    w.tripleClearPen = 0;
+                    w.tetrisBonus = 0;
+                    w.tspinBonus = 0;
+                    w.spinSlotBonus = 0;
+                    w.b2bBonus = 0;
+                    w.comboBonus = 0;
+                    w.armedTetrisDriveBonus = 0;
+                    w.armedSpinDriveBonus = 0;
+                    w.threatSpinUrgency = 0;
+                }
+                case MEDIUM, NORMAL -> {
+                    // Flat stacking with a faint awareness that spins can
+                    // intercept. Singles are still allowed (no penalty);
+                    // no Tetris well is reserved. A tiny spin-slot
+                    // signal lets MEDIUM occasionally set up a T-spin
+                    // intercept if the shape falls into place.
+                    w.deepWellBonus = 0;
+                    w.wellPollution = 0;
+                    w.wellColumnPref = 0;
+                    w.singleClearPen = 0;
+                    w.doubleClearPen = 0;
+                    w.tripleClearPen = 0;
+                    w.tetrisBonus = 0;
+                    w.tspinBonus = 2.5;
+                    w.spinSlotBonus = 0.25;
+                    w.b2bBonus = 0;
+                    w.comboBonus = 0;
+                    w.armedTetrisDriveBonus = 0;
+                    w.armedSpinDriveBonus = 0;
+                    w.threatSpinUrgency = 1.5;
+                }
+                case HARD -> {
+                    // Well-builder with partial spin-intercept skill.
+                    // Keeps the right column open for the I-piece, but
+                    // less aggressive about spin setups under threat
+                    // than EXPERT+.
+                    w.threatSpinUrgency = 3.0;
+                }
+                case EXPERT, MASTER, DEBUG -> {
+                    // Full attack-aware preset — defaults already match.
+                }
+            }
+            return w;
+        }
     }
 
-    private final Weights weights;
+    private Weights weights;
     /** Column to reserve as Tetris well (default: rightmost, 9). */
     private int wellColumn = AiBoardModel.WIDTH - 1;
 
     public AiEvaluator() { this(new Weights()); }
-    public AiEvaluator(Weights w) { this.weights = w; }
+    public AiEvaluator(Weights w) { this.weights = w == null ? new Weights() : w; }
     public Weights getWeights() { return weights; }
+    public void setWeights(Weights w) {
+        if (w != null) this.weights = w;
+    }
     public void setWellColumn(int c) {
         this.wellColumn = Math.max(0, Math.min(AiBoardModel.WIDTH - 1, c));
     }
