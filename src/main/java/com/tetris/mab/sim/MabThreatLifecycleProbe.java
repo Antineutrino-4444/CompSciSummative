@@ -12,20 +12,20 @@ import com.tetris.model.GameState;
  * Step 23 \u2014 standalone probe verifying the threat-lifecycle bug
  * fix. Before Step 23 the {@code incomingThreats} list was never
  * pruned, so {@code RESOLVED} / {@code INTERCEPTED} threats accumulated
- * and the player-facing warning panel reported "INCOMING" forever.
+ * and the player-facing incoming panel reported "INCOMING" forever.
  *
  * <p>This probe exercises the live PvP path
  * (<i>not</i> the simulation harness) and asserts that:
  * <ol>
  *   <li>after a launch from B, A reports a live incoming threat;</li>
- *   <li>after the warning timer elapses, the threat becomes
+ *   <li>after the impact-delay timer elapses, the threat becomes
  *       {@code IMPACT_READY} and live count drops to zero;</li>
  *   <li>after {@code resolveAllImpactReady()} +
  *       {@code pruneCompletedThreats()} the threats list is empty;</li>
  *   <li>a fresh launch can immediately follow without leftover state.</li>
  * </ol>
  *
- * <p><b>Offline-only.</b> No Swing, no networking.
+ * <p><b>Local-only.</b> No Swing.
  */
 public final class MabThreatLifecycleProbe {
 
@@ -60,7 +60,7 @@ public final class MabThreatLifecycleProbe {
 
         // Step 2: force the synthesised launch + threat into
         // IMPACT_READY (we're testing the prune/resolve fix, not the
-        // warning-timer state machine which is exercised elsewhere).
+        // impact-delay state machine which is exercised elsewhere).
         ParticipantState pb = match.getParticipant(ParticipantId.PLAYER_B);
         for (com.tetris.mab.ActiveLaunchState l : pb.getActiveLaunches()) {
             l.markImpactReady();

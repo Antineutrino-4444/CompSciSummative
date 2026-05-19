@@ -10,6 +10,7 @@ import com.tetris.mab.balance.MabBalanceProfiles;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.function.BooleanSupplier;
 
 /**
  * Step 15 — owns the player-facing MAB HUD window and the hidden
@@ -51,6 +52,7 @@ public class MabPlayerFacingController {
     private Timer aiTimer;
     private boolean started;
     private boolean resultShown;
+    private BooleanSupplier aiPausedSupplier = () -> false;
     private Runnable onRestart;
     private Runnable onBackToMenu;
     /** Step 20-refinement: when set, post-match result is delivered here
@@ -91,6 +93,11 @@ public class MabPlayerFacingController {
     /** Step 18 — callbacks for the post-match result dialog. */
     public void setRestartCallback(Runnable r) { this.onRestart = r; }
     public void setBackToMenuCallback(Runnable r) { this.onBackToMenu = r; }
+
+    /** Lets the owning controller suspend AI ticks without changing match state. */
+    public void setAiPausedSupplier(BooleanSupplier supplier) {
+        this.aiPausedSupplier = supplier == null ? () -> false : supplier;
+    }
 
     /** Step 20-refinement: install an embedded sink for the post-match
      *  result. When non-null, the legacy {@link MabMatchResultDialog}
@@ -161,7 +168,11 @@ public class MabPlayerFacingController {
         hudTimer.start();
 
         aiTimer = new Timer(AI_TICK_MS, e -> {
-            try { aiDriver.tick(); } catch (RuntimeException ignored) {}
+            try {
+                if (!aiPausedSupplier.getAsBoolean()) {
+                    aiDriver.tick();
+                }
+            } catch (RuntimeException ignored) {}
         });
         aiTimer.setRepeats(true);
         aiTimer.start();
@@ -257,8 +268,6 @@ public class MabPlayerFacingController {
                 meta.put("totalEvents", summary.getTotalEvents());
                 meta.put("launchesAuthorized", summary.getLaunchesAuthorized());
                 meta.put("impactsResolved", summary.getImpactsResolved());
-                meta.put("radarScans", summary.getRadarScans());
-                meta.put("decoysActivated", summary.getDecoysActivated());
                 meta.put("civilDefenseActivations", summary.getCivilDefenseActivations());
                 meta.put("upgradesApplied", summary.getUpgradesApplied());
                 meta.put("finalNukeDesign", summary.getFinalNukeDesign() == null ? "" : summary.getFinalNukeDesign());

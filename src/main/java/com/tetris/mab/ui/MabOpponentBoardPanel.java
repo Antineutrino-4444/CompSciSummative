@@ -154,8 +154,8 @@ public class MabOpponentBoardPanel extends JPanel {
     }
 
     private void refreshHeader() {
-        String a = archetype == null ? "AI" : archetype.name();
-        String d = difficulty == null ? "" : difficulty.name();
+        String a = archetype == null ? "AI" : archetype.displayName();
+        String d = difficulty == null ? "" : difficulty.displayName();
         headerLabel.setText("Opponent AI — " + a + (d.isEmpty() ? "" : " / " + d));
         if (balanceProfileName != null && !balanceProfileName.isBlank()) {
             profileLabel.setText("Balance: " + balanceProfileName);

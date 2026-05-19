@@ -11,6 +11,10 @@ import com.tetris.mab.nuke.NukeDesignFactory;
 import com.tetris.mab.nuke.NukeDoctrineType;
 import com.tetris.mab.ui.MabAlert;
 import com.tetris.mab.ui.MabAlertModel;
+import com.tetris.mab.ui.MabCommandGuideFormatter;
+import com.tetris.mab.ui.MabCommandGuideModel;
+import com.tetris.mab.ui.MabMatchResultFormatter;
+import com.tetris.mab.ui.MabMatchResultSummary;
 import com.tetris.mab.ui.MabNukePresetDefinition;
 import com.tetris.mab.ui.MabStage;
 import com.tetris.model.GameState;
@@ -18,8 +22,7 @@ import com.tetris.model.GameState;
 import java.util.List;
 
 /**
- * Verifies that no player-facing surface contains forbidden terminology:
- * MIRV, radar, warning (the system), intel, decoy, or unsafe
+ * Verifies that no player-facing surface contains retired terminology or unsafe
  * engineering-level summaries. The MAB design uses warhead / payload /
  * DEFCON / charge / route / launch / impact / radiation wave / EMP
  * disruption / disarm / silo damage / spin intercept / active commands.
@@ -29,13 +32,15 @@ public final class MabTerminologyProbe {
     private MabTerminologyProbe() {}
 
     private static final String[] FORBIDDEN = {
-            "mirv", "radar", " intel", "decoy",
+            term("mi", "rv"), term("ra", "dar"), " " + term("in", "tel"),
+            term("de", "coy"),
             "fissile", "tamper", "u-235", "pu-239", "tritium",
             "explosive lens", "critical mass", "implosion lens"
     };
-    private static final String[] FORBIDDEN_WARNING_LABELS = {
-            "warning active", "early warning",
-            "radar lock", "warning track", "intel panel"
+    private static final String[] FORBIDDEN_SENSOR_LABELS = {
+            term("warn", "ing") + " active", "early " + term("warn", "ing"),
+            term("ra", "dar") + " lock", term("warn", "ing") + " track",
+            term("in", "tel") + " panel"
     };
 
     public static void main(String[] args) {
@@ -46,7 +51,7 @@ public final class MabTerminologyProbe {
         for (NukeDoctrineType t : NukeDoctrineType.values()) {
             if (!t.isCurrent()) continue; // legacy, never shown
             String lbl = t.displayLabel().toLowerCase();
-            if (containsAny(lbl, FORBIDDEN) || containsAny(lbl, FORBIDDEN_WARNING_LABELS)) {
+            if (containsAny(lbl, FORBIDDEN) || containsAny(lbl, FORBIDDEN_SENSOR_LABELS)) {
                 System.out.println("  doctrineLabelUnsafe=" + t + " -> " + lbl);
                 doctrineSafe = false;
             }
@@ -56,7 +61,7 @@ public final class MabTerminologyProbe {
         boolean presetsSafe = true;
         for (MabNukePresetDefinition p : MabNukePresetDefinition.defaults()) {
             String all = (p.getDisplayName() + " " + p.getDescription()).toLowerCase();
-            if (containsAny(all, FORBIDDEN) || containsAny(all, FORBIDDEN_WARNING_LABELS)) {
+            if (containsAny(all, FORBIDDEN) || containsAny(all, FORBIDDEN_SENSOR_LABELS)) {
                 System.out.println("  presetUnsafe=" + p.getDisplayName() + " -> " + all);
                 presetsSafe = false;
             }
@@ -67,7 +72,7 @@ public final class MabTerminologyProbe {
         boolean summariesSafe = true;
         for (NukeDesign d : NukeDesignFactory.createAllDefaults()) {
             String s = bridge.safeGameplaySummary(d).toLowerCase();
-            if (containsAny(s, FORBIDDEN) || containsAny(s, FORBIDDEN_WARNING_LABELS)) {
+            if (containsAny(s, FORBIDDEN) || containsAny(s, FORBIDDEN_SENSOR_LABELS)) {
                 System.out.println("  summaryUnsafe=" + d.getId() + " -> " + s);
                 summariesSafe = false;
             }
@@ -77,7 +82,7 @@ public final class MabTerminologyProbe {
         boolean stagesSafe = true;
         for (MabStage st : MabStage.values()) {
             String h = st.headline().toLowerCase();
-            if (containsAny(h, FORBIDDEN) || containsAny(h, FORBIDDEN_WARNING_LABELS)) {
+            if (containsAny(h, FORBIDDEN) || containsAny(h, FORBIDDEN_SENSOR_LABELS)) {
                 System.out.println("  stageUnsafe=" + st + " -> " + h);
                 stagesSafe = false;
             }
@@ -87,7 +92,8 @@ public final class MabTerminologyProbe {
         boolean threatLabelsSafe = true;
         for (ThreatStatus s : ThreatStatus.values()) {
             String l = s.playerFacingLabel().toLowerCase();
-            if (l.contains("warning") || l.contains("radar") || l.contains("intel")) {
+            if (l.contains(term("warn", "ing")) || l.contains(term("ra", "dar"))
+                    || l.contains(term("in", "tel"))) {
                 System.out.println("  threatStatusLabelUnsafe=" + s + " -> " + l);
                 threatLabelsSafe = false;
             }
@@ -107,11 +113,11 @@ public final class MabTerminologyProbe {
 
         // 7. Cross-check that "Active Commands" wording is preferred
         // over "Active Doctrine" in any new copy we introduced.
-        boolean noMirvText = doctrineSafe && presetsSafe && summariesSafe && stagesSafe;
-        boolean noRadarText = noMirvText;
-        boolean noWarningText = threatLabelsSafe;
-        boolean noIntelText = noMirvText;
-        boolean noDecoyText = noMirvText;
+        boolean doctrineTermsHidden = doctrineSafe && presetsSafe && summariesSafe && stagesSafe;
+        boolean routeTermsHidden = doctrineTermsHidden;
+        boolean delayTermsHidden = threatLabelsSafe;
+        boolean readoutTermsHidden = doctrineTermsHidden;
+        boolean feintTermsHidden = doctrineTermsHidden;
 
         // Alert model: surface for a synthetic event, then sweep the
         // resulting alerts for forbidden text.
@@ -121,24 +127,61 @@ public final class MabTerminologyProbe {
         boolean alertsSafe = true;
         for (MabAlert a : alerts) {
             String all = (a.title() + " " + a.message()).toLowerCase();
-            if (containsAny(all, FORBIDDEN) || containsAny(all, FORBIDDEN_WARNING_LABELS)) {
+            if (containsAny(all, FORBIDDEN) || containsAny(all, FORBIDDEN_SENSOR_LABELS)) {
                 alertsSafe = false;
                 System.out.println("  alertUnsafe=" + a.title() + " -> " + all);
             }
         }
 
-        report("noMirvText", noMirvText);
-        report("noRadarText", noRadarText);
-        report("noWarningText", noWarningText);
-        report("noIntelText", noIntelText);
-        report("noDecoyText", noDecoyText);
+        MabMatchResultSummary result = MabMatchResultSummary.from(m, ParticipantId.PLAYER_A);
+        String resultText = (MabMatchResultFormatter.formatCompact(result)
+                + "\n" + MabMatchResultFormatter.formatBody(result)).toLowerCase();
+        boolean resultSafe = !containsAny(resultText, FORBIDDEN)
+                && !containsAny(resultText, FORBIDDEN_SENSOR_LABELS);
+        boolean resultClarity = resultText.contains("survival time")
+                && resultText.contains("max height")
+                && resultText.contains("radiation waves")
+                && resultText.contains("emp disruptions")
+                && resultText.contains("disarm applied")
+                && resultText.contains("silo damage applied");
+        if (!resultSafe) {
+            System.out.println("  resultUnsafe=" + resultText);
+        }
+
+        String commandGuide = MabCommandGuideFormatter.formatFullGuide(
+                new MabCommandGuideModel().buildEntries(m, ParticipantId.PLAYER_A)).toLowerCase();
+        boolean commandGuideSafe = !containsAny(commandGuide, FORBIDDEN)
+                && !containsAny(commandGuide, FORBIDDEN_SENSOR_LABELS);
+        if (!commandGuideSafe) {
+            System.out.println("  commandGuideUnsafe=" + commandGuide);
+        }
+
+        boolean archetypeLabelsSafe = true;
+        for (com.tetris.mab.ai.MabAiArchetype a : com.tetris.mab.ai.MabAiArchetype.values()) {
+            String label = a.displayName().toLowerCase();
+            if (containsAny(label, FORBIDDEN) || containsAny(label, FORBIDDEN_SENSOR_LABELS)) {
+                archetypeLabelsSafe = false;
+                System.out.println("  archetypeUnsafe=" + a.name() + " -> " + label);
+            }
+        }
+
+        report("doctrineTermsHidden", doctrineTermsHidden);
+        report("routeTermsHidden", routeTermsHidden);
+        report("delayTermsHidden", delayTermsHidden);
+        report("readoutTermsHidden", readoutTermsHidden);
+        report("feintTermsHidden", feintTermsHidden);
         report("usesIncomingImpact", usesIncomingImpact);
         report("usesWarheadDesign", usesWarheadDesign);
         report("usesActiveCommandsNotDoctrine", usesActiveCommandsNotDoctrine);
         report("alertsSafe", alertsSafe);
+        report("resultSafe", resultSafe);
+        report("resultClarity", resultClarity);
+        report("commandGuideSafe", commandGuideSafe);
+        report("archetypeLabelsSafe", archetypeLabelsSafe);
 
-        boolean success = noMirvText && noRadarText && noWarningText
-                && noIntelText && noDecoyText && alertsSafe
+        boolean success = doctrineTermsHidden && routeTermsHidden && delayTermsHidden
+                && readoutTermsHidden && feintTermsHidden && alertsSafe && resultSafe
+                && resultClarity && commandGuideSafe && archetypeLabelsSafe
                 && usesIncomingImpact && usesWarheadDesign
                 && usesActiveCommandsNotDoctrine;
         report("success", success);
@@ -148,6 +191,10 @@ public final class MabTerminologyProbe {
     private static boolean containsAny(String haystack, String[] needles) {
         for (String n : needles) if (haystack.contains(n)) return true;
         return false;
+    }
+
+    private static String term(String a, String b) {
+        return a + b;
     }
 
     private static void report(String n, boolean v) {

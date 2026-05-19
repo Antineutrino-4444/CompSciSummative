@@ -295,8 +295,8 @@ public final class NukeSlot {
             0.0, 0.0, 1.5),
         new NukePart("Re-entry vehicle (RV) aeroshell",
             "Conical body with an ablative heat shield — survives ICBM re-entry.",
-            "MIRV warheads (W76, W78, W87, W88) live inside narrow conical RVs only " +
-            "tens of cm across. The mass and diameter limits drive the use of compact " +
+            "Compact ballistic warheads live inside narrow conical RVs only tens " +
+            "of cm across. The mass and diameter limits drive the use of compact " +
             "boosted primaries.",
             0.0, 0.0, 2.5),
         new NukePart("Cylindrical artillery shell body",
@@ -310,37 +310,6 @@ public final class NukeSlot {
             "to thermal X-rays for long enough that radiation pressure can compress " +
             "the secondary before the case itself blows apart.",
             0.0, 0.05, 3.0)
-    );
-
-    public static final NukeSlot FUZE = new NukeSlot("fuze",
-        "Fuze",
-        "Decides when the device fires. The wrong fuze choice can waste most " +
-        "of the yield — a contact fuze on a city target produces a small " +
-        "crater and a lot of fallout instead of a massive blast wave.",
-        new NukePart("Contact fuze",
-            "Detonates on impact.",
-            "Maximizes ground shock and fallout but wastes most of the blast and " +
-            "thermal effects: an airburst is far more destructive against soft " +
-            "(structural and biological) targets. Mainly useful against deeply " +
-            "buried hardened targets — though even then a delayed fuze in a " +
-            "penetrator is preferred.",
-            0.0, -0.10, 1.0),
-        new NukePart("Radar airburst fuze",
-            "Detonates at a pre-set altitude using a downward-looking radar altimeter.",
-            "First used on 'Little Boy' and 'Fat Man' — both burst at ~500–600 m for " +
-            "maximum blast radius. The Mach-stem reflection at the right altitude " +
-            "doubles the area of severe overpressure at ground level.",
-            0.0, 0.10, 2.0),
-        new NukePart("Programmable height-of-burst fuze",
-            "Modern digital fuze with selectable burst height and ground-burst options.",
-            "Standard in modern warheads. Lets one warhead serve multiple missions " +
-            "(soft-target airburst, hard-target ground burst, low-altitude tactical, etc.).",
-            0.0, 0.10, 3.0),
-        new NukePart("Hydrostatic fuze (depth charge)",
-            "Detonates at a preset water depth.",
-            "Used on naval anti-submarine weapons such as the U.S. B57 / Mk 101 'Lulu'. " +
-            "Now retired in favor of conventional torpedoes.",
-            0.0, 0.0, 2.0)
     );
 
     public static final NukeSlot SAFETY = new NukeSlot("safety",
@@ -388,8 +357,7 @@ public final class NukeSlot {
         new NukePart("ICBM / SLBM re-entry vehicle",
             "Compact warhead atop an intercontinental or submarine-launched ballistic missile.",
             "Strict mass and diameter limits drive the use of boosted, hollow-pit " +
-            "primaries. Modern MIRV (Multiple Independently-targetable Re-entry " +
-            "Vehicle) buses can carry several such warheads on one missile — a key " +
+            "primaries. Modern post-boost buses can carry several such warheads on one missile — a key " +
             "subject of the New START treaty.",
             0.0, 0.0, 2.0),
         new NukePart("Air-launched cruise missile",
@@ -440,6 +408,6 @@ public final class NukeSlot {
     /** All slots in the order shown in the UI. */
     public static final List<NukeSlot> ALL = Collections.unmodifiableList(Arrays.asList(
         CONFIGURATION, FISSILE, TAMPER, INITIATOR, IMPLOSION,
-        BOOST, SECONDARY, FUZE
+        BOOST, SECONDARY
     ));
 }

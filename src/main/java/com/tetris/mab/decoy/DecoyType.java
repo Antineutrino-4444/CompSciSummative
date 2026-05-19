@@ -1,9 +1,9 @@
 package com.tetris.mab.decoy;
 
-/** Decoy / misinformation type. Step 11. */
+/** Feint / misdirection type. Step 11. */
 public enum DecoyType {
-    DECOY_LAUNCH,
-    GHOST_MIRV,
+    FEINT_LAUNCH,
+    GHOST_SPLIT,
     FALSE_DOCTRINE_SIGNAL,
     DUMMY_SILO_HEAT,
     MASKED_LAUNCH

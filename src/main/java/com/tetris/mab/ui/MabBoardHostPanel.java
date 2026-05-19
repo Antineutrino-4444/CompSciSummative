@@ -153,7 +153,7 @@ public final class MabBoardHostPanel extends JPanel {
     }
 
     /** Renders a label-only field tag (no playfield). Useful for opponent
-     *  intel placeholder panels that want the same chrome. */
+     *  status placeholder panels that want the same chrome. */
     public static MabBoardHostPanel placeholder(String tag) {
         JPanel ph = new JPanel();
         ph.setOpaque(false);

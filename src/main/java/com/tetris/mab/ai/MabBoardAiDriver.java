@@ -1,84 +1,114 @@
 package com.tetris.mab.ai;
 
-import com.tetris.mab.ai.MabBoardAiPlan;
+import com.tetris.mab.IncomingThreatState;
+import com.tetris.mab.MutuallyAssuredBlocksMatch;
+import com.tetris.mab.NukeBuildState;
+import com.tetris.mab.ParticipantId;
+import com.tetris.mab.ParticipantState;
+import com.tetris.mab.ai.search.AiBoardModel;
+import com.tetris.mab.ai.search.AiEvaluator;
+import com.tetris.mab.ai.search.AiMove;
+import com.tetris.mab.ai.search.AiSearch;
+import com.tetris.mab.ai.search.AiSearchSettings;
+import com.tetris.mab.launch.ThreatStatus;
+import com.tetris.mab.nuke.NukeDesign;
+import com.tetris.mab.nuke.NukeDoctrineType;
 import com.tetris.model.Board;
 import com.tetris.model.GameState;
-import com.tetris.model.Position;
 import com.tetris.model.Tetromino;
+import com.tetris.model.TetrominoType;
 
-import java.awt.Color;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Step 20 Second Refinement (extended in Third Refinement) — visible
- * placement AI for Player B.
+ * Visible-board AI for Player B's {@link GameState}.
  *
- * <p>Drives Player B's {@link GameState} so the player sees plausible
- * opponent activity. Heuristic placement search:
- *
+ * <p>From-first-principles rewrite. The driver:
  * <ol>
- *   <li>Snapshot the current board into a primitive {@code int[][]}.</li>
- *   <li>Try every (rotation 0..maxRot, target x) for the current piece.</li>
- *   <li>Score each landing by lines cleared, aggregate height, holes,
- *       bumpiness, and top-out risk — weights vary by difficulty.</li>
- *   <li>Pick the best deterministic plan (tie-break: lowest target x,
- *       then lowest rotation count).</li>
- *   <li>Move the real piece one step toward the plan per AI tick:
- *       rotate first, then translate, then dwell, then hard drop.</li>
+ *   <li>Snapshots the playable board into an {@link AiBoardModel} once
+ *       per piece.</li>
+ *   <li>Asks {@link AiSearch} (configured by {@link AiSearchSettings})
+ *       for the best landing for the current piece, considering hold
+ *       and a slice of the preview queue.</li>
+ *   <li>Drives the real {@code GameState} toward that landing one
+ *       legal input at a time at the difficulty-tuned cadence.</li>
  * </ol>
  *
- * <p>Step 20 Third Refinement adds:
- * <ul>
- *   <li>{@link MabAiDifficulty}-driven pacing (target PPS) and search
- *       weights — see {@link #setDifficulty}.</li>
- *   <li>{@code hardDropCount} accumulator surfaced via
- *       {@link MabBoardAiPlan#getHardDropCount()} so the player can
- *       confirm the AI is actually locking pieces.</li>
- * </ul>
+ * <p>Fair: never peeks beyond {@link AiSearchSettings#lookaheadDepth}
+ * preview pieces. Never injects pieces, never alters the bag, never
+ * touches the opponent.
  *
- * <p><b>Offline-only.</b> No randomness, no lookahead, no t-spin
- * recognition.
+ * <p>Offline-only.
  */
 public final class MabBoardAiDriver {
 
-    /** Game-loop tick rate; matches {@code GameController.FRAME_INTERVAL_MS}. */
     private static final double TICKS_PER_SECOND = 1000.0 / 16.0;
 
-    // ── Pacing ──
-    private int actionIntervalTicks = 10;
-    private int dropDwellTicks = 10;
-    private double targetPps = 1.0;
-
-    // ── Search weights (per difficulty) ──
-    private int wLines = 100;
-    private int wAggregate = 4;
-    private int wHoles = 20;
-    private int wBumpiness = 3;
-    private int wMaxHeight = 6;
-    private int wTopOut = 10000;
-    /** Number of rotations to evaluate (1..4). EASY may use fewer. */
-    private int rotationCandidates = 4;
-
     private final GameState board;
-    private long tickCount;
-    private int actionCounter;
-    private boolean enabled = true;
-    private MabAiDifficulty difficulty = MabAiDifficulty.NORMAL;
-    private int hardDropCount;
+    private final AiEvaluator evaluator = new AiEvaluator();
 
-    // Current plan
+    private MabAiDifficulty difficulty = MabAiDifficulty.MEDIUM;
+    private AiSearchSettings settings = AiSearchSettings.forDifficulty(MabAiDifficulty.MEDIUM);
+    private AiSearch search;
+    private long seedBase = 31_4159_2653L;
+
+    private boolean enabled = true;
+    private long tickCount;
+    private int hardDropCount;
+    private int actionCounter;
+    private int dwellLeft;
+    private int planVersion;
     private MabBoardAiPlan.Phase phase = MabBoardAiPlan.Phase.PLANNING;
+    private double planScore;
     private int targetCol = -1;
     private int targetRotation = 0;
-    private int planScore = 0;
-    private int dwellLeft = 0;
-    /** Number of rotation attempts since the current plan started; if a
-     *  kick is illegal we eventually give up so the AI doesn't stall. */
-    private int rotationAttempts = 0;
+    private boolean targetUsedHold = false;
+    private boolean holdAttempted = false;
+    private int planAge;
+    private double measuredPps;
+    private long lastDropMs;
+    private int rotationAttempts;
+    private int translationStalls;
+
+    /** Optional B2B/combo carrier, kept in sync with line clears. */
+    private boolean b2bActive = false;
+    private int comboCount = 0;
+    private int linesClearedTotal = 0;
+
+    /** Telemetry counters. */
+    private int searchCalls;
+    private int searchCandidates;
+    private int mistakes;
+    private int holdsUsed;
+    private int tetrises;
+    private int tspins;
+    private int perfectClears;
+
+    /** Optional MAB strategic context — when present, the evaluator gets
+     *  armed/route/threat info pulled from the live match. */
+    private MutuallyAssuredBlocksMatch contextMatch;
+    private ParticipantId contextParticipantId;
 
     public MabBoardAiDriver(GameState board) {
         if (board == null) throw new IllegalArgumentException("board");
         this.board = board;
-        setDifficulty(MabAiDifficulty.NORMAL);
+        applySettings(MabAiDifficulty.MEDIUM);
+        board.addListener(new com.tetris.events.GameEventListener() {
+            @Override
+            public void onLinesCleared(LinesClearedEvent e) {
+                linesClearedTotal += e.count();
+                if (e.tetris()) tetrises++;
+                if (e.tSpin()) tspins++;
+                if (e.perfectClear()) perfectClears++;
+                if (e.count() > 0) {
+                    comboCount = e.combo() + 1;
+                    b2bActive = e.backToBack() || e.tetris() || e.tSpin();
+                } else {
+                    comboCount = 0;
+                }
+            }
+        });
     }
 
     public GameState getBoard() { return board; }
@@ -86,107 +116,96 @@ public final class MabBoardAiDriver {
     public void setEnabled(boolean v) { this.enabled = v; }
     public long getTickCount() { return tickCount; }
     public int getHardDropCount() { return hardDropCount; }
-    public double getTargetPps() { return targetPps; }
     public MabAiDifficulty getDifficulty() { return difficulty; }
+    public double getTargetPps() { return settings.pacing.targetPps; }
+    public double getMeasuredPps() { return measuredPps; }
+    public int getSearchCalls() { return searchCalls; }
+    public int getSearchCandidates() { return searchCandidates; }
+    public int getMistakes() { return mistakes; }
+    public int getHoldsUsed() { return holdsUsed; }
+    public int getTetrises() { return tetrises; }
+    public int getTspins() { return tspins; }
+    public int getPerfectClears() { return perfectClears; }
+    public int getLinesClearedTotal() { return linesClearedTotal; }
+
+    public void setDifficulty(MabAiDifficulty d) {
+        applySettings(d == null ? MabAiDifficulty.MEDIUM : d);
+    }
+
+    public void capSearchTimeBudgetMillis(int maxMillis) {
+        int capped = Math.max(2, maxMillis);
+        if (settings.searchTimeBudgetMillis <= capped) return;
+        settings = new AiSearchSettings(settings.beamWidth, settings.lookaheadDepth,
+                settings.fullTuckSearch, settings.include180, settings.useHold,
+                settings.mistakeRate, settings.pacing, settings.designAware,
+                settings.planLaunches, settings.prefersTetrisWell,
+                capped, settings.rotateBeforeMoveOptimisation);
+        search = new AiSearch(settings, evaluator, seedBase ^ 0x9E3779B97F4A7C15L);
+    }
+
+    public void setSeed(long seed) {
+        this.seedBase = seed;
+        this.search = new AiSearch(settings, evaluator, seed ^ 0x5DEECE66DL);
+    }
+
+    /** Legacy compat — kept so older callers compile. */
+    public void setActionIntervalTicks(int interval) {
+        // The new pacing model is settings-derived. The override is
+        // honoured by widening the dwell so total piece cadence still
+        // roughly matches the requested interval.
+        AiSearchSettings.Pacing cur = settings.pacing;
+        AiSearchSettings.Pacing pacing =
+                new AiSearchSettings.Pacing(cur.targetPps,
+                        Math.max(1, interval), cur.dropDwellTicks);
+        settings = new AiSearchSettings(settings.beamWidth, settings.lookaheadDepth,
+                settings.fullTuckSearch, settings.include180, settings.useHold,
+                settings.mistakeRate, pacing, settings.designAware,
+                settings.planLaunches, settings.prefersTetrisWell,
+                settings.searchTimeBudgetMillis,
+                settings.rotateBeforeMoveOptimisation);
+    }
+
+    /** Legacy compat. */
+    public void setDropDwellTicks(int dwell) {
+        AiSearchSettings.Pacing cur = settings.pacing;
+        AiSearchSettings.Pacing pacing =
+                new AiSearchSettings.Pacing(cur.targetPps,
+                        cur.actionIntervalTicks, Math.max(0, dwell));
+        settings = new AiSearchSettings(settings.beamWidth, settings.lookaheadDepth,
+                settings.fullTuckSearch, settings.include180, settings.useHold,
+                settings.mistakeRate, pacing, settings.designAware,
+                settings.planLaunches, settings.prefersTetrisWell,
+                settings.searchTimeBudgetMillis,
+                settings.rotateBeforeMoveOptimisation);
+    }
+
+    /** Read-only snapshot for HUD display. */
+    public MabBoardAiPlan getPlan() {
+        return new MabBoardAiPlan(phase, targetCol, targetRotation,
+                (int) Math.round(planScore), settings.pacing.targetPps, hardDropCount);
+    }
+
+    public AiSearchSettings getSettings() { return settings; }
 
     /**
-     * Step 20 Third Refinement — set pacing + scoring weights from a
-     * difficulty bucket. Higher difficulty = faster PPS and stricter
-     * placement scoring (heavier hole/top-out penalties).
-     *
-     * <p>Approximate target PPS:
-     * <ul>
-     *   <li>EASY ≈ 0.50 PPS</li>
-     *   <li>NORMAL ≈ 1.00 PPS</li>
-     *   <li>HARD ≈ 1.67 PPS</li>
-     *   <li>DEBUG ≈ 3.00 PPS</li>
-     * </ul>
-     *
-     * <p>Pacing model: each piece takes roughly
-     * {@code (avg_actions + dwellTicks + 1) * actionIntervalTicks}
-     * ticks (≈ 5 input-like steps for rotate+move + N dwell decrements
-     * + 1 hard-drop step). At a 60 Hz tick rate, target PPS is
-     * {@code 60 / ((6 + dwell) * interval)}.
+     * Attach the live MAB match + participant so the board AI can lift
+     * strategic context (armed / route / incoming threats) into the
+     * search. Optional — when unset the AI plays a pure-Tetris policy.
      */
-    public void setDifficulty(MabAiDifficulty d) {
-        this.difficulty = (d == null) ? MabAiDifficulty.NORMAL : d;
-        switch (this.difficulty) {
-            case EASY:
-                actionIntervalTicks = 12;
-                dropDwellTicks = 4;
-                rotationCandidates = 2;
-                wLines = 50;
-                wAggregate = 3;
-                wHoles = 8;
-                wBumpiness = 2;
-                wMaxHeight = 4;
-                wTopOut = 3000;
-                break;
-            case HARD:
-                actionIntervalTicks = 4;
-                dropDwellTicks = 3;
-                rotationCandidates = 4;
-                wLines = 140;
-                wAggregate = 5;
-                wHoles = 35;
-                wBumpiness = 5;
-                wMaxHeight = 7;
-                wTopOut = 50000;
-                break;
-            case DEBUG:
-                actionIntervalTicks = 2;
-                dropDwellTicks = 4;
-                rotationCandidates = 4;
-                wLines = 140;
-                wAggregate = 5;
-                wHoles = 35;
-                wBumpiness = 5;
-                wMaxHeight = 7;
-                wTopOut = 50000;
-                break;
-            case NORMAL:
-            default:
-                actionIntervalTicks = 6;
-                dropDwellTicks = 4;
-                rotationCandidates = 4;
-                wLines = 100;
-                wAggregate = 4;
-                wHoles = 20;
-                wBumpiness = 3;
-                wMaxHeight = 6;
-                wTopOut = 10000;
-                break;
-        }
-        recomputePps();
+    public void attachStrategicContext(MutuallyAssuredBlocksMatch match,
+                                       ParticipantId participantId) {
+        this.contextMatch = match;
+        this.contextParticipantId = participantId;
     }
 
-    /** Manual override (used by legacy callers / tests). */
-    public void setActionIntervalTicks(int interval) {
-        this.actionIntervalTicks = Math.max(1, interval);
-        recomputePps();
+    private void applySettings(MabAiDifficulty d) {
+        this.difficulty = d;
+        this.settings = AiSearchSettings.forDifficulty(d);
+        evaluator.setWellColumn(AiBoardModel.WIDTH - 1);
+        this.search = new AiSearch(settings, evaluator, seedBase ^ 0x9E3779B97F4A7C15L);
     }
 
-    /** Manual override (used by legacy callers / tests). */
-    public void setDropDwellTicks(int dwell) {
-        this.dropDwellTicks = Math.max(0, dwell);
-        recomputePps();
-    }
-
-    private void recomputePps() {
-        // Average piece cycle ≈ 5 input-like actions + dwell decrements + 1 drop,
-        // each separated by actionIntervalTicks ticks.
-        double stepPlanCalls = 6.0 + dropDwellTicks;
-        double ticksPerPiece = stepPlanCalls * actionIntervalTicks;
-        targetPps = TICKS_PER_SECOND / Math.max(1.0, ticksPerPiece);
-    }
-
-    /** Snapshot of the current AI plan / phase / pps / drop count. */
-    public MabBoardAiPlan getPlan() {
-        return new MabBoardAiPlan(phase, targetCol, targetRotation, planScore,
-                targetPps, hardDropCount);
-    }
-
-    /** Advance one frame. Drives gravity + occasional input-like steps. */
+    /** Advance one game-loop frame. */
     public void tick() {
         if (!enabled) return;
         if (board.isGameOver()) {
@@ -194,16 +213,12 @@ public final class MabBoardAiDriver {
             return;
         }
         if (board.isPaused()) return;
-        try {
-            board.update();
-        } catch (RuntimeException ignored) {}
+        try { board.update(); } catch (RuntimeException ignored) {}
         tickCount++;
         actionCounter++;
-        if (actionCounter < actionIntervalTicks) return;
+        if (actionCounter < settings.pacing.actionIntervalTicks) return;
         actionCounter = 0;
-        try {
-            stepPlan();
-        } catch (RuntimeException ignored) {}
+        try { stepPlan(); } catch (RuntimeException ignored) {}
     }
 
     private void stepPlan() {
@@ -213,190 +228,199 @@ public final class MabBoardAiDriver {
             return;
         }
         if (targetCol < 0 || phase == MabBoardAiPlan.Phase.WAITING) {
-            buildPlan(piece);
-            phase = MabBoardAiPlan.Phase.ROTATING;
-            dwellLeft = dropDwellTicks;
+            replan(piece);
+            phase = MabBoardAiPlan.Phase.PLANNING;
+            dwellLeft = settings.pacing.dropDwellTicks;
             rotationAttempts = 0;
+            translationStalls = 0;
         }
 
-        // 1) Rotate toward the plan. Bail out after a few attempts so a
-        //    rejected kick does not stall the piece forever.
-        if (piece.getRotationState() != targetRotation && rotationAttempts < 6) {
+        // If we planned a hold-swap, actually press hold first (once).
+        if (targetUsedHold && !holdAttempted) {
+            holdAttempted = true;
+            boolean ok = board.hold();
+            if (ok) {
+                holdsUsed++;
+                // After hold, current piece changes — the plan's rotation
+                // and column targets refer to the *new* piece type. We
+                // re-derive the plan on the next tick for clarity.
+                targetCol = -1;
+                phase = MabBoardAiPlan.Phase.WAITING;
+            } else {
+                // Hold rejected (already used this piece) — fall through
+                // and play the current piece anyway with the same target.
+                targetUsedHold = false;
+            }
+            return;
+        }
+
+        // 1) Rotate to target rotation.
+        if (piece.getRotationState() != targetRotation && rotationAttempts < 8) {
             int before = piece.getRotationState();
-            board.rotateCW();
+            int delta = (targetRotation - before + 4) % 4;
+            boolean ok;
+            if (delta == 2) ok = tryRotate180();
+            else if (delta == 1) ok = board.rotateCW();
+            else ok = board.rotateCCW();
             rotationAttempts++;
             int after = board.getCurrentPiece() == null
-                    ? before
-                    : board.getCurrentPiece().getRotationState();
-            if (after == before) {
-                // Rotation failed (kick rejected). Force-accept current
-                // rotation so the AI can still translate + drop.
-                targetRotation = before;
+                    ? before : board.getCurrentPiece().getRotationState();
+            if (!ok || after == before) {
+                // Rotation rejected (kick failed) — bail out so we don't stall.
+                if (rotationAttempts >= 6) {
+                    targetRotation = after;
+                    rotationAttempts = 0;
+                }
             }
             phase = MabBoardAiPlan.Phase.ROTATING;
             return;
         }
         if (piece.getRotationState() != targetRotation) {
-            // Stalled — give up on rotating; place at current rotation.
+            // Stuck rotating — accept current rotation and try to land.
             targetRotation = piece.getRotationState();
         }
 
-        // 2) Translate horizontally toward the plan.
+        // 2) Translate horizontally.
         int currentCol = piece.getBoardPosition().getX();
         if (currentCol < targetCol) {
-            board.moveRight();
+            boolean moved = board.moveRight();
+            if (!moved) translationStalls++;
             phase = MabBoardAiPlan.Phase.MOVING;
+            if (translationStalls > 4) {
+                // We're wedged — replan rather than stall forever.
+                targetCol = -1;
+            }
             return;
         }
         if (currentCol > targetCol) {
-            board.moveLeft();
+            boolean moved = board.moveLeft();
+            if (!moved) translationStalls++;
             phase = MabBoardAiPlan.Phase.MOVING;
+            if (translationStalls > 4) {
+                targetCol = -1;
+            }
             return;
         }
 
-        // 3) Aligned. Dwell briefly so the player can read the intent.
+        // 3) Dwell briefly so the placement reads.
         if (dwellLeft > 0) {
             dwellLeft--;
             phase = MabBoardAiPlan.Phase.DROPPING;
             return;
         }
 
-        // 4) Hard drop and invalidate the plan; next tick replans.
+        // 4) Hard drop. Line-clear bookkeeping comes through the
+        //    GameEventListener installed in the constructor.
         board.hardDrop();
+        long now = System.currentTimeMillis();
+        if (lastDropMs > 0) {
+            double dt = (now - lastDropMs) / 1000.0;
+            if (dt > 0) {
+                double instant = 1.0 / dt;
+                measuredPps = (measuredPps * 0.7) + (instant * 0.3);
+            }
+        }
+        lastDropMs = now;
         hardDropCount++;
         phase = MabBoardAiPlan.Phase.WAITING;
         targetCol = -1;
     }
 
-    private void buildPlan(Tetromino piece) {
-        int boardW = Board.WIDTH;
-        int boardH = Board.TOTAL_HEIGHT;
-        int[][] snap = snapshotBoard(board.getBoard(), boardW, boardH);
-
-        int bestScore = Integer.MIN_VALUE;
-        int bestCol = piece.getBoardPosition().getX();
-        int bestRot = piece.getRotationState();
-
-        int rotMax = Math.max(1, Math.min(4, rotationCandidates));
-        for (int rot = 0; rot < rotMax; rot++) {
-            Tetromino rotated = piece.withRotation(rot);
-            int pieceMinX = Integer.MAX_VALUE, pieceMaxX = Integer.MIN_VALUE;
-            for (Position c : rotated.getAbsoluteCells()) {
-                pieceMinX = Math.min(pieceMinX, c.getX());
-                pieceMaxX = Math.max(pieceMaxX, c.getX());
-            }
-            int minDx = -pieceMinX;
-            int maxDx = (boardW - 1) - pieceMaxX;
-
-            for (int dx = minDx; dx <= maxDx; dx++) {
-                Tetromino shifted = rotated.translate(dx, 0);
-                Tetromino landed = dropToLanding(shifted, snap, boardW, boardH);
-                if (landed == null) continue;
-                int score = scoreLanding(landed, snap, boardW, boardH);
-                int landedCol = shifted.getBoardPosition().getX();
-                if (score > bestScore
-                        || (score == bestScore && landedCol < bestCol)
-                        || (score == bestScore && landedCol == bestCol && rot < bestRot)) {
-                    bestScore = score;
-                    bestCol = landedCol;
-                    bestRot = rot;
-                }
-            }
-        }
-        targetCol = bestCol;
-        targetRotation = bestRot;
-        planScore = bestScore;
-    }
-
-    private static int[][] snapshotBoard(Board b, int w, int h) {
-        int[][] grid = new int[h][w];
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                Color c = b.getCell(x, y);
-                grid[y][x] = (c == null) ? 0 : 1;
-            }
-        }
-        return grid;
-    }
-
-    private static Tetromino dropToLanding(Tetromino piece, int[][] snap, int w, int h) {
-        if (collides(piece, snap, w, h)) return null;
-        Tetromino cur = piece;
-        while (true) {
-            Tetromino next = cur.moveDown();
-            if (collides(next, snap, w, h)) return cur;
-            cur = next;
-        }
-    }
-
-    private static boolean collides(Tetromino piece, int[][] snap, int w, int h) {
-        for (Position c : piece.getAbsoluteCells()) {
-            int x = c.getX();
-            int y = c.getY();
-            if (x < 0 || x >= w || y < 0 || y >= h) return true;
-            if (snap[y][x] != 0) return true;
+    private boolean tryRotate180() {
+        // Game engine exposes rotate180 only via input action — we
+        // approximate by two CW rotations.
+        if (board.rotateCW()) {
+            // best-effort: another CW lands us on the 180° state.
+            board.rotateCW();
+            return true;
         }
         return false;
     }
 
-    private int scoreLanding(Tetromino landed, int[][] snap, int w, int h) {
-        int[][] copy = new int[h][];
-        for (int y = 0; y < h; y++) copy[y] = snap[y].clone();
-        for (Position c : landed.getAbsoluteCells()) {
-            if (c.getY() >= 0 && c.getY() < h && c.getX() >= 0 && c.getX() < w) {
-                copy[c.getY()][c.getX()] = 1;
-            }
+    private void replan(Tetromino piece) {
+        searchCalls++;
+        planAge = 0;
+        AiBoardModel model = AiBoardModel.fromBoard(board.getBoard());
+        TetrominoType current = piece.getType();
+        TetrominoType holdType = board.getHoldPiece();
+        boolean canHold = !board.isHoldUsed();
+        List<TetrominoType> preview = new ArrayList<>();
+        for (TetrominoType t : board.getPreviewPieces()) {
+            if (t != null) preview.add(t);
+            if (preview.size() >= settings.lookaheadDepth) break;
         }
-        int linesCleared = 0;
-        for (int y = h - 1; y >= 0; y--) {
-            boolean full = true;
-            for (int x = 0; x < w; x++) {
-                if (copy[y][x] == 0) { full = false; break; }
-            }
-            if (full) {
-                linesCleared++;
-                for (int yy = y; yy > 0; yy--) {
-                    System.arraycopy(copy[yy - 1], 0, copy[yy], 0, w);
-                }
-                java.util.Arrays.fill(copy[0], 0);
-                y++;
-            }
+        AiEvaluator.Context ctx = buildContext();
+        AiSearch.Inputs inputs = new AiSearch.Inputs(
+                model, current, holdType, canHold, preview,
+                b2bActive, comboCount, ctx);
+        AiSearch.Result r = search.search(inputs);
+        searchCandidates += Math.max(0, r.candidatesEvaluated);
+        if (r.fromMistake) mistakes++;
+        AiMove chosen = r.move;
+        if (chosen == null) {
+            targetCol = piece.getBoardPosition().getX();
+            targetRotation = piece.getRotationState();
+            targetUsedHold = false;
+            holdAttempted = true; // skip hold-press path
+            planScore = -1e6;
+            return;
         }
-        int[] heights = new int[w];
-        for (int x = 0; x < w; x++) {
-            for (int y = 0; y < h; y++) {
-                if (copy[y][x] != 0) {
-                    heights[x] = h - y;
-                    break;
-                }
-            }
-        }
-        int aggregate = 0;
-        int maxHeight = 0;
-        int holes = 0;
-        int bumpiness = 0;
-        for (int x = 0; x < w; x++) {
-            aggregate += heights[x];
-            maxHeight = Math.max(maxHeight, heights[x]);
-        }
-        for (int x = 0; x < w; x++) {
-            int top = h - heights[x];
-            for (int y = top + 1; y < h; y++) {
-                if (copy[y][x] == 0) holes++;
-            }
-        }
-        for (int x = 0; x < w - 1; x++) {
-            bumpiness += Math.abs(heights[x] - heights[x + 1]);
-        }
-        boolean topOutRisk = maxHeight >= h - 4;
+        targetCol = chosen.targetCol;
+        targetRotation = chosen.targetRotation;
+        targetUsedHold = chosen.usedHold;
+        holdAttempted = false;
+        planScore = r.score;
+        planVersion++;
+        if (chosen.isTspin()) tspins++;
+        if (chosen.perfectClear) perfectClears++;
+    }
 
-        int score = 0;
-        score += linesCleared * wLines;
-        score -= aggregate * wAggregate;
-        score -= holes * wHoles;
-        score -= bumpiness * wBumpiness;
-        score -= maxHeight * wMaxHeight;
-        if (topOutRisk) score -= wTopOut;
-        return score;
+    /**
+     * Build the evaluator context from the live MAB participant state.
+     * Returns {@link AiEvaluator.Context#DEFAULT} if no MAB match has
+     * been attached, or if any field is unreadable.
+     */
+    private AiEvaluator.Context buildContext() {
+        if (contextMatch == null || contextParticipantId == null) {
+            return AiEvaluator.Context.DEFAULT;
+        }
+        try {
+            ParticipantState self = contextMatch.getParticipant(contextParticipantId);
+            if (self == null) return AiEvaluator.Context.DEFAULT;
+            NukeBuildState nb = self.getNukeBuildState();
+            boolean armed = nb != null && nb.isArmed();
+            NukeDesign design = nb == null ? null : nb.getCurrentDesign();
+            int defcon = contextMatch.getDefconState() == null ? 5
+                    : contextMatch.getDefconState().getLevel();
+            int tetrisGoal = design == null ? 0 : design.effectiveLaunchTetrisGoal(defcon);
+            int spinGoal = design == null ? 0 : design.effectiveLaunchSpinGoal(defcon);
+            // Route preference: the simple driver can't execute a real
+            // T-spin yet, so default to the tetris route while letting
+            // the spin-slot bonus build a spin board organically.
+            boolean tetrisRoute = armed && tetrisGoal > 0
+                    && (design == null
+                        || design.getDoctrineType() != NukeDoctrineType.MIRV);
+            boolean spinRoute = armed && spinGoal > 0 && !tetrisRoute;
+            int threatPieces = earliestIncomingWarning(self);
+            int pipsRemaining = tetrisRoute ? tetrisGoal
+                    : (spinRoute ? spinGoal : 0);
+            return new AiEvaluator.Context(armed, tetrisRoute, spinRoute,
+                    pipsRemaining, threatPieces);
+        } catch (RuntimeException ignored) {
+            return AiEvaluator.Context.DEFAULT;
+        }
+    }
+
+    private static int earliestIncomingWarning(ParticipantState self) {
+        int earliest = 0;
+        for (IncomingThreatState t : self.getIncomingThreats()) {
+            if (t.getStatus() == ThreatStatus.WARNING_ACTIVE
+                    && t.getWarningPiecesRemaining() > 0) {
+                if (earliest == 0 || t.getWarningPiecesRemaining() < earliest) {
+                    earliest = t.getWarningPiecesRemaining();
+                }
+            }
+        }
+        return earliest;
     }
 }

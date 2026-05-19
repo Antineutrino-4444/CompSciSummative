@@ -91,15 +91,15 @@ public final class MabDebugFormatter {
           .append("  applied=").append(p.upgradeCount())
           .append("  recent=").append(p.recentUpgradeSummary())
           .append('\n');
-        sb.append("  radar scans=").append(p.totalRadarScans())
+        sb.append("  route scans=").append(p.totalRadarScans())
           .append(" ok=").append(p.successfulRadarScans())
           .append(" fail=").append(p.failedRadarScans())
           .append("  bestRank=").append(p.bestIntelRankAchieved())
-          .append("  lastIntel=").append(p.lastIntelLevel())
+          .append("  lastRead=").append(p.lastIntelLevel())
           .append(" conf=").append(p.lastIntelConfidence())
           .append(p.intelStale() ? "  STALE" : "")
           .append('\n');
-        sb.append("  decoys active=").append(p.activeDecoyCount())
+        sb.append("  feints active=").append(p.activeDecoyCount())
           .append("  falseLaunch=").append(p.falseLaunchSignatureCount())
           .append("  falseThreat=").append(p.falseThreatSignatureCount())
           .append("  confPenalty=").append(p.activeDecoyConfidencePenalty())
@@ -138,14 +138,14 @@ public final class MabDebugFormatter {
               + "  Add Charge A/B    add 25 nuke charge (if phase allows)\n"
               + "  Arm A/B           top off current nuke design to armed\n"
               + "  Launch A/B        directly authorize a launch (auto-arms)\n"
-              + "  Radar A/B         DEBUG-level radar scan against opponent\n"
+              + "  RouteScan A/B     DEBUG-level route scan against opponent\n"
               + "  CivDef A/B        manually activate civil defense\n"
-              + "  Decoy A/B         activate DECOY_LAUNCH on opponent\n"
+              + "  Feint A/B         activate FEINT_LAUNCH on opponent\n"
               + "  Resolve Impacts   apply every IMPACT_READY launch/threat\n"
               + "  Open/Close Pause  enter/exit upgrade pause phase\n"
               + "Keys (debug window only):\n"
               + "  F5 manual refresh   F6 charge A   F7 arm A\n"
-              + "  F8 launch A         F9 radar A    F10 resolve impacts\n"
+              + "  F8 launch A         F9 route scan A    F10 resolve impacts\n"
               + "  Esc closes the HUD; the game keeps running.\n";
     }
 

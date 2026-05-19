@@ -17,8 +17,6 @@ import java.util.Set;
  */
 public final class LocalInputRouter {
 
-    private static final int FRAME_INTERVAL_MS = 16;
-
     private final GameState playerA;
     private final GameState playerB;
     private final Settings settings;
@@ -107,10 +105,10 @@ public final class LocalInputRouter {
         if (keys.isNewPress(LocalPlayerAction.ROTATE_CCW)) state.rotateCCW();
         if (keys.isNewPress(LocalPlayerAction.HOLD)) state.hold();
 
-        int dasFrames = Math.max(1, (settings.getDasDelay() + FRAME_INTERVAL_MS - 1) / FRAME_INTERVAL_MS);
+        int dasFrames = FrameRate.framesForMillisCeil(settings.getDasDelay());
         int arrFrames = settings.getArrInterval() == 0
                 ? 0
-                : Math.max(1, (settings.getArrInterval() + FRAME_INTERVAL_MS / 2) / FRAME_INTERVAL_MS);
+                : FrameRate.framesForMillisRounded(settings.getArrInterval());
 
         processHorizontal(keys, state, LocalPlayerAction.MOVE_LEFT, dasFrames, arrFrames);
         processHorizontal(keys, state, LocalPlayerAction.MOVE_RIGHT, dasFrames, arrFrames);

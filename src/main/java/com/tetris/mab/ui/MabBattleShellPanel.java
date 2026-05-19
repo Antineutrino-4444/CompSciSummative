@@ -85,6 +85,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
     private final MabUpgradeDraftOverlayPanel upgradeOverlay;
     private final MabActiveDoctrineOverlayPanel activeDoctrineOverlay;
     private final MabDoctrineStatusOverlayPanel doctrineStatusOverlay;
+    private final MabDefconRedesignOverlayPanel defconRedesignOverlay;
     private final JLabel toastLabel;
     private final JLabel pauseLabel;
     private boolean diagLogged = false;
@@ -169,6 +170,10 @@ public final class MabBattleShellPanel extends JLayeredPane {
         doctrineStatusOverlay.setVisible(false);
         add(doctrineStatusOverlay, JLayeredPane.MODAL_LAYER);
 
+        defconRedesignOverlay = new MabDefconRedesignOverlayPanel();
+        defconRedesignOverlay.setVisible(false);
+        add(defconRedesignOverlay, JLayeredPane.MODAL_LAYER);
+
         toastLabel = new JLabel(" ", SwingConstants.CENTER);
         toastLabel.setOpaque(true);
         toastLabel.setBackground(new Color(2, 6, 11, 225));
@@ -221,6 +226,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
         if (upgradeOverlay != null) upgradeOverlay.setBounds(0, 0, w, h);
         if (activeDoctrineOverlay != null) activeDoctrineOverlay.setBounds(0, 0, w, h);
         if (doctrineStatusOverlay != null) doctrineStatusOverlay.setBounds(0, 0, w, h);
+        if (defconRedesignOverlay != null) defconRedesignOverlay.setBounds(0, 0, w, h);
         if (toastLabel != null) {
             int tw = Math.min(460, Math.max(260, w / 3));
             int ty = pauseLabel != null && pauseLabel.isVisible() ? 60 : 34;
@@ -387,7 +393,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
         body.setOpaque(false);
         body.setLayout(new java.awt.GridLayout(0, 1, 0, 6));
         body.setBorder(new EmptyBorder(6, 10, 10, 10));
-        for (String row : new String[]{"AI :: ONLINE", "PROFILE :: NORMAL", "RNG :: SHARED",
+        for (String row : new String[]{"AI :: READY", "PROFILE :: NORMAL", "RNG :: SHARED",
                 "DOCTRINE :: BAL", "MODE :: OFFLINE"}) {
             JLabel l = new JLabel(row, SwingConstants.RIGHT);
             l.setFont(MabUiTheme.TERM_TINY);
@@ -509,7 +515,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
         return localPvpInputAdapter;
     }
 
-    private void clearHeldInputs() {
+    public void clearHeldInputs() {
         if (inputAdapter != null) inputAdapter.clearHeldKeys();
         if (localPvpInputAdapter != null) localPvpInputAdapter.clearHeldKeys();
     }
@@ -529,7 +535,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
     }
 
     public void showResultOverlay(String title, String cause, String statsText,
-                                  Runnable onRestart, Runnable onBack) {
+                                  Runnable onRestart, Runnable onSetup, Runnable onBack) {
         // Always drop any held movement so the player can't keep
         // shifting after the match ends or while interacting with the
         // result modal.
@@ -538,6 +544,10 @@ public final class MabBattleShellPanel extends JLayeredPane {
                 onRestart == null ? null : () -> {
                     clearHeldInputs();
                     onRestart.run();
+                },
+                onSetup == null ? null : () -> {
+                    clearHeldInputs();
+                    onSetup.run();
                 },
                 onBack == null ? null : () -> {
                     clearHeldInputs();
@@ -588,6 +598,72 @@ public final class MabBattleShellPanel extends JLayeredPane {
     public MabUpgradeDraftOverlayPanel getUpgradeOverlay() { return upgradeOverlay; }
     public MabActiveDoctrineOverlayPanel getActiveDoctrineOverlay() { return activeDoctrineOverlay; }
     public MabDoctrineStatusOverlayPanel getDoctrineStatusOverlay() { return doctrineStatusOverlay; }
+    public MabDefconRedesignOverlayPanel getDefconRedesignOverlay() { return defconRedesignOverlay; }
+
+    public void showDefconRedesignCountdown(int previousDefcon,
+                                            int nextDefcon,
+                                            double nextProgress,
+                                            double gravityMultiplier,
+                                            Runnable onFinished) {
+        clearHeldInputs();
+        defconRedesignOverlay.showCountdown(previousDefcon, nextDefcon,
+                nextProgress, gravityMultiplier, () -> {
+                    clearHeldInputs();
+                    if (onFinished != null) onFinished.run();
+                });
+        defconRedesignOverlay.setVisible(true);
+        moveToFront(defconRedesignOverlay);
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Show the integrated DEFCON redesign overlay.
+     *
+     * @param builderSeed optional builder-model design used as the
+     *        human's editable starting point; null = builder default
+     * @param aiFinalDesign optional MAB-model design auto-applied on
+     *        confirm when {@code aiControlled} is true; ignored
+     *        otherwise. Lets the AI bypass the builder UI while still
+     *        flowing through the same overlay path.
+     */
+    public void showDefconRedesignReview(MutuallyAssuredBlocksMatch match,
+                                         ParticipantId participantId,
+                                         String title,
+                                         int defconLevel,
+                                         com.tetris.model.nuke.NukeDesign builderSeed,
+                                         com.tetris.mab.nuke.NukeDesign aiFinalDesign,
+                                         boolean aiControlled,
+                                         java.util.function.Consumer<MabNukeDesignSelection> onConfirm,
+                                         Runnable onCancel) {
+        clearHeldInputs();
+        defconRedesignOverlay.showReview(match, participantId, title, defconLevel,
+                builderSeed, aiFinalDesign, aiControlled,
+                selection -> {
+                    clearHeldInputs();
+                    if (onConfirm != null) onConfirm.accept(selection);
+                },
+                () -> {
+                    clearHeldInputs();
+                    if (onCancel != null) onCancel.run();
+                });
+        defconRedesignOverlay.setVisible(true);
+        moveToFront(defconRedesignOverlay);
+        revalidate();
+        repaint();
+    }
+
+    public void hideDefconRedesignOverlay() {
+        clearHeldInputs();
+        defconRedesignOverlay.dismiss();
+        revalidate();
+        repaint();
+        requestGameFocus();
+    }
+
+    public boolean isDefconRedesignOverlayVisible() {
+        return defconRedesignOverlay != null && defconRedesignOverlay.isVisible();
+    }
 
     public void showDoctrineStatusOverlay() {
         clearHeldInputs();
@@ -694,7 +770,8 @@ public final class MabBattleShellPanel extends JLayeredPane {
         return (upgradeOverlay != null && upgradeOverlay.isVisible())
                 || (resultOverlay != null && resultOverlay.isVisible())
                 || (activeDoctrineOverlay != null && activeDoctrineOverlay.isVisible())
-                || (doctrineStatusOverlay != null && doctrineStatusOverlay.isVisible());
+                || (doctrineStatusOverlay != null && doctrineStatusOverlay.isVisible())
+                || (defconRedesignOverlay != null && defconRedesignOverlay.isVisible());
     }
 
     private void flashToast(String message) {
@@ -725,6 +802,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
     public boolean isResultOverlayShown() { return resultOverlay != null && resultOverlay.isVisible(); }
     public boolean isActiveDoctrineOverlayMounted() { return activeDoctrineOverlay != null; }
     public boolean isDoctrineStatusOverlayMounted() { return doctrineStatusOverlay != null; }
+    public boolean isDefconRedesignOverlayMounted() { return defconRedesignOverlay != null; }
 
     public static String defaultModeLine(MabAiDifficulty diff) {
         return "PVE :: " + (diff == null ? "NORMAL" : diff.name()) + " AI";
@@ -740,7 +818,8 @@ public final class MabBattleShellPanel extends JLayeredPane {
         private final JLabel cause = new JLabel(" ", SwingConstants.CENTER);
         private final JTextArea stats = new JTextArea();
         private final JButton restart = new JButton("RESTART");
-        private final JButton back = new JButton("BACK TO MENU");
+        private final JButton setup = new JButton("BACK TO SETUP");
+        private final JButton back = new JButton("MAIN MENU");
 
         @Override
         protected void paintComponent(java.awt.Graphics g) {
@@ -788,8 +867,10 @@ public final class MabBattleShellPanel extends JLayeredPane {
             JPanel actions = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 0));
             actions.setOpaque(false);
             styleBtn(restart, true);
+            styleBtn(setup, false);
             styleBtn(back, false);
             actions.add(restart);
+            actions.add(setup);
             actions.add(back);
             modal.add(actions, BorderLayout.SOUTH);
 
@@ -797,19 +878,24 @@ public final class MabBattleShellPanel extends JLayeredPane {
             installKeyboardActions();
         }
 
-        void show(String t, String c, String s, Runnable onRestart, Runnable onBack) {
+        void show(String t, String c, String s,
+                  Runnable onRestart, Runnable onSetup, Runnable onBack) {
             title.setText(t == null ? "MATCH OVER" : t.toUpperCase());
             cause.setText(c == null ? " " : c);
             stats.setText(s == null ? "" : s);
             stats.setCaretPosition(0);
             for (var l : restart.getActionListeners()) restart.removeActionListener(l);
+            for (var l : setup.getActionListeners()) setup.removeActionListener(l);
             for (var l : back.getActionListeners()) back.removeActionListener(l);
             restart.setEnabled(onRestart != null);
+            setup.setEnabled(onSetup != null);
             back.setEnabled(onBack != null);
             if (onRestart != null) restart.addActionListener(e -> onRestart.run());
+            if (onSetup != null) setup.addActionListener(e -> onSetup.run());
             if (onBack != null) back.addActionListener(e -> onBack.run());
             SwingUtilities.invokeLater(() -> {
                 if (restart.isEnabled()) restart.requestFocusInWindow();
+                else if (setup.isEnabled()) setup.requestFocusInWindow();
                 else if (back.isEnabled()) back.requestFocusInWindow();
                 else requestFocusInWindow();
             });
@@ -836,8 +922,11 @@ public final class MabBattleShellPanel extends JLayeredPane {
             am.put("resultConfirm", new AbstractAction() {
                 @Override public void actionPerformed(java.awt.event.ActionEvent e) {
                     if (!isVisible()) return;
-                    JButton b = restart.isFocusOwner() ? restart : (back.isFocusOwner() ? back : null);
-                    if (b == null) b = restart.isEnabled() ? restart : back;
+                    JButton b = restart.isFocusOwner() ? restart
+                            : (setup.isFocusOwner() ? setup
+                            : (back.isFocusOwner() ? back : null));
+                    if (b == null) b = restart.isEnabled() ? restart
+                            : (setup.isEnabled() ? setup : back);
                     if (b != null && b.isEnabled()) b.doClick();
                 }
             });
@@ -845,8 +934,9 @@ public final class MabBattleShellPanel extends JLayeredPane {
 
         private void focusResultButton(int delta) {
             if (!isVisible()) return;
-            JButton[] buttons = { restart, back };
-            int idx = restart.isFocusOwner() ? 0 : (back.isFocusOwner() ? 1 : -1);
+            JButton[] buttons = { restart, setup, back };
+            int idx = restart.isFocusOwner() ? 0
+                    : (setup.isFocusOwner() ? 1 : (back.isFocusOwner() ? 2 : -1));
             if (idx < 0) idx = delta < 0 ? buttons.length : -1;
             for (int step = 1; step <= buttons.length; step++) {
                 int next = ((idx + delta * step) % buttons.length + buttons.length) % buttons.length;

@@ -46,7 +46,7 @@ This is achieved by:
 remains largely unchanged. It carries:
 
 - slots (`CONFIGURATION`, `FISSILE`, `TAMPER`, `INITIATOR`,
-  `IMPLOSION`, `BOOST`, `SECONDARY`, `CASING`, `FUZE`, `SAFETY`,
+  `IMPLOSION`, `BOOST`, `SECONDARY`, `CASING`, `SAFETY`,
   `DELIVERY`),
 - pedagogical numbers per part (`baseYieldKt`, `efficiencyBonus`,
   `complexity`),
@@ -616,7 +616,7 @@ text reaches live MAB gameplay UI.**
 `MabNukeBuilderBridge.isSafeGameplaySummary(...)` is the boundary
 function. It rejects any of: `kg`, `kilogram`, `u-235`, `u-238`,
 `pu-239`, `plutonium`, `uranium`, `tritium`, `deuterium`, `lens`,
-`initiator`, `tamper`, `fissile`, `implosion`, `casing`, `fuze`,
+`initiator`, `tamper`, `fissile`, `implosion`, `casing`,
 `mirv`, `radar`, `warning`, `intel`, `decoy`, `detection`,
 `critical mass`, `isotope`.
 

@@ -15,7 +15,7 @@ import java.util.List;
  * and {@link com.tetris.model.Board#insertGarbageRows(List)}) to support
  * future "messy" garbage where each row may have a different hole
  * pattern — for example radiation-damaged rows with multiple holes,
- * MIRV split-rows, or nuke-themed coloured garbage.
+ * split-pattern rows, or nuke-themed coloured garbage.
  *
  * <p>Convenience factories ({@link #clean(int)} and
  * {@link #cleanRepeated(int, int)}) build the simple "single hole per
@@ -29,7 +29,7 @@ import java.util.List;
  * @param color       optional render color for the filled cells of this
  *                    row; {@code null} means "use engine default".
  * @param tag         optional free-form tag, e.g. "clean", "dirty",
- *                    "radiation", "mirv", "nuke". {@code null} or empty
+ *                    "radiation", "split", "nuke". {@code null} or empty
  *                    means untagged.
  */
 public record GarbageRowPattern(List<Integer> holeColumns, Color color, String tag) {

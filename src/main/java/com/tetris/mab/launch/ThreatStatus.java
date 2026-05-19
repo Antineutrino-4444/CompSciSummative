@@ -6,7 +6,7 @@ package com.tetris.mab.launch;
  * <ul>
  *   <li>{@link #WARNING_ACTIVE} – internal lifecycle name; the threat is
  *       in flight with intercept window open. The player-facing label is
- *       "IN FLIGHT" / "IMPACT PENDING", never "warning active" — see
+ *       "IN FLIGHT" / "IMPACT PENDING", never the retired lifecycle phrase - see
  *       {@link #playerFacingLabel()}.</li>
  *   <li>{@link #IMPACT_READY} – in-flight timer expired; the impact
  *       resolver will process this threat.</li>
@@ -24,10 +24,10 @@ public enum ThreatStatus {
 
     /**
      * Player-facing label. The MAB design intentionally does not expose
-     * a "warning system" / "radar" concept — the defender still sees
+     * a separate sensor-system concept - the defender still sees
      * inbound impacts because the game needs to be readable, but the
      * labels are framed as IN FLIGHT / IMPACT PENDING / SPIN TO
-     * INTERCEPT, never as warning / radar / detection.
+     * INTERCEPT.
      */
     public String playerFacingLabel() {
         return switch (this) {

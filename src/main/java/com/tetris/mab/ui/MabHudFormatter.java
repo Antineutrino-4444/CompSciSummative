@@ -49,7 +49,7 @@ public final class MabHudFormatter {
             "CIVIL_DEFENSE_MITIGATION_APPLIED",
             "INTERCEPT_RESOLVED",
             "INTERCEPT_PARTIAL",
-            // Legacy radar / decoy events are not surfaced to the
+            // Legacy sensor / spoof events are not surfaced to the
             // player. They remain in the event log only for replay /
             // debug analysis.
             "UPGRADE_APPLIED",
@@ -115,29 +115,24 @@ public final class MabHudFormatter {
             sb.append("  [first ").append(p.firstActiveLaunchPhase()).append(']');
         }
         sb.append('\n');
-        sb.append("Decoys out  : ").append(p.activeDecoyCount());
-        if (p.firstActiveDecoyType() != null) {
-            sb.append("  (").append(p.firstActiveDecoyType()).append(')');
-        }
+        sb.append("Launch route: Tetris / Spin");
         return sb.toString();
     }
 
-    /** Returns a multi-line view of the opponent (intel-limited). */
+    /** Returns a multi-line view of the opponent's visible status. */
     public static String formatOpponentStatus(MatchDebugSnapshot snapshot, ParticipantId playerId) {
-        ParticipantSummary self = pickSelf(snapshot, playerId);
-        if (self == null) return "(no opponent state)";
+        ParticipantSummary opp = pickOpponent(snapshot, playerId);
+        if (opp == null) return "(no opponent state)";
         StringBuilder sb = new StringBuilder();
-        sb.append("Last intel  : ").append(safe(String.valueOf(self.lastIntelLevel())))
-                .append("  conf=").append(self.lastIntelConfidence()).append('\n');
-        sb.append("Stale       : ").append(self.intelStale() ? "YES" : "no")
-                .append("  (").append(self.intelStalenessScore()).append(")\n");
-        sb.append("Scans       : ok=").append(self.successfulRadarScans())
-                .append("  fail=").append(self.failedRadarScans())
-                .append("  total=").append(self.totalRadarScans()).append('\n');
-        if (self.lastScanSummary() != null && !self.lastScanSummary().isEmpty()) {
-            sb.append("Last scan   : ").append(self.lastScanSummary()).append('\n');
-        }
-        sb.append("Best rank   : ").append(self.bestIntelRankAchieved());
+        sb.append("Warhead     : ").append(safe(opp.currentNukeDisplayName())).append('\n');
+        sb.append("Payload     : ").append(safe(String.valueOf(opp.doctrineType())))
+                .append(" / ").append(safe(String.valueOf(opp.sizeCategory()))).append('\n');
+        sb.append("Charge      : ").append(opp.currentNukeCharge())
+                .append(" / ").append(opp.requiredNukeCharge()).append('\n');
+        sb.append("Armed       : ").append(opp.armed() ? "YES" : "no").append('\n');
+        sb.append("Silo        : ").append(opp.siloIntegrity()).append("/100  (")
+                .append(opp.siloDamageState()).append(")\n");
+        sb.append("Active launches: ").append(opp.activeLaunchCount());
         return sb.toString();
     }
 
@@ -199,7 +194,7 @@ public final class MabHudFormatter {
             return "IMPACT READY \u2014 use intercept / civil defense or resolve impact";
         }
         if (p.incomingThreatCount() > 0) {
-            return "INCOMING THREAT \u2014 warning pieces remaining: "
+            return "INCOMING THREAT \u2014 impact delay pieces remaining: "
                     + p.firstIncomingThreatWarningPiecesRemaining();
         }
         if (p.impactReadyLaunchCount() > 0) {
@@ -228,7 +223,7 @@ public final class MabHudFormatter {
         return name + ": Not enough charge";
     }
 
-    /** Convenience alias for opponent intel. */
+    /** Convenience alias for the opponent status block. */
     public static String formatRadarIntel(MatchDebugSnapshot snapshot, ParticipantId playerId) {
         return formatOpponentStatus(snapshot, playerId);
     }
@@ -254,8 +249,8 @@ public final class MabHudFormatter {
     public static String formatOpponentLine(com.tetris.mab.ai.MabAiArchetype archetype,
                                             com.tetris.mab.ai.MabAiDifficulty difficulty) {
         if (archetype == null && difficulty == null) return "";
-        return "Opponent: " + (archetype == null ? "?" : archetype)
-                + " / " + (difficulty == null ? "?" : difficulty);
+        return "Opponent: " + (archetype == null ? "?" : archetype.displayName())
+                + " / " + (difficulty == null ? "?" : difficulty.displayName());
     }
 
     /**
@@ -306,6 +301,12 @@ public final class MabHudFormatter {
         if (snapshot == null) return null;
         if (pid == ParticipantId.PLAYER_B) return snapshot.playerB();
         return snapshot.playerA();
+    }
+
+    private static ParticipantSummary pickOpponent(MatchDebugSnapshot snapshot, ParticipantId pid) {
+        if (snapshot == null) return null;
+        if (pid == ParticipantId.PLAYER_B) return snapshot.playerA();
+        return snapshot.playerB();
     }
 
     private static String safe(String s) {

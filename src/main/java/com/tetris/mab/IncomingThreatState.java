@@ -9,7 +9,7 @@ import com.tetris.mab.nuke.NukeSizeCategory;
 /**
  * Mutable defender-side view of an inbound launch. Created when the
  * attacker's launch countdown completes and the launch enters
- * IN_FLIGHT. Step 5 only tracks the threat through warning ticks until
+ * IN_FLIGHT. Step 5 only tracks the threat through impact-delay ticks until
  * it is marked IMPACT_READY for a future impact resolver.
  */
 public class IncomingThreatState {
@@ -79,7 +79,7 @@ public class IncomingThreatState {
     /**
      * Pieces between launch and impact for this incoming threat — the
      * length of the intercept window. Player-facing label is "IMPACT IN
-     * N PIECES", never "warning time".
+     * N PIECES", never retired delay terminology.
      */
     public int getImpactDelayPiecesTotal() { return warningPiecesTotal; }
 
@@ -136,7 +136,7 @@ public class IncomingThreatState {
                 + " " + attacker + "→" + defender
                 + " doctrine=" + doctrineType
                 + " size=" + sizeCategory
-                + " warning=" + warningPiecesRemaining + "/" + warningPiecesTotal
+                + " impactDelay=" + warningPiecesRemaining + "/" + warningPiecesTotal
                 + " status=" + status
                 + (intercepted ? " INTERCEPTED" : "")
                 + "}";

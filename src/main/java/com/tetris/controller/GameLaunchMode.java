@@ -35,6 +35,13 @@ public enum GameLaunchMode {
     MAB_LOCAL_PVP,
 
     /**
+     * Offline AI-vs-AI exhibition: two visible boards both driven by
+     * the new MAB AI. No human input. Shared deterministic piece
+     * sequence so the match is reproducible from a seed.
+     */
+    MAB_AI_VS_AI,
+
+    /**
      * Reserved name for a future debug-emphasised mode. Step 15 does
      * not specialise behaviour for this value beyond
      * {@link #NORMAL_TETRIS}; the debug HUD already obeys
@@ -44,5 +51,8 @@ public enum GameLaunchMode {
 
     public boolean isMabPve() { return this == MAB_PVE; }
     public boolean isMabLocalPvp() { return this == MAB_LOCAL_PVP; }
-    public boolean isMabMode() { return this == MAB_PVE || this == MAB_LOCAL_PVP; }
+    public boolean isMabAiVsAi() { return this == MAB_AI_VS_AI; }
+    public boolean isMabMode() {
+        return this == MAB_PVE || this == MAB_LOCAL_PVP || this == MAB_AI_VS_AI;
+    }
 }

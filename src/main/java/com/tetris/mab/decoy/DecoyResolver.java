@@ -4,7 +4,7 @@ import com.tetris.mab.ParticipantState;
 
 /**
  * Builds {@link ActiveDecoyState} instances from a definition. The
- * resolver does NOT mutate participant decoy lists \u2014 the match
+ * resolver does NOT mutate participant feint lists - the match
  * coordinator owns storage and side effects.
  */
 public final class DecoyResolver {
@@ -20,7 +20,7 @@ public final class DecoyResolver {
                     definition == null ? null : definition.actionType(),
                     owner == null ? null : owner.getId(),
                     target == null ? null : target.getId(),
-                    "null definition/owner/target/decoyId");
+                    "null definition/owner/target/feintId");
         }
         ActiveDecoyState state = new ActiveDecoyState(
                 decoyId,
@@ -43,6 +43,6 @@ public final class DecoyResolver {
         return DecoyResolutionResult.success(definition,
                 owner.getId(), target.getId(),
                 decoyId, linkedLaunchId,
-                "decoy activated: " + definition.id());
+                "feint activated: " + definition.id());
     }
 }

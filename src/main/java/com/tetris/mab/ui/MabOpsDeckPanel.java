@@ -2,7 +2,10 @@ package com.tetris.mab.ui;
 
 import com.tetris.mab.DefconState;
 import com.tetris.mab.MutuallyAssuredBlocksMatch;
+import com.tetris.mab.NukeBuildState;
 import com.tetris.mab.ParticipantId;
+import com.tetris.mab.ParticipantState;
+import com.tetris.mab.nuke.NukeDesign;
 
 import javax.swing.JPanel;
 import javax.swing.Timer;
@@ -14,24 +17,23 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
-import java.awt.geom.Arc2D;
 
 /**
- * Step 23 \u2014 central tactical command deck (DEFCON ladder + radar
- * + mode plate + match clock). Sits in the middle column of the
- * battle shell and is shared between the two stations.
+ * Step 23 central tactical command deck. Sits in the middle column of
+ * the battle shell and is shared between the two stations.
  *
  * <p>This is a pure read-only HUD. It uses an internal repaint
- * {@link Timer} for the radar sweep animation but does not mutate
- * any match state.
+ * {@link Timer} only for a subtle pulse; it does not mutate match state.
  *
  * <p><b>Offline-only.</b>
  */
 public final class MabOpsDeckPanel extends JPanel {
 
-    private final Timer radarTimer;
-    private double sweepAngle = 0.0;
+    private final Timer pulseTimer;
+    private double pulsePhase = 0.0;
     private int defconLevel = 5;
+    private double defconProgress = 0.0;
+    private double gravityMultiplier = 1.0;
     private int humanThreats = 0;
     private int opponentThreats = 0;
     private int humanEtaPieces = -1;
@@ -40,6 +42,8 @@ public final class MabOpsDeckPanel extends JPanel {
     private String modeLine = "PVE :: NORMAL AI";
     private String modeSub = "SHARED SEQ // OFFLINE";
     private long matchClockMs = 0L;
+    private WarheadSummary humanWarhead = WarheadSummary.empty("YOU");
+    private WarheadSummary opponentWarhead = WarheadSummary.empty("RIVAL");
 
     public MabOpsDeckPanel() {
         setOpaque(true);
@@ -48,12 +52,12 @@ public final class MabOpsDeckPanel extends JPanel {
         setPreferredSize(new Dimension(224, 600));
         setMinimumSize(new Dimension(224, 380));
 
-        radarTimer = new Timer(80, e -> {
-            sweepAngle = (sweepAngle + 6.0) % 360.0;
+        pulseTimer = new Timer(120, e -> {
+            pulsePhase = (pulsePhase + 0.08) % 1.0;
             repaint();
         });
-        radarTimer.setRepeats(true);
-        radarTimer.start();
+        pulseTimer.setRepeats(true);
+        pulseTimer.start();
     }
 
     public void setModeLine(String line, String sub) {
@@ -70,7 +74,7 @@ public final class MabOpsDeckPanel extends JPanel {
     public void resetMatchClock() { this.matchClockMs = 0L; }
 
     public void shutdown() {
-        if (radarTimer != null) radarTimer.stop();
+        if (pulseTimer != null) pulseTimer.stop();
     }
 
     public void refresh(MutuallyAssuredBlocksMatch match,
@@ -78,6 +82,8 @@ public final class MabOpsDeckPanel extends JPanel {
         if (match == null) return;
         DefconState d = match.getDefconState();
         defconLevel = d == null ? 5 : d.getLevel();
+        defconProgress = d == null ? 0.0 : d.getProgressToNextThreshold();
+        gravityMultiplier = d == null ? 1.0 : d.getGravityMultiplier();
         humanThreats = match.countLiveIncomingThreats(humanSide)
                 + match.countImpactReadyThreats(humanSide);
         opponentThreats = match.countLiveIncomingThreats(opponentSide)
@@ -85,6 +91,8 @@ public final class MabOpsDeckPanel extends JPanel {
         humanEtaPieces = match.getEarliestIncomingWarningPieces(humanSide);
         opponentEtaPieces = match.getEarliestIncomingWarningPieces(opponentSide);
         humanActiveDoctrineAvailable = match.hasAnyActiveDoctrineAvailable(humanSide);
+        humanWarhead = WarheadSummary.from(match, humanSide, "YOU", defconLevel);
+        opponentWarhead = WarheadSummary.from(match, opponentSide, "RIVAL", defconLevel);
         repaint();
     }
 
@@ -128,40 +136,17 @@ public final class MabOpsDeckPanel extends JPanel {
         }
         y += 6;
 
-        // ── Radar disc ───────────────────────────────────────
-        int radarSize = Math.min(w - 24, h - y - 110);
-        radarSize = Math.max(80, Math.min(radarSize, 180));
-        int rx = (w - radarSize) / 2;
-        int ry = y;
-        // Disc.
-        g2.setColor(MabUiTheme.SHELL_DEEP_BG);
-        g2.fillOval(rx, ry, radarSize, radarSize);
-        g2.setColor(MabUiTheme.GRID_LINE_HI);
-        g2.drawOval(rx, ry, radarSize, radarSize);
-        g2.setColor(MabUiTheme.GRID_LINE);
-        // Concentric rings.
-        g2.drawOval(rx + radarSize / 4, ry + radarSize / 4, radarSize / 2, radarSize / 2);
-        g2.drawOval(rx + radarSize / 3, ry + radarSize / 3, radarSize / 3, radarSize / 3);
-        // Crosshairs.
-        g2.drawLine(rx, ry + radarSize / 2, rx + radarSize, ry + radarSize / 2);
-        g2.drawLine(rx + radarSize / 2, ry, rx + radarSize / 2, ry + radarSize);
-        // Sweep arc (translucent green wedge).
-        Arc2D wedge = new Arc2D.Double(rx, ry, radarSize, radarSize,
-                90.0 - sweepAngle, -30.0, Arc2D.PIE);
-        g2.setColor(new Color(52, 248, 110, 60));
-        g2.fill(wedge);
-        g2.setColor(MabUiTheme.C_GREEN);
-        // Sweep line.
-        double rad = Math.toRadians(90.0 - sweepAngle);
-        int cx = rx + radarSize / 2;
-        int cy = ry + radarSize / 2;
-        int ex = (int) (cx + Math.cos(rad) * radarSize / 2);
-        int ey = (int) (cy - Math.sin(rad) * radarSize / 2);
-        g2.drawLine(cx, cy, ex, ey);
-        // Threat pips.
-        drawThreatPips(g2, cx, cy, radarSize / 2 - 8, humanThreats, MabUiTheme.C_AMBER, true);
-        drawThreatPips(g2, cx, cy, radarSize / 2 - 8, opponentThreats, MabUiTheme.C_RED, false);
-        y += radarSize + 12;
+        g2.setFont(MabUiTheme.TERM_TINY);
+        g2.setColor(MabUiTheme.TEXT);
+        String tempo = String.format("NEXT %.0f%%   GRAVITY %.2fx",
+                defconProgress * 100.0, gravityMultiplier);
+        g2.drawString(tempo, 12, y + 10);
+        y += 18;
+
+        // Warhead tempo / payload panel.
+        int warheadH = Math.min(198, Math.max(96, h - y - 140));
+        paintWarheadPanel(g2, 12, y, w - 24, warheadH);
+        y += warheadH + 8;
 
         int trackH = 56;
         g2.setColor(MabUiTheme.SHELL_DEEP_BG);
@@ -214,6 +199,93 @@ public final class MabOpsDeckPanel extends JPanel {
         g2.dispose();
     }
 
+    private void paintWarheadPanel(Graphics2D g2, int x, int y, int w, int h) {
+        g2.setColor(MabUiTheme.SHELL_DEEP_BG);
+        g2.fillRect(x, y, w, h);
+        g2.setColor(MabUiTheme.GRID_LINE);
+        g2.drawRect(x, y, w - 1, h - 1);
+
+        int pulseX = x + 1 + (int) Math.round((w - 3) * pulsePhase);
+        g2.setColor(new Color(MabUiTheme.C_CYAN.getRed(), MabUiTheme.C_CYAN.getGreen(),
+                MabUiTheme.C_CYAN.getBlue(), 70));
+        g2.drawLine(pulseX, y + 1, pulseX, y + h - 2);
+
+        g2.setFont(MabUiTheme.TERM_TINY);
+        g2.setColor(MabUiTheme.TEXT_FAINT);
+        g2.drawString("WARHEAD TEMPO", x + 6, y + 12);
+
+        int yy = y + 29;
+        yy = drawWarheadBlock(g2, humanWarhead, x + 6, yy, w - 12, true);
+        yy += 6;
+        g2.setColor(MabUiTheme.GRID_LINE);
+        g2.drawLine(x + 6, yy, x + w - 7, yy);
+        yy += 13;
+        drawWarheadBlock(g2, opponentWarhead, x + 6, yy, w - 12, false);
+    }
+
+    private static int drawWarheadBlock(Graphics2D g2, WarheadSummary s,
+                                        int x, int y, int w, boolean detailed) {
+        if (s == null) s = WarheadSummary.empty(detailed ? "YOU" : "RIVAL");
+        g2.setFont(MabUiTheme.TERM_TINY);
+        g2.setColor(detailed ? MabUiTheme.C_CYAN : MabUiTheme.TEXT_FAINT);
+        g2.drawString(s.ownerLabel, x, y);
+        FontMetrics fm = g2.getFontMetrics();
+        String design = ellipsize(g2, s.designName, Math.max(40, w - fm.stringWidth(s.ownerLabel) - 10));
+        g2.setColor(MabUiTheme.TEXT);
+        g2.drawString(design, x + w - fm.stringWidth(design), y);
+        y += 14;
+
+        drawKvLine(g2, "PAYLOAD", s.payloadLabel, x, y, w, MabUiTheme.TEXT);
+        y += 13;
+        drawKvLine(g2, "CHARGE", s.chargeCurrent + "/" + s.chargeRequired
+                + "  T" + s.tetrisGoal + " S" + s.spinGoal,
+                x, y, w, s.armed ? MabUiTheme.C_GREEN : MabUiTheme.TEXT);
+        y += 13;
+        drawKvLine(g2, "TIMING", "COUNT " + s.countdownPieces + "P  IMPACT "
+                + s.impactDelayPieces + "P", x, y, w, MabUiTheme.TEXT);
+        y += 13;
+
+        if (detailed) {
+            drawKvLine(g2, "BLAST/RAD", s.blastRating + " / " + s.radiationRating,
+                    x, y, w, MabUiTheme.C_AMBER);
+            y += 13;
+            drawKvLine(g2, "EMP/DISARM/SILO", s.empRating + " / "
+                    + s.disarmRating + " / " + s.siloDamageRating,
+                    x, y, w, MabUiTheme.C_AMBER);
+            y += 13;
+            drawKvLine(g2, "INTERCEPT", "DIFF " + s.interceptDifficulty,
+                    x, y, w, MabUiTheme.TEXT);
+            y += 13;
+        }
+        return y;
+    }
+
+    private static void drawKvLine(Graphics2D g2, String label, String value,
+                                   int x, int y, int w, Color valueColor) {
+        g2.setFont(MabUiTheme.TERM_TINY);
+        FontMetrics fm = g2.getFontMetrics();
+        String l = label == null ? "" : label;
+        String v = value == null ? "" : value;
+        g2.setColor(MabUiTheme.TEXT_FAINT);
+        g2.drawString(l, x, y);
+        String out = ellipsize(g2, v, Math.max(20, w - fm.stringWidth(l) - 8));
+        g2.setColor(valueColor == null ? MabUiTheme.TEXT : valueColor);
+        g2.drawString(out, x + w - fm.stringWidth(out), y);
+    }
+
+    private static String ellipsize(Graphics2D g2, String text, int maxWidth) {
+        if (text == null) return "";
+        FontMetrics fm = g2.getFontMetrics();
+        if (maxWidth <= 0 || fm.stringWidth(text) <= maxWidth) return text;
+        String out = text;
+        String dots = "...";
+        int dotsW = fm.stringWidth(dots);
+        while (out.length() > 1 && fm.stringWidth(out) + dotsW > maxWidth) {
+            out = out.substring(0, out.length() - 1);
+        }
+        return out.length() <= 1 ? dots : out + dots;
+    }
+
     private static Color colorForDefcon(int level) {
         switch (level) {
             case 1: return MabUiTheme.C_RED;
@@ -245,20 +317,90 @@ public final class MabOpsDeckPanel extends JPanel {
         g2.drawString(right, rx, y);
     }
 
-    private static void drawThreatPips(Graphics2D g2, int cx, int cy,
-                                       int radius, int count, Color color,
-                                       boolean upperHalf) {
-        if (count <= 0) return;
-        int n = Math.min(count, 6);
-        for (int i = 0; i < n; i++) {
-            double a = upperHalf
-                    ? Math.PI / 2 + (Math.PI / (n + 1)) * (i + 1)
-                    : -Math.PI / 2 + (Math.PI / (n + 1)) * (i + 1);
-            int rr = radius - 6 - (i % 2) * 8;
-            int px = (int) (cx + Math.cos(a) * rr);
-            int py = (int) (cy - Math.sin(a) * rr);
-            g2.setColor(color);
-            g2.fillOval(px - 3, py - 3, 6, 6);
+    private static final class WarheadSummary {
+        final String ownerLabel;
+        final String designName;
+        final String payloadLabel;
+        final int chargeCurrent;
+        final int chargeRequired;
+        final boolean armed;
+        final int tetrisGoal;
+        final int spinGoal;
+        final int countdownPieces;
+        final int impactDelayPieces;
+        final int blastRating;
+        final int radiationRating;
+        final int empRating;
+        final int disarmRating;
+        final int siloDamageRating;
+        final int interceptDifficulty;
+
+        private WarheadSummary(String ownerLabel,
+                               String designName,
+                               String payloadLabel,
+                               int chargeCurrent,
+                               int chargeRequired,
+                               boolean armed,
+                               int tetrisGoal,
+                               int spinGoal,
+                               int countdownPieces,
+                               int impactDelayPieces,
+                               int blastRating,
+                               int radiationRating,
+                               int empRating,
+                               int disarmRating,
+                               int siloDamageRating,
+                               int interceptDifficulty) {
+            this.ownerLabel = ownerLabel;
+            this.designName = designName;
+            this.payloadLabel = payloadLabel;
+            this.chargeCurrent = chargeCurrent;
+            this.chargeRequired = chargeRequired;
+            this.armed = armed;
+            this.tetrisGoal = tetrisGoal;
+            this.spinGoal = spinGoal;
+            this.countdownPieces = countdownPieces;
+            this.impactDelayPieces = impactDelayPieces;
+            this.blastRating = blastRating;
+            this.radiationRating = radiationRating;
+            this.empRating = empRating;
+            this.disarmRating = disarmRating;
+            this.siloDamageRating = siloDamageRating;
+            this.interceptDifficulty = interceptDifficulty;
+        }
+
+        static WarheadSummary empty(String ownerLabel) {
+            return new WarheadSummary(ownerLabel, "-", "-", 0, 1, false,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        }
+
+        static WarheadSummary from(MutuallyAssuredBlocksMatch match,
+                                   ParticipantId pid,
+                                   String ownerLabel,
+                                   int defconLevel) {
+            if (match == null || pid == null) return empty(ownerLabel);
+            ParticipantState p = match.getParticipant(pid);
+            if (p == null || p.getNukeBuildState() == null) return empty(ownerLabel);
+            NukeBuildState nb = p.getNukeBuildState();
+            NukeDesign d = nb.getCurrentDesign();
+            if (d == null) return empty(ownerLabel);
+            return new WarheadSummary(
+                    ownerLabel,
+                    d.getDisplayName(),
+                    d.getDoctrineType() == null ? "-" : d.getDoctrineType().displayLabel(),
+                    nb.getCurrentBuildCharge(),
+                    Math.max(1, nb.getEffectiveBuildChargeRequired()),
+                    nb.isArmed(),
+                    d.effectiveLaunchTetrisGoal(defconLevel),
+                    d.effectiveLaunchSpinGoal(defconLevel),
+                    d.effectiveLaunchTimePieces(defconLevel),
+                    d.effectiveImpactDelayPieces(defconLevel),
+                    d.getBlastRating(),
+                    d.getRadiationRating(),
+                    d.getEmpRating(),
+                    d.getDisarmRating(),
+                    d.getSiloDamageRating(),
+                    d.interceptDifficultyRating());
         }
     }
 }

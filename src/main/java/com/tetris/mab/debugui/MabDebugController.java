@@ -11,6 +11,7 @@ import com.tetris.mab.ai.MabAiDriver;
 import com.tetris.mab.decoy.DecoyType;
 
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 /**
  * Step 12 — thin controller that mediates between the debug UI panel
@@ -28,6 +29,7 @@ public final class MabDebugController {
     private MabAiDriver aiDriver;
     /** Auto-tick AI from the HUD refresh timer when enabled. */
     private boolean autoTickAi = true;
+    private BooleanSupplier aiPausedSupplier = () -> false;
 
     public MabDebugController(MutuallyAssuredBlocksMatch match) {
         if (match == null) throw new IllegalArgumentException("match");
@@ -91,6 +93,10 @@ public final class MabDebugController {
     public void setAutoTickAi(boolean v) { this.autoTickAi = v; }
     public boolean isAutoTickAi() { return autoTickAi; }
 
+    public void setAiPausedSupplier(BooleanSupplier supplier) {
+        this.aiPausedSupplier = supplier == null ? () -> false : supplier;
+    }
+
     /** Toggle the AI driver on/off; auto-attaches with sensible defaults. */
     public void toggleAi() {
         if (aiDriver == null) {
@@ -101,6 +107,9 @@ public final class MabDebugController {
 
     /** Single manual tick. Returns the resulting decision (never null). */
     public MabAiDecision tickAiOnce() {
+        if (aiPausedSupplier.getAsBoolean()) {
+            return MabAiDecision.none(ParticipantId.PLAYER_B, "ai paused by console");
+        }
         if (aiDriver == null) {
             attachAiB(MabAiArchetype.BALANCED, MabAiDifficulty.NORMAL);
         }
@@ -111,6 +120,7 @@ public final class MabDebugController {
     /** Auto-tick called from the HUD refresh timer. */
     public MabAiDecision tickAiIfEnabled() {
         if (!autoTickAi) return null;
+        if (aiPausedSupplier.getAsBoolean()) return null;
         if (aiDriver == null || !aiDriver.isEnabled()) return null;
         return aiDriver.tick();
     }

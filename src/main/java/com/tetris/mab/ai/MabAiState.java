@@ -5,8 +5,12 @@ import com.tetris.mab.balance.MabBalanceProfile;
 import com.tetris.mab.balance.MabBalanceProfiles;
 
 /**
- * Step 13 — mutable per-participant state tracked by the PvE AI driver.
- * Deterministic: cooldowns and counters never decrement past zero.
+ * Mutable per-participant state for the strategic AI driver.
+ *
+ * <p>Rewritten from first principles for the new AI but preserves the
+ * field shape consumed by older UI code. Cooldowns never decrement past
+ * zero. Telemetry counters live on this object so the simulation
+ * harness can surface them without poking into the driver.
  */
 public final class MabAiState {
 
@@ -21,17 +25,20 @@ public final class MabAiState {
     private int chargeBudget;
 
     private int launchCooldownPieces;
-    private int radarCooldownPieces;
-    private int decoyCooldownPieces;
+    private int routeScanCooldownPieces;
+    private int feintCooldownPieces;
     private int defenseCooldownPieces;
     private int upgradeCooldownPieces;
 
     private int totalDecisions;
     private int launchesStarted;
-    private int radarScansPerformed;
-    private int decoysActivated;
+    private int routeScansPerformed;
+    private int feintsActivated;
     private int civilDefenseActivations;
     private int impactsResolved;
+    private int upgradesPicked;
+    private int interceptsAttempted;
+    private int interceptsSucceeded;
 
     private String lastDecisionSummary = "";
 
@@ -48,7 +55,6 @@ public final class MabAiState {
         this.enabled = false;
     }
 
-    // ── getters ─────────────────────────────────────────────
     public ParticipantId getParticipantId() { return participantId; }
     public MabAiArchetype getArchetype() { return archetype; }
     public MabAiDifficulty getDifficulty() { return difficulty; }
@@ -58,19 +64,21 @@ public final class MabAiState {
     public int getSimulatedPieces() { return simulatedPieces; }
     public int getChargeBudget() { return chargeBudget; }
     public int getLaunchCooldownPieces() { return launchCooldownPieces; }
-    public int getRadarCooldownPieces() { return radarCooldownPieces; }
-    public int getDecoyCooldownPieces() { return decoyCooldownPieces; }
+    public int getRouteScanCooldownPieces() { return routeScanCooldownPieces; }
+    public int getFeintCooldownPieces() { return feintCooldownPieces; }
     public int getDefenseCooldownPieces() { return defenseCooldownPieces; }
     public int getUpgradeCooldownPieces() { return upgradeCooldownPieces; }
     public int getTotalDecisions() { return totalDecisions; }
     public int getLaunchesStarted() { return launchesStarted; }
-    public int getRadarScansPerformed() { return radarScansPerformed; }
-    public int getDecoysActivated() { return decoysActivated; }
+    public int getRouteScansPerformed() { return routeScansPerformed; }
+    public int getFeintsActivated() { return feintsActivated; }
     public int getCivilDefenseActivations() { return civilDefenseActivations; }
     public int getImpactsResolved() { return impactsResolved; }
+    public int getUpgradesPicked() { return upgradesPicked; }
+    public int getInterceptsAttempted() { return interceptsAttempted; }
+    public int getInterceptsSucceeded() { return interceptsSucceeded; }
     public String getLastDecisionSummary() { return lastDecisionSummary; }
 
-    // ── mutators ────────────────────────────────────────────
     public void enable()  { this.enabled = true; }
     public void disable() { this.enabled = false; }
 
@@ -96,24 +104,29 @@ public final class MabAiState {
     }
 
     public void setLaunchCooldownPieces(int v)   { launchCooldownPieces   = Math.max(0, v); }
-    public void setRadarCooldownPieces(int v)    { radarCooldownPieces    = Math.max(0, v); }
-    public void setDecoyCooldownPieces(int v)    { decoyCooldownPieces    = Math.max(0, v); }
+    public void setRouteScanCooldownPieces(int v) { routeScanCooldownPieces = Math.max(0, v); }
+    public void setFeintCooldownPieces(int v)     { feintCooldownPieces     = Math.max(0, v); }
     public void setDefenseCooldownPieces(int v)  { defenseCooldownPieces  = Math.max(0, v); }
     public void setUpgradeCooldownPieces(int v)  { upgradeCooldownPieces  = Math.max(0, v); }
 
     public void tickCooldowns() {
         if (launchCooldownPieces   > 0) launchCooldownPieces--;
-        if (radarCooldownPieces    > 0) radarCooldownPieces--;
-        if (decoyCooldownPieces    > 0) decoyCooldownPieces--;
+        if (routeScanCooldownPieces > 0) routeScanCooldownPieces--;
+        if (feintCooldownPieces     > 0) feintCooldownPieces--;
         if (defenseCooldownPieces  > 0) defenseCooldownPieces--;
         if (upgradeCooldownPieces  > 0) upgradeCooldownPieces--;
     }
 
     public void recordLaunch()           { launchesStarted++; }
-    public void recordRadarScan()        { radarScansPerformed++; }
-    public void recordDecoy()            { decoysActivated++; }
+    public void recordRouteScan()        { routeScansPerformed++; }
+    public void recordFeint()            { feintsActivated++; }
     public void recordCivilDefense()     { civilDefenseActivations++; }
     public void recordImpactResolution() { impactsResolved++; }
+    public void recordUpgradePick()      { upgradesPicked++; }
+    public void recordInterceptAttempt(boolean success) {
+        interceptsAttempted++;
+        if (success) interceptsSucceeded++;
+    }
     public void recordDecision()         { totalDecisions++; }
 
     public void setLastDecision(MabAiDecision d) {
@@ -135,15 +148,17 @@ public final class MabAiState {
                 + " simPieces=" + simulatedPieces
                 + " budget=" + chargeBudget
                 + " cd[L=" + launchCooldownPieces
-                + " R=" + radarCooldownPieces
-                + " D=" + decoyCooldownPieces
+                + " R=" + routeScanCooldownPieces
+                + " F=" + feintCooldownPieces
                 + " S=" + defenseCooldownPieces
                 + " U=" + upgradeCooldownPieces + "]"
                 + " launches=" + launchesStarted
-                + " scans=" + radarScansPerformed
-                + " decoys=" + decoysActivated
+                + " routeScans=" + routeScansPerformed
+                + " feints=" + feintsActivated
                 + " civDef=" + civilDefenseActivations
                 + " impacts=" + impactsResolved
+                + " upgrades=" + upgradesPicked
+                + " intercept=" + interceptsSucceeded + "/" + interceptsAttempted
                 + " last=" + lastDecisionSummary
                 + "}";
     }

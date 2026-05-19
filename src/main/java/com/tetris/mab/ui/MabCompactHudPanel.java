@@ -71,11 +71,11 @@ public class MabCompactHudPanel extends JPanel {
     private final JLabel actionConfirm = MabUiTheme.bodyLabel(" ");
     private final JLabel actionFeedback = MabUiTheme.bodyLabel(" ");
 
-    // ── Opponent intel card ──
-    private final JLabel intelLevel = MabUiTheme.bodyLabel("?");
-    private final JLabel intelConf = MabUiTheme.statValue("?", MabUiTheme.TEXT_MUTED);
-    private final JLabel intelStale = MabUiTheme.statValue("?", MabUiTheme.TEXT_MUTED);
-    private final JLabel scansValue = MabUiTheme.statValue("0", MabUiTheme.TEXT_MUTED);
+    // Opponent status card
+    private final JLabel opponentWarhead = MabUiTheme.bodyLabel("?");
+    private final JLabel opponentCharge = MabUiTheme.statValue("?", MabUiTheme.TEXT_MUTED);
+    private final JLabel opponentArmed = MabUiTheme.statValue("?", MabUiTheme.TEXT_MUTED);
+    private final JLabel opponentSilo = MabUiTheme.statValue("0", MabUiTheme.TEXT_MUTED);
 
     // ── Events strip ──
     private final JTextArea eventsArea = new JTextArea(6, 28);
@@ -149,7 +149,7 @@ public class MabCompactHudPanel extends JPanel {
         body.setOpaque(false);
         body.add(MabUiTheme.kvRow("Incoming", incomingValue));
         body.add(MabUiTheme.kvRow("Impact-ready", impactReadyValue));
-        body.add(MabUiTheme.kvRow("First warn pcs", firstWarn));
+        body.add(MabUiTheme.kvRow("Impact delay", firstWarn));
         body.add(suggestedResponse);
         return MabUiTheme.card("Threats", body);
     }
@@ -171,11 +171,11 @@ public class MabCompactHudPanel extends JPanel {
     private JPanel buildIntelCard() {
         JPanel body = new JPanel(new GridLayout(0, 1, 0, 2));
         body.setOpaque(false);
-        body.add(MabUiTheme.kvRow("Level", intelLevel));
-        body.add(MabUiTheme.kvRow("Conf", intelConf));
-        body.add(MabUiTheme.kvRow("Stale", intelStale));
-        body.add(MabUiTheme.kvRow("Scans", scansValue));
-        return MabUiTheme.card("Intel", body);
+        body.add(MabUiTheme.kvRow("Warhead", opponentWarhead));
+        body.add(MabUiTheme.kvRow("Charge", opponentCharge));
+        body.add(MabUiTheme.kvRow("Armed", opponentArmed));
+        body.add(MabUiTheme.kvRow("Silo", opponentSilo));
+        return MabUiTheme.card("Opponent", body);
     }
 
     private JPanel buildEventsCard() {
@@ -231,8 +231,8 @@ public class MabCompactHudPanel extends JPanel {
         this.opponentDifficulty = difficulty;
         this.balanceProfileName = profileName == null ? "" : profileName;
         opponentValue.setText(
-                (archetype == null ? "?" : archetype.name())
-                        + " / " + (difficulty == null ? "?" : difficulty.name()));
+                (archetype == null ? "?" : archetype.displayName())
+                        + " / " + (difficulty == null ? "?" : difficulty.displayName()));
         profileValue.setText(balanceProfileName.isBlank() ? "-" : balanceProfileName);
     }
 
@@ -373,12 +373,20 @@ public class MabCompactHudPanel extends JPanel {
         }
         actionLastClear.setText(lastClear);
 
-        // Intel
-        intelLevel.setText(String.valueOf(self.lastIntelLevel()));
-        intelConf.setText(String.valueOf(self.lastIntelConfidence()));
-        intelStale.setText(self.intelStale() ? "STALE" : "current");
-        intelStale.setForeground(self.intelStale() ? MabUiTheme.WARNING : MabUiTheme.SUCCESS);
-        scansValue.setText(self.successfulRadarScans() + "/" + self.totalRadarScans());
+        // Opponent status
+        ParticipantSummary opp = pickOpponent(snap, pid);
+        if (opp != null) {
+            opponentWarhead.setText(safe(opp.currentNukeDisplayName()));
+            opponentCharge.setText(opp.currentNukeCharge() + "/" + opp.requiredNukeCharge());
+            opponentArmed.setText(opp.armed() ? "YES" : "no");
+            opponentArmed.setForeground(opp.armed() ? MabUiTheme.SUCCESS : MabUiTheme.TEXT_MUTED);
+            opponentSilo.setText(opp.siloIntegrity() + "/100");
+        } else {
+            opponentWarhead.setText("-");
+            opponentCharge.setText("-");
+            opponentArmed.setText("-");
+            opponentSilo.setText("-");
+        }
 
         // Events
         StringBuilder sb = new StringBuilder();
@@ -415,7 +423,7 @@ public class MabCompactHudPanel extends JPanel {
     private static String suggestResponse(ParticipantSummary p) {
         if (p.impactReadyThreatCount() > 0) return "Intercept or civil defense NOW";
         if (p.incomingThreatCount() > 0) return "Charge intercept (1,2,1)";
-        return "Build charge / scan";
+        return "Build charge";
     }
 
     private static Color defconColor(int level) {
@@ -435,6 +443,13 @@ public class MabCompactHudPanel extends JPanel {
         if (snap == null) return null;
         if (pid == ParticipantId.PLAYER_A) return snap.playerA();
         if (pid == ParticipantId.PLAYER_B) return snap.playerB();
+        return null;
+    }
+
+    private static ParticipantSummary pickOpponent(MatchDebugSnapshot snap, ParticipantId pid) {
+        if (snap == null) return null;
+        if (pid == ParticipantId.PLAYER_A) return snap.playerB();
+        if (pid == ParticipantId.PLAYER_B) return snap.playerA();
         return null;
     }
 

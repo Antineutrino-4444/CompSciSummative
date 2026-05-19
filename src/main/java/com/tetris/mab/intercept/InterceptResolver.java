@@ -59,7 +59,7 @@ public final class InterceptResolver {
         if (status != ThreatStatus.WARNING_ACTIVE) {
             return InterceptResult.failed(InterceptOutcome.FAILED_THREAT_NOT_ACTIVE, definition,
                     launch.getLaunchId(), threat.getThreatId(),
-                    defender.getId(), "threat not warning-active");
+                    defender.getId(), "threat not impact-pending");
         }
         if (launch.getPhase() != LaunchPhase.IN_FLIGHT) {
             return InterceptResult.failed(InterceptOutcome.FAILED_THREAT_NOT_ACTIVE, definition,

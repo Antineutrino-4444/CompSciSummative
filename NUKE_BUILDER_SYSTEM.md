@@ -125,7 +125,6 @@ Represents a single subsystem category of the weapon (e.g., "Fissile Material", 
 | `BOOST` | Boosting System | Fusion gas injection for boosted yield |
 | `SECONDARY` | Thermonuclear Secondary | Teller-Ulam secondary stage (only relevant in staged configurations) |
 | `CASING` | Weapon Casing | Outer shell; affects delivery profile and radiation hardening |
-| `FUZE` | Fuzing System | Airburst altitude vs. ground burst vs. delayed fuze |
 | `SAFETY` | Safety & Arming | PAL / environmental sensing; affects launch code complexity |
 | `DELIVERY` | Delivery Vehicle | Ballistic missile, cruise, gravity bomb, MIRV bus |
 
@@ -462,7 +461,6 @@ Reads the educational design's slot selections and computes:
 - **doctrine**: Derived from CONFIGURATION slot (gun-type → clean fusion or dirty bomb, implosion → concrete blaster or MIRV, etc.) and DELIVERY slot (MIRV bus → MIRV doctrine; cruise → EMP or decoy).
 - **blast rating**: Derived from FISSILE yield and SECONDARY presence.
 - **radiation rating**: Derived from TAMPER material (U-238 → high radiation, Lead → moderate, Tungsten → low).
-- **disarm rating**: Derived from FUZE type (airburst → low disarm, ground burst → moderate, penetrating → high).
 - **silo damage**: Derived from CASING and DELIVERY (hardened re-entry vehicle → higher silo damage).
 - **size**: Derived from `getEstimatedYieldKt()` mapped to a 0–10 scale.
 - **speed**: Derived from DELIVERY slot (ICBM → 8, cruise missile → 4, gravity bomb → 2).
@@ -485,7 +483,7 @@ boolean isSafeGameplaySummary(String text)
 Validates that a candidate summary string contains none of the forbidden engineering terms. Returns false if any blocked term is found.
 
 **Blocked terms list** (partial):
-`kg`, `kilogram`, `u-235`, `u-238`, `pu-239`, `plutonium`, `uranium`, `tritium`, `deuterium`, `lithium deuteride`, `lens`, `initiator`, `tamper`, `fissile`, `implosion`, `spherical`, `cylindrical`, `casing`, `fuze`, `enrichment`, `critical mass`, `pit`, `reflector`, `beryllium`, `polonium`, `explosive`.
+`kg`, `kilogram`, `u-235`, `u-238`, `pu-239`, `plutonium`, `uranium`, `tritium`, `deuterium`, `lithium deuteride`, `lens`, `initiator`, `tamper`, `fissile`, `implosion`, `spherical`, `cylindrical`, `casing`, `enrichment`, `critical mass`, `pit`, `reflector`, `beryllium`, `polonium`, `explosive`.
 
 ---
 
@@ -961,7 +959,6 @@ A custom Swing dialog implementing a KSP-style (Kerbal Space Program) modular we
 **Inner classes:**
 
 - `SchematicPanel` — custom `JPanel` that draws the weapon cross-section. Each slot region is a clickable polygon. When clicked, it sets the "active slot" and filters the parts palette.
-- `FuzeTerminal` — sub-panel for the FUZE slot shown separately at the base of the schematic, since fuzing interacts with all other components.
 
 **Fusion sub-designer:**
 
@@ -1421,7 +1418,7 @@ No other game code imports from `com.tetris.model.nuke`. This is an architectura
 ```
 kg, kilogram, u-235, u-238, pu-239, plutonium, uranium, tritium,
 deuterium, lithium deuteride, lens, initiator, tamper, fissile,
-implosion, spherical, cylindrical, casing, fuze, enrichment,
+implosion, spherical, cylindrical, casing, enrichment,
 critical mass, pit, reflector, beryllium, polonium, explosive,
 compression, gun-type, chain reaction, neutron flux
 ```

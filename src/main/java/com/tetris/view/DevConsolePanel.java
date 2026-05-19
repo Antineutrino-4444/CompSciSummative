@@ -167,6 +167,7 @@ public final class DevConsolePanel extends JPanel {
         return switch (cmd.toLowerCase().trim()) {
             case "help" -> """
                     CONSOLE COMMANDS
+                    defcon max      - prime DEFCON so one single clear escalates
                     ────────────────────────────────
                     help            — show this message
                     clear           — clear console output
@@ -188,6 +189,9 @@ public final class DevConsolePanel extends JPanel {
                     resolve         — resolve all impact-ready threats now
                     points [N]      — add N upgrade points to P1 (default 100)
                     clock [N]       — advance P1 strategic clock N pieces (default 10)
+                    ai pause        — pause all AI activity
+                    ai resume       — resume AI activity
+                    ai status       — show AI pause state
                     ────────────────────────────────
                     SHORTCUTS
                     ` / ~           — toggle this console

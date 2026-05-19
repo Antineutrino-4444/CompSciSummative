@@ -6,7 +6,7 @@ public enum MabSimulationMode {
     AI_VS_DUMMY,
     AI_VS_AI,
     LAUNCH_IMPACT,
-    RADAR_DECOY,
+    ROUTE_FEINT,
     CIVIL_DEFENSE,
     UPGRADE_FLOW,
     DEBUG

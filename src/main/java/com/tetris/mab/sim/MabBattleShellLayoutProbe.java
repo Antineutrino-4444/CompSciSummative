@@ -21,6 +21,7 @@ import com.tetris.model.GameState;
 import com.tetris.view.GamePanel;
 
 import javax.swing.JPanel;
+import javax.swing.JButton;
 import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
 import java.awt.Color;
@@ -120,10 +121,38 @@ public final class MabBattleShellLayoutProbe {
                         shell.isResultOverlayMounted());
                 holder[0] &= check("result overlay hidden at start",
                         !shell.isResultOverlayShown());
+                int[] resultCallbacks = new int[3];
+                shell.showResultOverlay("RESULT", "CAUSE", "BODY",
+                        () -> resultCallbacks[0]++,
+                        () -> resultCallbacks[1]++,
+                        () -> resultCallbacks[2]++);
+                holder[0] &= check("result overlay restart visible",
+                        findButtonWithText(shell, "RESTART"));
+                holder[0] &= check("result overlay setup visible",
+                        findButtonWithText(shell, "BACK TO SETUP"));
+                holder[0] &= check("result overlay main menu visible",
+                        findButtonWithText(shell, "MAIN MENU"));
+                JButton restartButton = findButton(shell, "RESTART");
+                JButton setupButton = findButton(shell, "BACK TO SETUP");
+                JButton menuButton = findButton(shell, "MAIN MENU");
+                if (restartButton != null) restartButton.doClick();
+                if (setupButton != null) setupButton.doClick();
+                if (menuButton != null) menuButton.doClick();
+                holder[0] &= check("result overlay restart callback once",
+                        resultCallbacks[0] == 1);
+                holder[0] &= check("result overlay setup callback once",
+                        resultCallbacks[1] == 1);
+                holder[0] &= check("result overlay main menu callback once",
+                        resultCallbacks[2] == 1);
+                shell.hideResultOverlay();
+                holder[0] &= check("result overlay hidden after dismiss",
+                        !shell.isResultOverlayShown());
                 holder[0] &= check("active doctrine overlay mounted",
                         shell.isActiveDoctrineOverlayMounted());
                 holder[0] &= check("doctrine status overlay mounted",
                         shell.isDoctrineStatusOverlayMounted());
+                holder[0] &= check("DEFCON redesign overlay mounted",
+                        shell.isDefconRedesignOverlayMounted());
                 holder[0] &= check("active doctrine overlay hidden at start",
                         !shell.isActiveDoctrineOverlayVisible());
                 holder[0] &= check("doctrine status overlay hidden at start",
@@ -149,6 +178,22 @@ public final class MabBattleShellLayoutProbe {
                 shell.hideDoctrineStatusOverlay();
                 holder[0] &= check("doctrine overlays keep player board mounted",
                         contains(shell.getPlayerBoardHost(), pg));
+
+                shell.showDefconRedesignReview(match, ParticipantId.PLAYER_A,
+                        "PLAYER 1 - WARHEAD REVIEW (DEFCON 4)", 4,
+                        null, null, false, s -> {}, () -> {});
+                forceLayoutTree(shell.getDefconRedesignOverlay());
+                holder[0] &= check("DEFCON redesign overlay visible after show",
+                        shell.isDefconRedesignOverlayVisible());
+                Dimension rs = shell.getDefconRedesignOverlay().getPreferredSize();
+                holder[0] &= check("DEFCON redesign overlay preferred size fits 1366x768: "
+                        + rs.width + "x" + rs.height,
+                        rs.width <= 1366 && rs.height <= 768);
+                holder[0] &= check("DEFCON redesign overlay has no JScrollPane",
+                        !findDescendantOfType(shell.getDefconRedesignOverlay(), JScrollPane.class));
+                shell.hideDefconRedesignOverlay();
+                holder[0] &= check("DEFCON redesign overlay hidden after dismiss",
+                        !shell.isDefconRedesignOverlayVisible());
 
                 // Old dashboard must NOT be mounted as a descendant.
                 holder[0] &= check("legacy MabCompactHudPanel NOT mounted",
@@ -297,6 +342,29 @@ public final class MabBattleShellLayoutProbe {
             if (c instanceof Container && findDescendantOfType((Container) c, type)) return true;
         }
         return false;
+    }
+
+    private static boolean findButtonWithText(Container parent, String text) {
+        if (parent == null || text == null) return false;
+        for (int i = 0; i < parent.getComponentCount(); i++) {
+            Component c = parent.getComponent(i);
+            if (c instanceof JButton b && text.equals(b.getText())) return b.isVisible();
+            if (c instanceof Container sub && findButtonWithText(sub, text)) return true;
+        }
+        return false;
+    }
+
+    private static JButton findButton(Container parent, String text) {
+        if (parent == null || text == null) return null;
+        for (int i = 0; i < parent.getComponentCount(); i++) {
+            Component c = parent.getComponent(i);
+            if (c instanceof JButton b && text.equals(b.getText())) return b;
+            if (c instanceof Container sub) {
+                JButton found = findButton(sub, text);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     /** Find the GridLayout(1,3) card row panel inside the upgrade overlay. */

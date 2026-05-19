@@ -31,8 +31,8 @@ public final class MabBalanceReporter {
                 result.ticksRun(),
                 result.launchCount(),
                 result.impactResolvedCount(),
-                result.radarScanCount(),
-                result.decoyActivatedCount(),
+                result.routeScanCount(),
+                result.feintActivatedCount(),
                 result.civilDefenseActivatedCount(),
                 result.upgradeAppliedCount(),
                 result.aiDecisionExecutedCount(),
@@ -55,19 +55,19 @@ public final class MabBalanceReporter {
             sb.append("  ").append(p.getDescription()).append('\n');
         }
         sb.append("  earlyLaunchDelay=").append(p.getAiEarlyLaunchDelayTicks())
-          .append("  minDecoy=").append(p.getAiMinimumTicksBeforeDecoy())
+          .append("  minFeint=").append(p.getAiMinimumTicksBeforeFeint())
           .append("  minUpgrade=").append(p.getAiMinimumTicksBeforeUpgrade())
           .append("  minCivDef=").append(p.getAiMinimumTicksBeforeCivilDefense()).append('\n');
         sb.append("  maxLaunches: <80=").append(p.getMaxAiLaunchesBeforeTick80())
           .append(" <160=").append(p.getMaxAiLaunchesBeforeTick160()).append('\n');
         for (MabAiDifficulty d : MabAiDifficulty.values()) {
-            sb.append(String.format("  %-6s gain/tick=%d step=%d cd[L=%d R=%d D=%d S=%d U=%d]%n",
+            sb.append(String.format("  %-6s gain/tick=%d step=%d cd[L=%d R=%d F=%d S=%d U=%d]%n",
                     d.name(),
                     p.chargeGainPerTickFor(d),
                     p.addChargeStepFor(d),
                     p.launchCooldownFor(d),
-                    p.radarCooldownFor(d),
-                    p.decoyCooldownFor(d),
+                    p.routeScanCooldownFor(d),
+                    p.feintCooldownFor(d),
                     p.defenseCooldownFor(d),
                     p.upgradeCooldownFor(d)));
         }
@@ -82,8 +82,8 @@ public final class MabBalanceReporter {
         sb.append("ticks=").append(r.ticks())
           .append("  launches=").append(r.launchCount())
           .append("  impacts=").append(r.impactCount())
-          .append("  scans=").append(r.radarScanCount())
-          .append("  decoys=").append(r.decoyCount())
+          .append("  routeScans=").append(r.routeScanCount())
+          .append("  feints=").append(r.feintCount())
           .append("  civDef=").append(r.civilDefenseCount())
           .append("  upgrades=").append(r.upgradeCount())
           .append('\n');

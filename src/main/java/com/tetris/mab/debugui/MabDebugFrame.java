@@ -140,13 +140,13 @@ public final class MabDebugFrame extends JFrame {
 
         grid.add(button("Launch A",     e -> { controller.launchA();     refresh(); }));
         grid.add(button("Launch B",     e -> { controller.launchB();     refresh(); }));
-        grid.add(button("Radar A",      e -> { controller.radarA();      refresh(); }));
-        grid.add(button("Radar B",      e -> { controller.radarB();      refresh(); }));
+        grid.add(button("Route Scan A", e -> { controller.radarA();      refresh(); }));
+        grid.add(button("Route Scan B", e -> { controller.radarB();      refresh(); }));
 
         grid.add(button("CivDef A",     e -> { controller.civilDefenseA(); refresh(); }));
         grid.add(button("CivDef B",     e -> { controller.civilDefenseB(); refresh(); }));
-        grid.add(button("Decoy A",      e -> { controller.decoyA(DecoyType.DECOY_LAUNCH); refresh(); }));
-        grid.add(button("Decoy B",      e -> { controller.decoyB(DecoyType.DECOY_LAUNCH); refresh(); }));
+        grid.add(button("Feint A",      e -> { controller.decoyA(DecoyType.FEINT_LAUNCH); refresh(); }));
+        grid.add(button("Feint B",      e -> { controller.decoyB(DecoyType.FEINT_LAUNCH); refresh(); }));
 
         grid.add(button("Resolve Impacts",   e -> { controller.resolveImpacts();   refresh(); }));
         grid.add(button("Open Upgrade Pause", e -> { controller.openUpgradePause();  refresh(); }));

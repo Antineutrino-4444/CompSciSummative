@@ -2,6 +2,7 @@ package com.tetris.view;
 
 import com.tetris.controller.GameController;
 import com.tetris.controller.GameLaunchMode;
+import com.tetris.audio.MusicDirector;
 import com.tetris.mab.ui.MabLocalPvpConfig;
 import com.tetris.mab.ui.MabNukeDesignSelection;
 import com.tetris.mab.ui.MabPveConfig;
@@ -47,6 +48,8 @@ public class StartMenu extends JFrame {
     private static final String CARD_MAB_SELECT     = "mab_select";
     private static final String CARD_MAB_PVE_CONFIG = "mab_pve_config";
     private static final String CARD_MAB_PVP_CONFIG = "mab_pvp_config";
+    private static final String CARD_MAB_AIvAI_CONFIG = "mab_aivai_config";
+    private static final String CARD_MAB_NUKE_BUILDER = "mab_nuke_builder";
     private static final String CARD_CONTROLS       = "controls";
 
     private final CardLayout cards;
@@ -59,9 +62,12 @@ public class StartMenu extends JFrame {
     /** Step 18 â€” optional factory that constructs a controller from a {@link MabPveConfig}. */
     private java.util.function.Function<MabPveConfig, GameController> mabPveFactory;
     private java.util.function.Function<MabLocalPvpConfig, GameController> mabLocalPvpFactory;
+    private java.util.function.Function<com.tetris.mab.ui.MabAiVsAiConfig, GameController> mabAiVsAiFactory;
     /** Step 18 â€” last-used PvE config so Restart can re-launch with the same selections. */
     private MabPveConfig lastMabPveConfig = MabPveConfig.defaults();
     private MabLocalPvpConfig lastMabLocalPvpConfig = MabLocalPvpConfig.defaults();
+    private com.tetris.mab.ui.MabAiVsAiConfig lastMabAiVsAiConfig =
+            com.tetris.mab.ui.MabAiVsAiConfig.defaults();
     private MabNukeDesignSelection currentMabNukeSelection = MabNukeDesignSelection.defaultSelection();
     /** Currently mounted game controller, if the game card is active. */
     private GameController activeController;
@@ -157,6 +163,7 @@ public class StartMenu extends JFrame {
 
         animTimer = new Timer(33, e -> marquee.tick());
         animTimer.start();
+        MusicDirector.shared().playMenu();
 
         addWindowFocusListener(new java.awt.event.WindowFocusListener() {
             @Override public void windowGainedFocus(java.awt.event.WindowEvent e) {
@@ -208,6 +215,7 @@ public class StartMenu extends JFrame {
 
     private void showMenuCard() {
         activeController = null;
+        MusicDirector.shared().playMenu();
         currentCard = CARD_MENU;
         marquee.setVisible(true);
         animTimer.start();
@@ -216,6 +224,7 @@ public class StartMenu extends JFrame {
     }
 
     private void showSettingsCard() {
+        MusicDirector.shared().playMenu();
         // Always rebuild fresh so changes from previous sessions are
         // re-loaded from disk.
         for (Component c : cardHost.getComponents()) {
@@ -234,6 +243,7 @@ public class StartMenu extends JFrame {
     }
 
     private void showControlsWizardCard(boolean firstRun) {
+        MusicDirector.shared().playMenu();
         for (Component c : cardHost.getComponents()) {
             if (CARD_CONTROLS.equals(c.getName())) cardHost.remove(c);
         }
@@ -255,6 +265,7 @@ public class StartMenu extends JFrame {
     }
 
     private void showNukeCard() {
+        MusicDirector.shared().playPrematchLab();
         for (Component c : cardHost.getComponents()) {
             if (CARD_NUKE.equals(c.getName())) cardHost.remove(c);
         }
@@ -274,15 +285,17 @@ public class StartMenu extends JFrame {
 
     /** Shows the inline MAB mode-selection card (PvP / PvE / Back). */
     private void showMabSelectCard() {
+        MusicDirector.shared().playMenu();
         for (Component c : cardHost.getComponents()) {
             if (CARD_MAB_SELECT.equals(c.getName())) cardHost.remove(c);
         }
 
         JButton pvp = Components.button("LOCAL PvP  :: SAME KEYBOARD", ButtonStyle.SECONDARY);
         JButton pve = Components.button("â˜¢  PvE  â€”  vs AI", ButtonStyle.PRIMARY_BLUE);
+        JButton aiAi = Components.button("WATCH AI vs AI", ButtonStyle.SECONDARY);
         JButton back = Components.button("â—‚  BACK", ButtonStyle.SECONDARY);
 
-        for (JButton b : new JButton[]{pvp, pve, back}) {
+        for (JButton b : new JButton[]{pvp, pve, aiAi, back}) {
             b.setAlignmentX(Component.CENTER_ALIGNMENT);
             b.setMaximumSize(new Dimension(340, 50));
             b.setPreferredSize(new Dimension(340, 50));
@@ -290,6 +303,7 @@ public class StartMenu extends JFrame {
 
         pve.addActionListener(e -> showMabPveConfigCard());
         pvp.addActionListener(e -> showMabLocalPvpConfigCard());
+        aiAi.addActionListener(e -> showMabAiVsAiConfigCard());
         back.addActionListener(e -> showMenuCard());
 
         JPanel body = new JPanel();
@@ -301,6 +315,8 @@ public class StartMenu extends JFrame {
         body.add(pve);
         body.add(Components.vSpacer(Theme.SPACE_M));
         body.add(pvp);
+        body.add(Components.vSpacer(Theme.SPACE_M));
+        body.add(aiAi);
         body.add(Components.vSpacer(Theme.SPACE_XL));
         body.add(back);
 
@@ -313,19 +329,140 @@ public class StartMenu extends JFrame {
         animTimer.stop();
         cards.show(cardHost, CARD_MAB_SELECT);
         SwingUtilities.invokeLater(() -> focusButton(pve));
-        installButtonNavigation(body, pve, pvp, back);
+        installButtonNavigation(body, pve, pvp, aiAi, back);
+    }
+
+    /** Shows the inline MAB AI-vs-AI configuration card. */
+    private void showMabAiVsAiConfigCard() {
+        MusicDirector.shared().playMenu();
+        for (Component c : cardHost.getComponents()) {
+            if (CARD_MAB_AIvAI_CONFIG.equals(c.getName())) cardHost.remove(c);
+        }
+
+        com.tetris.mab.ai.MabAiArchetype[] archetypes =
+                com.tetris.mab.ai.MabAiArchetype.values();
+        com.tetris.mab.ai.MabAiDifficulty[] difficulties = new com.tetris.mab.ai.MabAiDifficulty[] {
+                com.tetris.mab.ai.MabAiDifficulty.EASY,
+                com.tetris.mab.ai.MabAiDifficulty.MEDIUM,
+                com.tetris.mab.ai.MabAiDifficulty.HARD,
+                com.tetris.mab.ai.MabAiDifficulty.EXPERT,
+                com.tetris.mab.ai.MabAiDifficulty.MASTER };
+        java.util.List<com.tetris.mab.balance.MabBalanceProfile> profiles =
+                com.tetris.mab.balance.MabBalanceProfiles.all();
+
+        com.tetris.mab.ui.MabAiVsAiConfig seed = lastMabAiVsAiConfig != null
+                ? lastMabAiVsAiConfig : com.tetris.mab.ui.MabAiVsAiConfig.defaults();
+
+        int aArchIdx = indexOf(archetypes, seed.getPlayerAArchetype());
+        int aDiffIdx = indexOfDifficulty(difficulties, seed.getPlayerADifficulty());
+        int bArchIdx = indexOf(archetypes, seed.getPlayerBArchetype());
+        int bDiffIdx = indexOfDifficulty(difficulties, seed.getPlayerBDifficulty());
+        int profIdx = 0;
+        for (int i = 0; i < profiles.size(); i++)
+            if (profiles.get(i).getId().equals(seed.getBalanceProfileId())) { profIdx = i; break; }
+
+        CycleSelector<com.tetris.mab.ai.MabAiArchetype> aArch =
+                new CycleSelector<>(java.util.Arrays.asList(archetypes), aArchIdx,
+                        com.tetris.mab.ai.MabAiArchetype::displayName);
+        CycleSelector<com.tetris.mab.ai.MabAiDifficulty> aDiff =
+                new CycleSelector<>(java.util.Arrays.asList(difficulties), aDiffIdx,
+                        com.tetris.mab.ai.MabAiDifficulty::displayName);
+        CycleSelector<com.tetris.mab.ai.MabAiArchetype> bArch =
+                new CycleSelector<>(java.util.Arrays.asList(archetypes), bArchIdx,
+                        com.tetris.mab.ai.MabAiArchetype::displayName);
+        CycleSelector<com.tetris.mab.ai.MabAiDifficulty> bDiff =
+                new CycleSelector<>(java.util.Arrays.asList(difficulties), bDiffIdx,
+                        com.tetris.mab.ai.MabAiDifficulty::displayName);
+        CycleSelector<com.tetris.mab.balance.MabBalanceProfile> profSel =
+                new CycleSelector<>(profiles, profIdx,
+                        com.tetris.mab.balance.MabBalanceProfile::getDisplayName);
+
+        JPanel form = new JPanel(new java.awt.GridBagLayout());
+        form.setOpaque(false);
+        java.awt.GridBagConstraints gc = new java.awt.GridBagConstraints();
+        gc.insets = new java.awt.Insets(8, 8, 8, 8);
+        gc.anchor = java.awt.GridBagConstraints.WEST;
+        gc.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        int row = 0;
+        addFormRow(form, gc, row++, "Side A Archetype",  aArch);
+        addFormRow(form, gc, row++, "Side A Difficulty", aDiff);
+        addFormRow(form, gc, row++, "Side B Archetype",  bArch);
+        addFormRow(form, gc, row++, "Side B Difficulty", bDiff);
+        addFormRow(form, gc, row, "Balance Profile", profSel);
+
+        JButton start = Components.button("â–¶  WATCH", ButtonStyle.PRIMARY_BLUE);
+        JButton back = Components.button("â—‚  BACK", ButtonStyle.SECONDARY);
+        for (JButton b : new JButton[]{start, back}) {
+            b.setAlignmentX(Component.CENTER_ALIGNMENT);
+            b.setMaximumSize(new Dimension(340, 50));
+            b.setPreferredSize(new Dimension(340, 50));
+        }
+
+        start.addActionListener(e -> {
+            com.tetris.mab.ui.MabAiVsAiConfig cfg = new com.tetris.mab.ui.MabAiVsAiConfig(
+                    1,
+                    aArch.current(), aDiff.current(),
+                    bArch.current(), bDiff.current(),
+                    profSel.current().getId());
+            lastMabAiVsAiConfig = cfg;
+            launchMabAiVsAiWithConfig(cfg);
+        });
+        back.addActionListener(e -> showMabSelectCard());
+
+        JPanel body = new JPanel();
+        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+        body.setOpaque(false);
+        body.setBorder(new EmptyBorder(Theme.SPACE_XL, Theme.SPACE_XL,
+                                       Theme.SPACE_XL, Theme.SPACE_XL));
+        body.add(form);
+        body.add(Components.vSpacer(Theme.SPACE_XL));
+        body.add(start);
+        body.add(Components.vSpacer(Theme.SPACE_M));
+        body.add(back);
+
+        JPanel card = buildEmbeddedCard("MAB - Watch AI vs AI", body);
+        card.setName(CARD_MAB_AIvAI_CONFIG);
+        cardHost.add(card, CARD_MAB_AIvAI_CONFIG);
+
+        currentCard = CARD_MAB_AIvAI_CONFIG;
+        marquee.setVisible(false);
+        animTimer.stop();
+        cards.show(cardHost, CARD_MAB_AIvAI_CONFIG);
+        installMixedNavigation(body, aArch, aDiff, bArch, bDiff, profSel, start, back);
+        SwingUtilities.invokeLater(aArch::requestFocusInWindow);
+    }
+
+    private static <T> int indexOf(T[] arr, T needle) {
+        for (int i = 0; i < arr.length; i++) if (arr[i] == needle) return i;
+        return 0;
+    }
+
+    private static int indexOfDifficulty(com.tetris.mab.ai.MabAiDifficulty[] arr,
+                                         com.tetris.mab.ai.MabAiDifficulty needle) {
+        if (needle == com.tetris.mab.ai.MabAiDifficulty.NORMAL) {
+            needle = com.tetris.mab.ai.MabAiDifficulty.MEDIUM;
+        } else if (needle == com.tetris.mab.ai.MabAiDifficulty.DEBUG) {
+            needle = com.tetris.mab.ai.MabAiDifficulty.MASTER;
+        }
+        for (int i = 0; i < arr.length; i++) if (arr[i] == needle) return i;
+        return 0;
     }
 
     /** Shows the inline MAB PvE configuration card (difficulty, archetype, etc.). */
     private void showMabPveConfigCard() {
+        MusicDirector.shared().playMenu();
         for (Component c : cardHost.getComponents()) {
             if (CARD_MAB_PVE_CONFIG.equals(c.getName())) cardHost.remove(c);
         }
 
         com.tetris.mab.ai.MabAiArchetype[] archetypes =
                 com.tetris.mab.ai.MabAiArchetype.values();
-        com.tetris.mab.ai.MabAiDifficulty[] difficulties =
-                com.tetris.mab.ai.MabAiDifficulty.values();
+        com.tetris.mab.ai.MabAiDifficulty[] difficulties = new com.tetris.mab.ai.MabAiDifficulty[] {
+                com.tetris.mab.ai.MabAiDifficulty.EASY,
+                com.tetris.mab.ai.MabAiDifficulty.MEDIUM,
+                com.tetris.mab.ai.MabAiDifficulty.HARD,
+                com.tetris.mab.ai.MabAiDifficulty.EXPERT,
+                com.tetris.mab.ai.MabAiDifficulty.MASTER };
         java.util.List<com.tetris.mab.balance.MabBalanceProfile> profiles =
                 com.tetris.mab.balance.MabBalanceProfiles.all();
 
@@ -335,8 +472,7 @@ public class StartMenu extends JFrame {
         int archIdx = 0, diffIdx = 0, profIdx = 0;
         for (int i = 0; i < archetypes.length; i++)
             if (archetypes[i] == seed.getAiArchetype()) { archIdx = i; break; }
-        for (int i = 0; i < difficulties.length; i++)
-            if (difficulties[i] == seed.getAiDifficulty()) { diffIdx = i; break; }
+        diffIdx = indexOfDifficulty(difficulties, seed.getAiDifficulty());
         for (int i = 0; i < profiles.size(); i++)
             if (profiles.get(i).getId().equals(seed.getBalanceProfileId())) { profIdx = i; break; }
 
@@ -345,9 +481,11 @@ public class StartMenu extends JFrame {
         int levelIdx = Math.max(0, Math.min(seed.getStartLevel() - 1, 19));
 
         CycleSelector<com.tetris.mab.ai.MabAiArchetype> archSel =
-                new CycleSelector<>(java.util.Arrays.asList(archetypes), archIdx, v -> v.toString());
+                new CycleSelector<>(java.util.Arrays.asList(archetypes), archIdx,
+                        com.tetris.mab.ai.MabAiArchetype::displayName);
         CycleSelector<com.tetris.mab.ai.MabAiDifficulty> diffSel =
-                new CycleSelector<>(java.util.Arrays.asList(difficulties), diffIdx, v -> v.toString());
+                new CycleSelector<>(java.util.Arrays.asList(difficulties), diffIdx,
+                        com.tetris.mab.ai.MabAiDifficulty::displayName);
         CycleSelector<Integer> levelSel =
                 new CycleSelector<>(levels, levelIdx, i -> "Level " + i);
         CycleSelector<com.tetris.mab.balance.MabBalanceProfile> profSel =
@@ -374,19 +512,26 @@ public class StartMenu extends JFrame {
         }
 
         start.addActionListener(e -> {
-            // Auto-launch nuke builder for player 1 before the match starts.
-            Window owner = SwingUtilities.getWindowAncestor(StartMenu.this);
-            currentMabNukeSelection = showNukeBuilderModal("PLAYER 1 — DESIGN YOUR NUKE", owner);
+            // In-shell builder card replaces the old preset modal. The
+            // player edits a custom design; on confirm we launch the
+            // match with that design. Cancel returns to PvE setup.
             com.tetris.mab.balance.MabBalanceProfile p = profSel.current();
-            com.tetris.mab.ui.MabPveConfig cfg = com.tetris.mab.ui.MabPveConfig.fromSelections(
-                    levelSel.current(),
-                    archSel.current(),
-                    diffSel.current(),
-                    false,
-                    p.getId(),
-                    currentMabNukeSelection);
-            lastMabPveConfig = cfg;
-            launchMabPveWithConfig(cfg);
+            showMabNukeBuilderCard(
+                    "PLAYER 1 - DESIGN YOUR WARHEAD",
+                    null,
+                    selection -> {
+                        currentMabNukeSelection = selection;
+                        com.tetris.mab.ui.MabPveConfig cfg = com.tetris.mab.ui.MabPveConfig.fromSelections(
+                                levelSel.current(),
+                                archSel.current(),
+                                diffSel.current(),
+                                false,
+                                p.getId(),
+                                selection);
+                        lastMabPveConfig = cfg;
+                        launchMabPveWithConfig(cfg);
+                    },
+                    this::showMabPveConfigCard);
         });
         back.addActionListener(e -> showMabSelectCard());
 
@@ -414,6 +559,7 @@ public class StartMenu extends JFrame {
     }
 
     private void showMabLocalPvpConfigCard() {
+        MusicDirector.shared().playMenu();
         for (Component c : cardHost.getComponents()) {
             if (CARD_MAB_PVP_CONFIG.equals(c.getName())) cardHost.remove(c);
         }
@@ -459,19 +605,30 @@ public class StartMenu extends JFrame {
         }
 
         start.addActionListener(e -> {
+            // Local PvP: P1 builds first, then P2, then we launch. Both
+            // builder steps live inside the main game window via the
+            // shared CardLayout. Cancel from either step returns to
+            // the PvP setup card.
             com.tetris.mab.balance.MabBalanceProfile p = profSel.current();
-            Window owner = SwingUtilities.getWindowAncestor(this);
-            MabNukeDesignSelection p1Design = showNukeBuilderModal("PLAYER 1 â€” DESIGN YOUR NUKE", owner);
-            MabNukeDesignSelection p2Design = showNukeBuilderModal("PLAYER 2 â€” DESIGN YOUR NUKE", owner);
-            MabLocalPvpConfig cfg = new MabLocalPvpConfig(
-                    levelSel.current(),
-                    "PLAYER 1",
-                    "PLAYER 2",
-                    p.getId(),
-                    p1Design,
-                    p2Design);
-            lastMabLocalPvpConfig = cfg;
-            launchMabLocalPvpWithConfig(cfg);
+            showMabNukeBuilderCard(
+                    "PLAYER 1 - DESIGN YOUR WARHEAD",
+                    null,
+                    p1Design -> showMabNukeBuilderCard(
+                            "PLAYER 2 - DESIGN YOUR WARHEAD",
+                            null,
+                            p2Design -> {
+                                MabLocalPvpConfig cfg = new MabLocalPvpConfig(
+                                        levelSel.current(),
+                                        "PLAYER 1",
+                                        "PLAYER 2",
+                                        p.getId(),
+                                        p1Design,
+                                        p2Design);
+                                lastMabLocalPvpConfig = cfg;
+                                launchMabLocalPvpWithConfig(cfg);
+                            },
+                            this::showMabLocalPvpConfigCard),
+                    this::showMabLocalPvpConfigCard);
         });
         back.addActionListener(e -> showMabSelectCard());
 
@@ -514,60 +671,84 @@ public class StartMenu extends JFrame {
         form.add(field, gc);
     }
 
-    /** Shows a blocking modal nuke builder dialog and returns the chosen design. */
-    private MabNukeDesignSelection showNukeBuilderModal(String title, Window owner) {
-        JDialog dialog = new JDialog(owner, title,
-                java.awt.Dialog.ModalityType.APPLICATION_MODAL);
-        dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
-        NukeBuilderDialog builder = NukeBuilderDialog.createEmbedded(null);
-        MabNukeDesignSelection[] result = {MabNukeDesignSelection.defaultSelection()};
+    /**
+     * Show the real editable nuke builder inside the start-menu shell
+     * as a CardLayout card. The player edits a custom design and on
+     * confirm we pass a {@link MabNukeDesignSelection} (carrying the
+     * builder source) to {@code onConfirm}. Cancel/Back invokes
+     * {@code onCancel} without touching any external state. No
+     * JFrame, JDialog, or popup window is created.
+     *
+     * @param title     header shown above the builder
+     * @param seed      optional builder-model design to seed the
+     *                  builder with as the editable starting point;
+     *                  {@code null} uses the builder default
+     * @param onConfirm called once on confirm; never null
+     * @param onCancel  called once on cancel/back; never null
+     */
+    private void showMabNukeBuilderCard(String title,
+                                        com.tetris.model.nuke.NukeDesign seed,
+                                        java.util.function.Consumer<MabNukeDesignSelection> onConfirm,
+                                        Runnable onCancel) {
+        MusicDirector.shared().playPrematchLab();
+        for (Component c : cardHost.getComponents()) {
+            if (CARD_MAB_NUKE_BUILDER.equals(c.getName())) cardHost.remove(c);
+        }
+        boolean[] done = {false};
+        Runnable cancel = () -> {
+            if (done[0]) return;
+            done[0] = true;
+            if (onCancel != null) onCancel.run();
+        };
+        NukeBuilderDialog nuke = NukeBuilderDialog.createEmbedded(cancel);
+        if (seed != null) nuke.loadDesign(seed);
 
-        JButton confirm = Components.button("USE DESIGN", ButtonStyle.PRIMARY_BLUE);
-        JButton useDefault = Components.button("USE DEFAULT", ButtonStyle.SECONDARY);
-        confirm.addActionListener(e -> {
-            result[0] = MabNukeDesignSelection.fromBuilderDesign(builder.getDesignForIntegration());
-            dialog.dispose();
+        // Confirm is bound to the hard-drop key and shown as a key
+        // hint in the top-right of the builder — no confirm button.
+        nuke.setConfirmKeyHandler(() -> {
+            if (done[0]) return;
+            done[0] = true;
+            com.tetris.model.nuke.NukeDesign builderDesign = nuke.exportBuilderDesign();
+            MabNukeDesignSelection sel = MabNukeDesignSelection.fromBuilderDesign(builderDesign);
+            if (onConfirm != null) onConfirm.accept(sel);
         });
-        useDefault.addActionListener(e -> {
-            result[0] = MabNukeDesignSelection.defaultSelection();
-            dialog.dispose();
-        });
 
-        JPanel btnRow = new JPanel();
-        btnRow.setBackground(Theme.BG_1);
-        btnRow.setBorder(new EmptyBorder(Theme.SPACE_S, Theme.SPACE_M, Theme.SPACE_S, Theme.SPACE_M));
-        btnRow.add(confirm);
-        btnRow.add(javax.swing.Box.createHorizontalStrut(Theme.SPACE_M));
-        btnRow.add(useDefault);
+        JButton resetBtn = Components.button("RESET", ButtonStyle.SECONDARY);
+        resetBtn.addActionListener(e -> nuke.resetBuild());
 
-        JLabel titleLabel = new JLabel(title);
-        titleLabel.setForeground(Theme.TEXT_PRIMARY);
-        titleLabel.setFont(Theme.FONT_H1);
-        titleLabel.setBorder(new EmptyBorder(Theme.SPACE_S, Theme.SPACE_M, Theme.SPACE_S, Theme.SPACE_M));
+        JPanel card = buildEmbeddedCard(title, nuke, cancel, resetBtn);
+        card.setName(CARD_MAB_NUKE_BUILDER);
+        cardHost.add(card, CARD_MAB_NUKE_BUILDER);
 
-        JPanel content = new JPanel(new java.awt.BorderLayout());
-        content.setBackground(Theme.BG_0);
-        content.add(titleLabel, java.awt.BorderLayout.NORTH);
-        content.add(builder, java.awt.BorderLayout.CENTER);
-        content.add(btnRow, java.awt.BorderLayout.SOUTH);
+        currentCard = CARD_MAB_NUKE_BUILDER;
+        marquee.setVisible(false);
+        animTimer.stop();
+        cards.show(cardHost, CARD_MAB_NUKE_BUILDER);
+        SwingUtilities.invokeLater(nuke::requestFocusInWindow);
+    }
 
-        // Hard-drop key (confirm) closes and accepts the current design.
-        int hardDropCode = Settings.get().getKeyHardDrop();
-        javax.swing.KeyStroke hardDropKs = javax.swing.KeyStroke.getKeyStroke(hardDropCode, 0);
-        dialog.getRootPane().getInputMap(javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW)
-                .put(hardDropKs, "nukeConfirm");
-        dialog.getRootPane().getActionMap().put("nukeConfirm",
-                new javax.swing.AbstractAction() {
-                    @Override public void actionPerformed(java.awt.event.ActionEvent e) {
-                        confirm.doClick();
-                    }
-                });
-
-        dialog.setContentPane(content);
-        dialog.setSize(1200, 820);
-        dialog.setLocationRelativeTo(owner);
-        dialog.setVisible(true);
-        return result[0];
+    private static String describeMabSetupDesign(com.tetris.mab.nuke.NukeDesign design) {
+        if (design == null) return "";
+        int defcon = 5;
+        StringBuilder sb = new StringBuilder();
+        sb.append("Design          : ").append(design.getDisplayName()).append('\n');
+        sb.append("Payload         : ").append(design.getDoctrineType().displayLabel()).append('\n');
+        sb.append("Charge required : ").append(design.effectiveBuildChargeRequired(defcon)).append('\n');
+        sb.append("Route targets   : Tetris ")
+          .append(design.effectiveLaunchTetrisGoal(defcon))
+          .append(" / Spin ")
+          .append(design.effectiveLaunchSpinGoal(defcon)).append('\n');
+        sb.append("Countdown       : ")
+          .append(design.effectiveLaunchTimePieces(defcon)).append(" pieces").append('\n');
+        sb.append("Impact delay    : ")
+          .append(design.effectiveImpactDelayPieces(defcon)).append(" pieces").append('\n');
+        sb.append("BLAST           : ").append(design.getBlastRating()).append('\n');
+        sb.append("RAD             : ").append(design.getRadiationRating()).append('\n');
+        sb.append("EMP             : ").append(design.getEmpRating()).append('\n');
+        sb.append("DISARM          : ").append(design.getDisarmRating()).append('\n');
+        sb.append("SILO            : ").append(design.getSiloDamageRating()).append('\n');
+        sb.append("Intercept diff. : ").append(design.interceptDifficultyRating()).append('\n');
+        return sb.toString();
     }
 
     private static JLabel setupSummaryLabel(String text) {
@@ -615,6 +796,12 @@ public class StartMenu extends JFrame {
         this.mabLocalPvpFactory = factory;
     }
 
+    /** Wires the configured AI-vs-AI watcher factory. */
+    public void setMabAiVsAiFactory(
+            java.util.function.Function<com.tetris.mab.ui.MabAiVsAiConfig, GameController> factory) {
+        this.mabAiVsAiFactory = factory;
+    }
+
     /** Step 18 â€” opens the PvE setup dialog and, on confirm, launches MAB PvE
      *  with the chosen {@link MabPveConfig}. Falls back to the legacy flow when
      *  no MAB PvE factory has been wired. */
@@ -645,7 +832,11 @@ public class StartMenu extends JFrame {
             try { ctrl.stop(); } catch (RuntimeException ignored) {}
             showMenuCard();
         };
-        ctrl.setMabPveCallbacks(restart, back);
+        Runnable setup = () -> {
+            try { ctrl.stop(); } catch (RuntimeException ignored) {}
+            showMabPveConfigCard();
+        };
+        ctrl.setMabPveCallbacks(restart, back, setup);
         mountController(ctrl);
     }
 
@@ -661,7 +852,31 @@ public class StartMenu extends JFrame {
             try { ctrl.stop(); } catch (RuntimeException ignored) {}
             showMenuCard();
         };
-        ctrl.setMabPveCallbacks(restart, back);
+        Runnable setup = () -> {
+            try { ctrl.stop(); } catch (RuntimeException ignored) {}
+            showMabLocalPvpConfigCard();
+        };
+        ctrl.setMabPveCallbacks(restart, back, setup);
+        mountController(ctrl);
+    }
+
+    private void launchMabAiVsAiWithConfig(com.tetris.mab.ui.MabAiVsAiConfig cfg) {
+        if (cfg == null || mabAiVsAiFactory == null) return;
+        GameController ctrl = mabAiVsAiFactory.apply(cfg);
+        if (ctrl == null) return;
+        Runnable restart = () -> {
+            try { ctrl.stop(); } catch (RuntimeException ignored) {}
+            launchMabAiVsAiWithConfig(cfg);
+        };
+        Runnable back = () -> {
+            try { ctrl.stop(); } catch (RuntimeException ignored) {}
+            showMenuCard();
+        };
+        Runnable setup = () -> {
+            try { ctrl.stop(); } catch (RuntimeException ignored) {}
+            showMabAiVsAiConfigCard();
+        };
+        ctrl.setMabPveCallbacks(restart, back, setup);
         mountController(ctrl);
     }
 
@@ -679,6 +894,9 @@ public class StartMenu extends JFrame {
         JComponent view = ctrl.startEmbedded(this::showMenuCard);
         view.setName(CARD_GAME);
         cardHost.add(view, CARD_GAME);
+        if (ctrl.getLaunchMode() == null || !ctrl.getLaunchMode().isMabMode()) {
+            MusicDirector.shared().stopAll();
+        }
 
         currentCard = CARD_GAME;
         marquee.setVisible(false);
@@ -920,6 +1138,7 @@ public class StartMenu extends JFrame {
 
     private void confirmQuit() {
         // No prompt â€” quit immediately.
+        MusicDirector.shared().stopAll();
         System.exit(0);
     }
 

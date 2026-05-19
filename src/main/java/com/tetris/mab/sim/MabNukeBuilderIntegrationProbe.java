@@ -108,7 +108,6 @@ public final class MabNukeBuilderIntegrationProbe {
         choose(d, NukeSlot.IMPLOSION, 1);
         choose(d, NukeSlot.BOOST, 1);
         choose(d, NukeSlot.SECONDARY, 1);
-        choose(d, NukeSlot.FUZE, 2);
         return d;
     }
 

@@ -4,8 +4,8 @@ package com.tetris.mab.action;
 public enum ActionCategory {
     LAUNCH,
     DEFENSE,
-    INTEL,
-    DECOY,
+    ANALYSIS,
+    FEINT,
     UTILITY,
     RESTRAINT,
     CUSTOM

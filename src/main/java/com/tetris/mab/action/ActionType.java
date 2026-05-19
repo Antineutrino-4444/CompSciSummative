@@ -8,7 +8,7 @@ public enum ActionType {
     THEATER_LAUNCH,
     STRATEGIC_LAUNCH,
     DIRTY_LAUNCH,
-    MIRV_LAUNCH,
+    HEAVY_SPLIT_LAUNCH,
     CONCRETE_BLASTER_LAUNCH,
     SUPERHEAVY_LAUNCH,
     DOOMSDAY_LAUNCH,
@@ -18,12 +18,12 @@ public enum ActionType {
     STANDARD_INTERCEPT,
     FULL_INTERCEPT,
 
-    // ─── Utility / intel / decoy / restraint ───
-    RADAR_SCAN,
+    // ─── Utility / analysis / feint / restraint ───
+    ROUTE_SCAN,
     SILO_HARDEN,
     CIVIL_DEFENSE,
-    DECOY_LAUNCH,
-    GHOST_MIRV,
+    FEINT_LAUNCH,
+    GHOST_SPLIT,
     FALSE_DOCTRINE_SIGNAL,
     DUMMY_SILO_HEAT,
     MASKED_LAUNCH,
@@ -38,7 +38,7 @@ public enum ActionType {
     public boolean isLaunch() {
         return switch (this) {
             case MICRO_LAUNCH, TACTICAL_LAUNCH, THEATER_LAUNCH, STRATEGIC_LAUNCH,
-                 DIRTY_LAUNCH, MIRV_LAUNCH, CONCRETE_BLASTER_LAUNCH,
+                 DIRTY_LAUNCH, HEAVY_SPLIT_LAUNCH, CONCRETE_BLASTER_LAUNCH,
                  SUPERHEAVY_LAUNCH, DOOMSDAY_LAUNCH, MASKED_LAUNCH -> true;
             default -> false;
         };
@@ -53,12 +53,12 @@ public enum ActionType {
     }
 
     public boolean isIntel() {
-        return this == RADAR_SCAN;
+        return this == ROUTE_SCAN;
     }
 
     public boolean isDecoy() {
         return switch (this) {
-            case DECOY_LAUNCH, GHOST_MIRV, FALSE_DOCTRINE_SIGNAL,
+            case FEINT_LAUNCH, GHOST_SPLIT, FALSE_DOCTRINE_SIGNAL,
                  DUMMY_SILO_HEAT, MASKED_LAUNCH -> true;
             default -> false;
         };

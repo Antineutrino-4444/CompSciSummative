@@ -64,7 +64,6 @@ public class NukeBuilderDialog extends JPanel {
         SLOT_COLORS.put("boost",      new Color( 80, 200, 220));   // cyan gas
         SLOT_COLORS.put("secondary",  new Color(180,  90, 200));   // fusion violet
         SLOT_COLORS.put("casing",     new Color( 80,  90, 105));   // gun-metal grey
-        SLOT_COLORS.put("fuze",       new Color(180, 180, 100));
         SLOT_COLORS.put("safety",     new Color(120, 180, 120));
         SLOT_COLORS.put("delivery",   new Color( 60,  80, 120));
     }
@@ -195,7 +194,6 @@ public class NukeBuilderDialog extends JPanel {
     }
 
     private SchematicPanel schematic;
-    private FuzeTerminal fuzeTerminal;
     private JPanel partsListPanel;
     private JPanel slotsBar;        // rebuilt per-refresh; holds slot+fusion buttons
     private JLabel paletteHeading;
@@ -210,6 +208,21 @@ public class NukeBuilderDialog extends JPanel {
     private final Map<NukeSlot, JButton> slotButtons = new LinkedHashMap<>();
     private final Map<FusionGroup, JButton> fusionGroupButtons = new LinkedHashMap<>();
 
+    /** Listeners fired at the end of every {@link #refresh()} so embedded
+     *  hosts (e.g. the DEFCON redesign overlay) can update an AFTER
+     *  preview live as the player edits slots/parts/fusion choices. */
+    private final java.util.List<Runnable> designChangeListeners = new java.util.ArrayList<>();
+    /** When true, {@link #refresh()} skips firing change listeners.
+     *  Used by {@link #loadDesign(NukeDesign)} to coalesce a burst of
+     *  internal mutations into a single notification at the end. */
+    private boolean suppressChangeNotifications = false;
+
+    /** When non-null, the configured hard-drop key fires this handler
+     *  to confirm the current design. Set by an embedding host via
+     *  {@link #setConfirmKeyHandler(Runnable)}; null means no confirm
+     *  key is bound and the {@link #keyHint} omits the confirm hint. */
+    private Runnable confirmKeyHandler;
+
     /** Callback invoked when the user dismisses the panel (Close button
      *  or Escape). Used by the dialog wrapper to dispose, or by an
      *  embedded host (start menu) to navigate back. */
@@ -220,13 +233,11 @@ public class NukeBuilderDialog extends JPanel {
         setBackground(DARK_BG);
         setLayout(new BorderLayout(0, 0));
 
-        // Top stack: header above the horizontal schematic strip,
-        // with a small terminal-style fuze readout sandwiched between.
+        // Top stack: header above the horizontal schematic strip.
         JPanel topStack = new JPanel(new BorderLayout());
         topStack.setBackground(DARK_BG);
         topStack.add(buildHeader(), BorderLayout.NORTH);
         topStack.add(buildCenter(), BorderLayout.CENTER);
-        topStack.add(buildFuzeTerminal(), BorderLayout.SOUTH);
 
         add(topStack, BorderLayout.NORTH);
         add(buildPalette(), BorderLayout.WEST);
@@ -438,9 +449,148 @@ public class NukeBuilderDialog extends JPanel {
         refresh();
     }
 
-    /** Returns the current conceptual builder model for MAB setup integration. */
+    /** Returns the current conceptual builder model for MAB setup integration.
+     *  The returned reference is the panel's live design — callers that
+     *  need a stable snapshot should use {@link #exportBuilderDesign()}. */
     public NukeDesign getDesignForIntegration() {
         return design;
+    }
+
+    /** Returns a deep copy of the current builder design. Safe to retain
+     *  across edits — subsequent player input will not mutate the copy.
+     *  Use this when handing a design off to MAB at confirm time. */
+    public NukeDesign exportBuilderDesign() {
+        return copyOfBuilderDesign(design);
+    }
+
+    /** Seeds the builder with {@code source} as the new editable starting
+     *  point. Slot selections and fusion sub-design state are copied
+     *  field-for-field; the model→builder mapping here is lossless
+     *  because both sides use the same {@link NukeDesign} type. If a
+     *  caller has a non-builder design (e.g. a MAB {@code NukeDesign}),
+     *  it must adapt to a builder design first — this method only
+     *  accepts the closest editable representation. {@code null} resets
+     *  the builder to its default placeholder.
+     *
+     *  <p>Change listeners fire once at the end of the load, not once
+     *  per slot copy, so an AFTER preview will refresh exactly once.
+     *
+     *  <p>The exact previous design is the caller's responsibility to
+     *  preserve externally for cancel — this panel only owns the
+     *  editable working copy. */
+    public void loadDesign(NukeDesign source) {
+        if (source == null) {
+            resetBuild();
+            return;
+        }
+        suppressChangeNotifications = true;
+        try {
+            design.reset();
+            resetFusionStruct();
+            // Slot selections — exact copy.
+            for (NukeSlot s : NukeSlot.ALL) {
+                NukePart p = source.get(s);
+                if (p != null) design.set(s, p);
+            }
+            // Fusion sub-design state — exact copy into both the model
+            // and the FusionDetails UI struct so the controls reflect it.
+            int stages = Math.max(1, Math.min(NukeDesign.MAX_FUSION_STAGES,
+                    source.getFusionStageCount()));
+            design.setFusionStageCount(stages);
+            fusion.stageCount = stages;
+            for (int i = 0; i < NukeDesign.MAX_FUSION_STAGES; i++) {
+                String pusher  = source.getFusionPusher(i);
+                String channel = source.getFusionChannelFiller(i);
+                boolean spark  = source.getFusionSparkPlug(i);
+                if (pusher  != null) { design.setFusionPusher(i, pusher);  fusion.pusher[i]        = pusher;  }
+                if (channel != null) { design.setFusionChannelFiller(i, channel); fusion.channelFiller[i] = channel; }
+                design.setFusionSparkPlug(i, spark);
+                fusion.sparkPlug[i] = spark;
+            }
+            fusion.editingStage = 0;
+            rebuildPartsList();
+        } finally {
+            suppressChangeNotifications = false;
+        }
+        refresh(); // single notification
+    }
+
+    /** Adds a listener fired at the end of every {@link #refresh()} —
+     *  i.e. after any slot/part/fusion change. Safe to call from EDT.
+     *  Returns the same {@code r} so callers can keep a handle for
+     *  later removal. */
+    public Runnable addDesignChangeListener(Runnable r) {
+        if (r != null) designChangeListeners.add(r);
+        return r;
+    }
+
+    /** Removes a previously-registered design change listener. */
+    public void removeDesignChangeListener(Runnable r) {
+        if (r != null) designChangeListeners.remove(r);
+    }
+
+    /** Binds the configured hard-drop key to a confirm action and adds
+     *  a "&lt;hard-drop&gt; confirm" hint to the top-right key hint. Pass
+     *  {@code null} to unbind. The host is responsible for guarding
+     *  against double-invocation (e.g. via a one-shot flag) — this
+     *  method binds the keystroke but does not enforce single-fire. */
+    public void setConfirmKeyHandler(Runnable handler) {
+        this.confirmKeyHandler = handler;
+        InputMap im = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap am = getActionMap();
+        int code = Settings.get().getKeyHardDrop();
+        KeyStroke ks = code == 0 ? null : KeyStroke.getKeyStroke(code, 0);
+        if (ks != null) {
+            if (handler == null) {
+                // Restore the quarantine no-op for the hard-drop key
+                // so a stale gameplay key can't leak through.
+                String name = "builder.quarantine.hardDropRestore";
+                im.put(ks, name);
+                am.put(name, new AbstractAction() {
+                    @Override public void actionPerformed(java.awt.event.ActionEvent e) { /* swallow */ }
+                });
+            } else {
+                String name = "builder.confirm.hardDrop";
+                im.put(ks, name);
+                am.put(name, new AbstractAction() {
+                    @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                        Runnable h = confirmKeyHandler;
+                        if (h != null) h.run();
+                    }
+                });
+            }
+        }
+        refreshFocusChrome();
+    }
+
+    /** Deep-copy a builder {@link NukeDesign}, preserving every slot
+     *  selection and the full fusion sub-design state. */
+    private static NukeDesign copyOfBuilderDesign(NukeDesign src) {
+        NukeDesign out = new NukeDesign();
+        if (src == null) return out;
+        for (NukeSlot s : NukeSlot.ALL) {
+            NukePart p = src.get(s);
+            if (p != null) out.set(s, p);
+        }
+        out.setFusionStageCount(src.getFusionStageCount());
+        for (int i = 0; i < NukeDesign.MAX_FUSION_STAGES; i++) {
+            String pusher  = src.getFusionPusher(i);
+            String channel = src.getFusionChannelFiller(i);
+            if (pusher  != null) out.setFusionPusher(i, pusher);
+            if (channel != null) out.setFusionChannelFiller(i, channel);
+            out.setFusionSparkPlug(i, src.getFusionSparkPlug(i));
+        }
+        return out;
+    }
+
+    /** Fire all registered design-change listeners. Exceptions in one
+     *  listener don't stop the others. */
+    private void fireDesignChanged() {
+        if (suppressChangeNotifications) return;
+        if (designChangeListeners.isEmpty()) return;
+        for (Runnable r : new java.util.ArrayList<>(designChangeListeners)) {
+            try { r.run(); } catch (RuntimeException ignored) {}
+        }
     }
 
     /** Action row beneath the slot list. The Close button was removed
@@ -670,156 +820,6 @@ public class NukeBuilderDialog extends JPanel {
         return wrap;
     }
 
-    // ─────────────────────── UI: fuze terminal (under schematic) ────
-
-    private JComponent buildFuzeTerminal() {
-        JPanel wrap = new JPanel(new BorderLayout());
-        wrap.setBackground(DARK_BG);
-        wrap.setBorder(new EmptyBorder(0, 12, 6, 12));
-
-        fuzeTerminal = new FuzeTerminal();
-        fuzeTerminal.setPreferredSize(new Dimension(0, 108));
-        wrap.add(fuzeTerminal, BorderLayout.CENTER);
-        return wrap;
-    }
-
-    /**
-     * Tiny terminal-style readout under the schematic showing the
-     * currently-selected fuze type as a short pseudo-code easter egg.
-     * Clicking anywhere on the terminal selects the FUZE slot.
-     */
-    private final class FuzeTerminal extends JPanel {
-        FuzeTerminal() {
-            setBackground(new Color(4, 8, 6));
-            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            setFocusable(false);
-            addMouseListener(new MouseAdapter() {
-                @Override public void mouseClicked(MouseEvent e) {
-                    setActiveSlot(NukeSlot.FUZE);
-                }
-            });
-        }
-
-        @Override
-        protected void paintComponent(Graphics g0) {
-            super.paintComponent(g0);
-            Graphics2D g = (Graphics2D) g0.create();
-            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-
-            int w = getWidth(), h = getHeight();
-
-            // CRT-style border + faint scanlines.
-            boolean active = (activeSlot == NukeSlot.FUZE);
-            g.setColor(active ? ACCENT : new Color(40, 110, 70));
-            g.setStroke(new BasicStroke(active ? 2.0f : 1.2f));
-            g.drawRect(0, 0, w - 1, h - 1);
-            g.setColor(new Color(0, 60, 30, 40));
-            for (int y = 4; y < h - 2; y += 3) g.drawLine(2, y, w - 3, y);
-
-            // Title bar.
-            g.setColor(new Color(10, 30, 18));
-            g.fillRect(2, 2, w - 4, 18);
-            g.setColor(new Color(80, 200, 130));
-            g.setFont(new Font("Monospaced", Font.BOLD, 11));
-            g.drawString("[ FUZE-CTL // /dev/firing0 ]", 8, 15);
-            NukePart fuze = design.get(NukeSlot.FUZE);
-            String status = (fuze == NukePart.NONE)
-                    ? "STATUS: NO MODULE"
-                    : "STATUS: LOADED";
-            FontMetrics tm = g.getFontMetrics();
-            g.setColor(fuze == NukePart.NONE ? new Color(220, 160, 60) : new Color(120, 240, 160));
-            g.drawString(status, w - tm.stringWidth(status) - 8, 15);
-
-            // Code body \u2014 pseudo-source describing the chosen fuze.
-            g.setFont(new Font("Monospaced", Font.PLAIN, 12));
-            FontMetrics fm = g.getFontMetrics();
-            int rowH = fm.getHeight();
-            int x = 10;
-            int y = 22 + fm.getAscent() + 2;
-
-            String[] lines = fuzeCodeFor(fuze);
-            for (String line : lines) {
-                if (y + rowH > h - 4) break;
-                drawCodeLine(g, line, x, y);
-                y += rowH;
-            }
-
-            // Blinking-style cursor block at the end of the last line.
-            g.setColor(new Color(120, 240, 160));
-            g.fillRect(x, y - fm.getAscent() + 2, 7, fm.getAscent() - 2);
-
-            g.dispose();
-        }
-
-        /** Render one source-code line with crude C-syntax colouring. */
-        private void drawCodeLine(Graphics2D g, String line, int x, int y) {
-            if (line.trim().startsWith("//")) {
-                g.setColor(new Color(80, 140, 100));
-                g.drawString(line, x, y);
-                return;
-            }
-            FontMetrics fm = g.getFontMetrics();
-            int cx = x;
-            String[] toks = line.split("(?<=[ (){};,=<>])|(?=[ (){};,=<>])");
-            for (String t : toks) {
-                Color c = new Color(180, 220, 200);
-                if (t.matches("\\b(if|else|return|while|for|void|int|bool|true|false|const|static|switch|case|break|struct|enum|sizeof)\\b")) {
-                    c = new Color(120, 200, 240);
-                } else if (t.matches("\\b\\d+(\\.\\d+)?(m|s|ms|km|kt|hPa)?\\b")) {
-                    c = new Color(255, 200, 120);
-                } else if (t.startsWith("\"") && t.endsWith("\"")) {
-                    c = new Color(220, 160, 220);
-                } else if (t.matches("[A-Z_][A-Z0-9_]{2,}")) {
-                    c = new Color(255, 220, 120);
-                } else if (t.endsWith("(")) {
-                    c = new Color(160, 240, 200);
-                }
-                g.setColor(c);
-                g.drawString(t, cx, y);
-                cx += fm.stringWidth(t);
-            }
-        }
-
-        /** Pick a short pseudo-code blurb for the given fuze part. */
-        private String[] fuzeCodeFor(NukePart fuze) {
-            String n = (fuze == NukePart.NONE) ? "" : fuze.getName();
-            if (n.startsWith("Contact")) {
-                return new String[]{
-                    "// fuze: contact (impact-trigger)",
-                    "void on_tick() {",
-                    "    if (accel_g() > 50) fire(PRIMARY);",
-                    "}"
-                };
-            }
-            if (n.startsWith("Radar")) {
-                return new String[]{
-                    "// fuze: radar airburst @ 580 m AGL",
-                    "while (radar_alt() > 580) idle();",
-                    "arm(); fire(PRIMARY);  // \"my god, what have we done\""
-                };
-            }
-            if (n.startsWith("Programmable")) {
-                return new String[]{
-                    "// fuze: programmable HOB / ground-burst",
-                    "const int HOB_M = readPAL(\"hob.cfg\");",
-                    "if (radar_alt() <= HOB_M && armed) fire(PRIMARY);"
-                };
-            }
-            if (n.startsWith("Hydrostatic")) {
-                return new String[]{
-                    "// fuze: hydrostatic depth-charge",
-                    "while (pressure_hPa() < 4500) sink();",
-                    "fire(PRIMARY);  // ~45 m below surface"
-                };
-            }
-            return new String[]{
-                "// no fuze module installed",
-                "void on_tick() { return; }",
-                "// device will not detonate."
-            };
-        }
-    }
 
     // ─────────────────────── UI: info sidebar (right) ───────────────
 
@@ -845,7 +845,7 @@ public class NukeBuilderDialog extends JPanel {
         JPanel warnPanel = new JPanel(new BorderLayout());
         warnPanel.setBackground(PANEL_BG);
         warnPanel.setBorder(new LineBorder(ACCENT_DIM, 1));
-        JLabel wh = new JLabel("  WARNINGS");
+        JLabel wh = new JLabel("  DESIGN CHECKS");
         wh.setForeground(WARN_FG);
         wh.setFont(new Font("Monospaced", Font.BOLD, 11));
         wh.setBorder(new EmptyBorder(6, 6, 4, 6));
@@ -1002,7 +1002,6 @@ public class NukeBuilderDialog extends JPanel {
             case "boost":     return isBoosted || isSloika || isTwoStage;
             case "secondary": return isSloika || isTwoStage;
             case "casing":
-            case "fuze":
             case "delivery":  return true;
             case "safety":    return false;
             default:          return true;
@@ -1147,7 +1146,6 @@ public class NukeBuilderDialog extends JPanel {
         updateSlotAvailability();
         rebuildPartsList();
         showInfo(s, design.get(s));
-        if (fuzeTerminal != null) fuzeTerminal.repaint();
         schematic.repaint();
         // Refill column headings + key hint after rebuildPartsList()
         // blanked paletteHeading. Without this the title for the parts
@@ -1174,7 +1172,6 @@ public class NukeBuilderDialog extends JPanel {
         updateSlotAvailability();
         rebuildPartsList();
         showFusionInfo(g);
-        if (fuzeTerminal != null) fuzeTerminal.repaint();
         schematic.repaint();
         refreshFocusChrome();
     }
@@ -1389,7 +1386,7 @@ public class NukeBuilderDialog extends JPanel {
                 case "Edit Secondary":
                     return "Switches the editor to the secondary fusion stage — " +
                            "the stage directly compressed by the fission primary's " +
-                           "X-ray pulse. Its choices feed the warnings, historical " +
+                           "X-ray pulse. Its choices feed the design checks, historical " +
                            "analog and Castle Bravo synergy.";
                 case "Edit Tertiary":
                     return "Switches the editor to the tertiary stage — added " +
@@ -1550,7 +1547,6 @@ public class NukeBuilderDialog extends JPanel {
             Container host = warnPanel.getParent();
             if (host != null) { host.revalidate(); host.repaint(); }
         }
-        if (fuzeTerminal != null) fuzeTerminal.repaint();
         schematic.repaint();
         refreshFocusChrome();
         refreshBuildSummary();
@@ -1568,6 +1564,9 @@ public class NukeBuilderDialog extends JPanel {
             autoFitTextArea(analogLabel,  9);
             autoFitTextArea(infoArea,     9);
         });
+        // Notify embedded hosts that the design has changed. Fires once
+        // per refresh; loadDesign() suppresses intermediate notifications.
+        fireDesignChanged();
     }
 
     /** Shrink the font on a wrapping JTextArea until its preferred
@@ -1611,12 +1610,22 @@ public class NukeBuilderDialog extends JPanel {
 
         // Context-aware key hint. Always one short line, reads
         // left-to-right matching how the arrow keys are laid out on
-        // the keyboard.
+        // the keyboard. When a host has bound a confirm key (the
+        // hard-drop key), the hint also shows which key to press to
+        // confirm the design.
         String navHint = switch (focusedColumn) {
             case SLOTS -> "\u2191\u2193 row    \u2190\u2192 column";
             case PARTS -> "\u2191\u2193 option \u2190\u2192 column";
         };
-        keyHint.setText(navHint + "   Esc close");
+        StringBuilder text = new StringBuilder(navHint);
+        if (confirmKeyHandler != null) {
+            int code = Settings.get().getKeyHardDrop();
+            String name = code == 0 ? "Hard drop"
+                    : java.awt.event.KeyEvent.getKeyText(code);
+            text.append("   ").append(name).append(" confirm");
+        }
+        text.append("   Esc close");
+        keyHint.setText(text.toString());
     }
 
     private String partsHeadingText() {
@@ -1711,6 +1720,63 @@ public class NukeBuilderDialog extends JPanel {
         bind(im, am, "close",      KeyStroke.getKeyStroke("ESCAPE"),e -> onClose.run());
         bindResetShortcut(im, am, "resetP1", Settings.get().getKeyReset());
         bindResetShortcut(im, am, "resetP2", Settings.get().getKeyP2Reset());
+
+        // ── Input quarantine ──────────────────────────────────────────
+        // Gameplay keys must NEVER act as confirm/cancel shortcuts in
+        // the builder. We bind them to an explicit no-op so any held
+        // key from the prior gameplay frame (hard drop, hold, rotate)
+        // is consumed by this panel and does not bubble up to a parent
+        // input handler that might re-interpret it. Builder navigation
+        // keys (LEFT/RIGHT/UP/DOWN/ENTER/ESC, reset, slot digits) are
+        // bound above and take precedence — quarantining only adds
+        // bindings for keys that would otherwise be unhandled here.
+        quarantineGameplayKeys(im, am);
+    }
+
+    /** Bind every gameplay key from {@link Settings} to a no-op consume
+     *  action on this panel, so held gameplay input cannot leak into
+     *  confirm/cancel handling while the builder is active. Skips key
+     *  codes already bound by {@link #installKeyboardShortcuts()} (i.e.
+     *  builder navigation keys) so we don't overwrite them. */
+    private void quarantineGameplayKeys(InputMap im, ActionMap am) {
+        Settings s = Settings.get();
+        int[] codes = new int[] {
+                // P1 movement / drop / rotate / hold
+                s.getKeyMoveLeft(),  s.getKeyMoveRight(),
+                s.getKeyMoveDown(),  s.getKeyMoveUp(),
+                s.getKeyHardDrop(),
+                s.getKeyRotateCW(),  s.getKeyRotateCCW(),
+                s.getKeyHold(),      s.getKeyHoldAlt(),
+                // P2 movement / drop / rotate / hold
+                s.getKeyP2MoveLeft(),  s.getKeyP2MoveRight(),
+                s.getKeyP2MoveDown(),  s.getKeyP2MoveUp(),
+                s.getKeyP2HardDrop(),
+                s.getKeyP2RotateCW(),  s.getKeyP2RotateCCW(),
+                s.getKeyP2Hold(),
+        };
+        AbstractAction consume = new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) { /* swallow */ }
+        };
+        int n = 0;
+        for (int code : codes) {
+            if (code == 0) continue;
+            KeyStroke ks = KeyStroke.getKeyStroke(code, 0);
+            if (ks == null) continue;
+            // Don't overwrite already-bound builder navigation keys.
+            if (im.get(ks) != null) continue;
+            String name = "builder.quarantine." + (n++);
+            im.put(ks, name);
+            am.put(name, consume);
+            // Also consume the key-released variant — some input
+            // systems poll on release; a stale up-event must not fire
+            // confirm on an embedded host.
+            KeyStroke ksRel = KeyStroke.getKeyStroke(code, 0, true);
+            if (ksRel != null && im.get(ksRel) == null) {
+                String relName = name + ".rel";
+                im.put(ksRel, relName);
+                am.put(relName, consume);
+            }
+        }
     }
 
     /** UP / DOWN router: moves the cursor inside whichever column is
@@ -1912,7 +1978,7 @@ public class NukeBuilderDialog extends JPanel {
      *
      *      ┌─ CONFIG BANNER (top) ──────────────────────────┐
      *      │                                                │
-     *      │              [nose / fuze]                     │
+     *      │              [nose]                            │
      *      │   ─label◄────[primary sphere]────►label─       │
      *      │                  (rings)                       │
      *      │   ─label◄────[secondary cylinder]──►label─     │
@@ -2105,7 +2171,7 @@ public class NukeBuilderDialog extends JPanel {
         // ════════════════════════════════════════════════════════════
         // Architecture-specific renderers.
         //
-        // Each one paints CASING / FUZE / SAFETY / DELIVERY plus the
+        // Each one paints CASING / SAFETY / DELIVERY plus the
         // architecture-specific guts. They share a "stubby bomb" or
         // "tall missile" outer outline depending on the delivery
         // vehicle, but the *internal* geometry is what makes a
@@ -2197,7 +2263,6 @@ public class NukeBuilderDialog extends JPanel {
         // Geometry (top → bottom inside the device band):
         //
         //          ╭───────────╮          ← bulb (near-spherical)
-        //         │   ◌ fuze   │
         //         │             │
         //         │   bay       │
         //         │             │
@@ -2399,7 +2464,7 @@ public class NukeBuilderDialog extends JPanel {
         /**
          * Compute the inner free bay where architecture-specific guts
          * (gun barrel, primary sphere, secondary cylinder, etc.) go.
-         * The casing, delivery aeroshell and fuze module are all drawn
+         * The casing and delivery aeroshell are all drawn
          * elsewhere now — this just hands back a generously-sized bay
          * with the standard 22 px margin already factored in by the
          * caller's choice of devTop / devBot / devW.

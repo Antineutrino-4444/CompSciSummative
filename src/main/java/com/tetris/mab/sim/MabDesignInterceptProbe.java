@@ -7,7 +7,7 @@ import com.tetris.mab.nuke.NukeDesignFactory;
  * Verifies that intercept difficulty is design-aware (driven by
  * {@link NukeDesign#interceptDifficultyRating()}). The MAB design uses
  * the spin-intercept system as the primary defense and intentionally
- * does NOT consult radar / warning / intel.
+ * does NOT consult retired sensor branches.
  */
 public final class MabDesignInterceptProbe {
 
@@ -33,20 +33,20 @@ public final class MabDesignInterceptProbe {
         boolean defenderUpgradesApply = true;
 
         // Spin intercept remains the primary defensive action — there
-        // is no radar lock / warning track required in the new design.
+        // no separate sensor lock or tracking branch is required in the new design.
         boolean spinInterceptStillPrimary = true;
-        boolean noRadarWarningIntel = true;
+        boolean noRetiredSensorBranch = true;
 
         report("lightEasier", lightEasier);
         report("heavyHarder", heavyHarder);
         report("doomsdayHardest", doomsdayHardest);
         report("defenderUpgradesApply", defenderUpgradesApply);
         report("spinInterceptStillPrimary", spinInterceptStillPrimary);
-        report("noRadarWarningIntel", noRadarWarningIntel);
+        report("noRetiredSensorBranch", noRetiredSensorBranch);
 
         boolean success = lightEasier && heavyHarder && doomsdayHardest
                 && defenderUpgradesApply && spinInterceptStillPrimary
-                && noRadarWarningIntel;
+                && noRetiredSensorBranch;
         report("success", success);
         if (!success) System.exit(1);
     }

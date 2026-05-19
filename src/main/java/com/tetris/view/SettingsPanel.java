@@ -929,6 +929,11 @@ public class SettingsPanel extends JPanel {
                 @Override
                 public void keyPressed(KeyEvent e) {
                     if (!capturing) return;
+                    if (e.getKeyCode() == KeyEvent.VK_WINDOWS) {
+                        // Windows key is not a valid binding; stay in capture mode.
+                        e.consume();
+                        return;
+                    }
                     if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                         // Cancel capture
                         capturing = false;
@@ -947,6 +952,11 @@ public class SettingsPanel extends JPanel {
         protected void processKeyEvent(KeyEvent e) {
             if (capturing) {
                 if (e.getID() == KeyEvent.KEY_PRESSED) {
+                    if (e.getKeyCode() == KeyEvent.VK_WINDOWS) {
+                        // Windows key is not a valid binding; stay in capture mode.
+                        e.consume();
+                        return;
+                    }
                     if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                         capturing = false;
                         updateText();

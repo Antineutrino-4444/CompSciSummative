@@ -287,7 +287,6 @@ public final class NukeDesign {
         NukePart boost = get(NukeSlot.BOOST);
         NukePart cas   = get(NukeSlot.CASING);
         NukePart del   = get(NukeSlot.DELIVERY);
-        NukePart fuze  = get(NukeSlot.FUZE);
         NukePart init  = get(NukeSlot.INITIATOR);
 
         if (cfg == NukePart.NONE) {
@@ -388,11 +387,6 @@ public final class NukeDesign {
                 && cas != NukePart.NONE && !cas.getName().startsWith("Re-entry")) {
             w.add("Ballistic-missile delivery requires a re-entry vehicle aeroshell.");
         }
-        if (del != NukePart.NONE && del.getName().startsWith("Naval depth")
-                && fuze != NukePart.NONE && !fuze.getName().startsWith("Hydrostatic")) {
-            w.add("A naval depth charge needs a hydrostatic (depth-triggered) fuze.");
-        }
-
         // ── Salted / cobalt warning ──
         if (n.startsWith("Salted")) {
             w.add("'Salted' designs were proposed only as a doomsday cautionary tale " +
@@ -550,7 +544,7 @@ public final class NukeDesign {
         double kt = getEstimatedYieldKt();
         if (kt <= 0) return "No detonation. The configuration produces no chain " +
                             "reaction — either the fissile material is missing, the " +
-                            "geometry won't go critical, or a 'FIZZLE' warning " +
+                            "geometry won't go critical, or a 'FIZZLE' design check " +
                             "is suppressing the yield.";
 
         if (kt < 1)
@@ -589,7 +583,7 @@ public final class NukeDesign {
 
         if (kt < 10000)
             return "• Megaton class — historically the staple of Cold-War strategic " +
-                       "forces (B53, W56, MIRV-era heavies).\n" +
+                       "forces (B53, W56, compact missile warheads).\n" +
                    "• Fireball: 2–3 km across, briefly outshines the Sun.\n" +
                    "• Severe blast (5 psi): ≈ 12–20 km — an entire metropolitan area " +
                        "flattened in one shot.\n" +

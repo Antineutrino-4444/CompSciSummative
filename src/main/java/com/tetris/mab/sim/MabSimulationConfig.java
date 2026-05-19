@@ -122,15 +122,14 @@ public record MabSimulationConfig(
                 true, false, 40, "AI_VS_AI");
     }
 
-    public static MabSimulationConfig radarDecoy() {
-        // Legacy scenario name retained for backward compatibility. The
-        // current MAB design has no radar / decoy systems, so the
-        // scenario simply runs a balanced AI matchup.
-        return new MabSimulationConfig(MabSimulationMode.RADAR_DECOY, 20,
-                MabAiArchetype.BALANCED, MabAiArchetype.MIRV_CONTROLLER,
+    public static MabSimulationConfig routeFeint() {
+        // Current MAB design keeps this as a debug-only route/feint
+        // exercise for invariant coverage.
+        return new MabSimulationConfig(MabSimulationMode.ROUTE_FEINT, 20,
+                MabAiArchetype.BALANCED, MabAiArchetype.PAYLOAD_CONTROLLER,
                 MabAiDifficulty.NORMAL,
                 false, false,
-                true, false, 40, "RADAR_DECOY");
+                true, false, 40, "ROUTE_FEINT");
     }
 
     public static MabSimulationConfig launchImpact() {

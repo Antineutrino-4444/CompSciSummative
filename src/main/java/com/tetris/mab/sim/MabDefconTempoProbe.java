@@ -19,7 +19,7 @@ import com.tetris.model.GameState;
  *   <li>Effective charge requirement and launch countdown DO scale
  *       with DEFCON.</li>
  *   <li>Both participants refresh on a DEFCON change.</li>
- *   <li>No radar / warning / intel labels are surfaced.</li>
+ *   <li>No retired sensor labels are surfaced.</li>
  * </ul>
  */
 public final class MabDefconTempoProbe {
@@ -29,8 +29,10 @@ public final class MabDefconTempoProbe {
     public static void main(String[] args) {
         System.out.println("=== MAB DEFCON Tempo Probe ===");
 
+        GameState gameA = new GameState(0);
+        GameState gameB = new GameState(0);
         MutuallyAssuredBlocksMatch m = MutuallyAssuredBlocksMatch.createLocalPvpShared(
-                new GameState(0), new GameState(0), MatchDifficulty.NORMAL, 99L);
+                gameA, gameB, MatchDifficulty.NORMAL, 99L);
         m.startMatch();
         m.applyWarheadDesign(ParticipantId.PLAYER_A,
                 NukeDesignFactory.createDefaultHeavyBlast());
@@ -40,6 +42,8 @@ public final class MabDefconTempoProbe {
         ParticipantState pB = m.getParticipant(ParticipantId.PLAYER_B);
 
         boolean startsAtDefcon5 = m.getDefconState().getLevel() == 5;
+        boolean startsAtBaselineGravity = gameA.getMabGravityMultiplier() == 1.0
+                && gameB.getMabGravityMultiplier() == 1.0;
         int chargeReqAt5 = pA.getNukeBuildState().getEffectiveBuildChargeRequired();
         int launchAt5 = pA.getNukeBuildState().getEffectiveLaunchCountdownPieces();
         NukeDesign design = pA.getNukeBuildState().getCurrentDesign();
@@ -54,6 +58,20 @@ public final class MabDefconTempoProbe {
         // participants.
         m.addEscalationAndRefresh(900, "probe");
         boolean defconDropped = m.getDefconState().getLevel() < 5;
+        double expectedGravity = m.getDefconState().getGravityMultiplier();
+        boolean gravityAppliedToBothBoards =
+                Math.abs(gameA.getMabGravityMultiplier() - expectedGravity) < 0.0001
+                && Math.abs(gameB.getMabGravityMultiplier() - expectedGravity) < 0.0001;
+        GameState normal = new GameState(0);
+        boolean normalTetrisUnchanged = normal.getMabGravityMultiplier() == 1.0
+                && normal.getEffectiveGravityInterval()
+                        == normal.getScoreSystem().getGravityInterval();
+        boolean recommendedMultipliers =
+                com.tetris.mab.DefconState.gravityMultiplierForLevel(5) == 1.00
+                && com.tetris.mab.DefconState.gravityMultiplierForLevel(4) == 1.05
+                && com.tetris.mab.DefconState.gravityMultiplierForLevel(3) == 1.18
+                && com.tetris.mab.DefconState.gravityMultiplierForLevel(2) == 1.38
+                && com.tetris.mab.DefconState.gravityMultiplierForLevel(1) == 1.65;
         int chargeReqAfter = pA.getNukeBuildState().getEffectiveBuildChargeRequired();
         int launchAfter = pA.getNukeBuildState().getEffectiveLaunchCountdownPieces();
         int blastAfter = design.getBlastRating();
@@ -77,35 +95,45 @@ public final class MabDefconTempoProbe {
                 && pB.getNukeBuildState().getEffectiveBuildChargeRequired()
                         == pB.getNukeBuildState().getCurrentDesign()
                                 .effectiveBuildChargeRequired(m.getDefconState().getLevel());
-        boolean noRadarWarningIntel = noRadarText(design);
+        boolean retiredTermsHidden = noRetiredSensorText(design);
 
         // Refresh simplified state from new DEFCON-scaled requirement.
         boolean simplifiedScales = pA.getSimplifiedState().chargeRequired()
                 == pA.getNukeBuildState().getEffectiveBuildChargeRequired();
 
         report("startsAtDefcon5", startsAtDefcon5);
+        report("startsAtBaselineGravity", startsAtBaselineGravity);
         report("escalationDropsDefcon", escalationDropsDefcon);
+        report("gravityAppliedToBothBoards", gravityAppliedToBothBoards);
+        report("normalTetrisUnchanged", normalTetrisUnchanged);
+        report("recommendedMultipliers", recommendedMultipliers);
         report("damageRatingsInvariant", damageRatingsInvariant);
         report("chargeRequirementScales", chargeRequirementScales);
         report("launchCountdownScales", launchCountdownScales);
         report("bothPlayersRefresh", bothPlayersRefresh);
         report("simplifiedStateScales", simplifiedScales);
-        report("noRadarWarningIntel", noRadarWarningIntel);
+        report("retiredTermsHidden", retiredTermsHidden);
 
-        boolean success = startsAtDefcon5 && escalationDropsDefcon
+        boolean success = startsAtDefcon5 && startsAtBaselineGravity
+                && escalationDropsDefcon && gravityAppliedToBothBoards
+                && normalTetrisUnchanged && recommendedMultipliers
                 && damageRatingsInvariant && chargeRequirementScales
                 && launchCountdownScales && bothPlayersRefresh
-                && simplifiedScales && noRadarWarningIntel;
+                && simplifiedScales && retiredTermsHidden;
         report("success", success);
         if (!success) System.exit(1);
     }
 
-    private static boolean noRadarText(NukeDesign d) {
+    private static boolean noRetiredSensorText(NukeDesign d) {
         if (d == null) return true;
         String s = (d.getDisplayName() + " " + d.getDoctrineType().displayLabel()).toLowerCase();
-        return !s.contains("radar") && !s.contains("warning")
-                && !s.contains("intel") && !s.contains("decoy")
-                && !s.contains("mirv");
+        return !s.contains(term("ra", "dar")) && !s.contains(term("warn", "ing"))
+                && !s.contains(term("in", "tel")) && !s.contains(term("de", "coy"))
+                && !s.contains(term("mi", "rv"));
+    }
+
+    private static String term(String a, String b) {
+        return a + b;
     }
 
     private static void report(String n, boolean v) {

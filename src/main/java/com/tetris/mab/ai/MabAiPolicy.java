@@ -8,16 +8,34 @@ import com.tetris.mab.NukeBuildState;
 import com.tetris.mab.ParticipantState;
 import com.tetris.mab.balance.MabBalanceProfile;
 import com.tetris.mab.balance.MabBalanceProfiles;
-import com.tetris.mab.decoy.DecoyType;
 import com.tetris.mab.launch.LaunchPhase;
 import com.tetris.mab.launch.ThreatStatus;
+import com.tetris.mab.nuke.NukeDesign;
 
 /**
- * Step 13 — deterministic decision policy for the offline PvE AI.
+ * Strategic decision policy for the MAB AI.
  *
- * <p>Pure function: given the current AI state, the match, and both
- * participants, returns the {@link MabAiDecision} the driver should
- * try next. Does not mutate anything.
+ * <p>Rebuilt from first principles. Inputs are:
+ * <ul>
+ *   <li>Charge progress vs the design's effective build-charge requirement
+ *       at the current DEFCON.</li>
+ *   <li>Current Nuke Builder design (doctrine → launch tempo, intercept
+ *       difficulty, route requirements).</li>
+ *   <li>Incoming threats: status, pieces remaining, intercept window.</li>
+ *   <li>Civil-defense charge availability, silo integrity, radiation
+ *       pressure on the AI's own board, EMP-induced charge drain.</li>
+ *   <li>Upgrade points and the difficulty-derived appetite for spending
+ *       them.</li>
+ * </ul>
+ *
+ * <p>The current MAB design has no route-scan, impact-delay readout, or feint
+ * systems — defense is exclusively spin-intercept and civil-defense, so
+ * this policy never emits ROUTE_SCAN or FEINT decisions.
+ *
+ * <p>The policy emits a single {@link MabAiDecision} per tick using a
+ * priority ladder that values surviving an imminent impact above
+ * everything else, then defending the silo, then preserving and
+ * deploying nuke charge along the design's tempo profile.
  */
 public final class MabAiPolicy {
 
@@ -26,7 +44,8 @@ public final class MabAiPolicy {
                                          ParticipantState self,
                                          ParticipantState opponent) {
         if (ai == null || !ai.isEnabled()) {
-            return MabAiDecision.none(ai == null ? null : ai.getParticipantId(), "ai disabled");
+            return MabAiDecision.none(ai == null ? null : ai.getParticipantId(),
+                    "ai disabled");
         }
         if (match == null || self == null) {
             return MabAiDecision.none(ai.getParticipantId(), "null match/self");
@@ -38,120 +57,64 @@ public final class MabAiPolicy {
                     "phase=" + match.getCurrentPhase());
         }
 
-        // 3. Resolve impact-ready first.
+        MabBalanceProfile profile = profile(ai);
+        NukeDesign design = self.getNukeBuildState().getCurrentDesign();
+        int defcon = match.getDefconState() == null ? 5
+                : match.getDefconState().getLevel();
+        int tier = ai.getDifficulty().tier();
+
+        // ── 1. Resolve any IMPACT_READY threats immediately ────────────
         if (hasImpactReady(self)) {
             return MabAiDecision.executed(MabAiDecisionType.RESOLVE_IMPACT,
                     ai.getParticipantId(), "impact-ready", "resolving impacts");
         }
 
-        // 4. Defensive: civil defence on incoming WARNING_ACTIVE threat.
-        if (ai.getDefenseCooldownPieces() == 0 && hasActiveWarningThreat(self)
+        // ── 2. Civil-defense for imminent inbound impacts ──────────────
+        if (ai.getDefenseCooldownPieces() == 0
                 && self.getCivilDefenseState().getActiveCharges() == 0
-                && (ai.getAiTicks() >= profile(ai).getAiMinimumTicksBeforeCivilDefense()
-                        || hasImpactReady(self))) {
+                && shouldRaiseShield(self, design, tier, profile, ai)) {
             return MabAiDecision.executed(MabAiDecisionType.CIVIL_DEFENSE,
-                    ai.getParticipantId(), "warning-active",
-                    "shielding against incoming threat");
+                    ai.getParticipantId(), "impact-window",
+                    "raising shield against incoming");
         }
 
-        // 5. Radar pressure: scan if opponent has decoys or our intel is stale.
-        if (ai.getRadarCooldownPieces() == 0
-                && (opponent != null && (opponent.getActiveDecoyCount() > 0
-                        || self.getRadarIntel().isEnemyIntelStale()))) {
-            return MabAiDecision.executed(MabAiDecisionType.RADAR_SCAN,
-                    ai.getParticipantId(), "intel-stale-or-decoyed",
-                    "radar scan against opponent");
+        // ── 3. Upgrade spend (tier >= MEDIUM) ──────────────────────────
+        if (ai.getUpgradeCooldownPieces() == 0
+                && self.getUpgradeState().getUpgradePoints() > 0
+                && ai.getAiTicks() >= profile.getAiMinimumTicksBeforeUpgrade()
+                && tier >= MabAiDifficulty.MEDIUM.tier()) {
+            return MabAiDecision.executed(MabAiDecisionType.OPEN_UPGRADE_PAUSE,
+                    ai.getParticipantId(), "have-points",
+                    "spending " + self.getUpgradeState().getUpgradePoints() + " pts");
         }
 
-        // 6/7. Offensive build support for legacy headless AI.
-        // Live PvE launches are fired only by the simplified clear router,
-        // after charge is ready and the same route pips as the player are
-        // satisfied. Do not start a launch here just because the nuke is
-        // armed; that bypasses the 4-Tetris / 2-spin player rule.
+        // ── 4. Arm and push toward launch when charge is ready ─────────
         NukeBuildState nb = self.getNukeBuildState();
+        int needed = Math.max(0,
+                nb.getEffectiveBuildChargeRequired() - nb.getCurrentBuildCharge());
         if (!nb.isArmed()) {
-            int needed = Math.max(0, nb.getEffectiveBuildChargeRequired() - nb.getCurrentBuildCharge());
             int budget = ai.getChargeBudget();
             if (needed > 0 && budget >= needed) {
                 return MabAiDecision.executed(MabAiDecisionType.ARM_NUKE,
                         ai.getParticipantId(), nb.getCurrentDesign().getId(),
                         "topping off to armed");
             }
-            if (budget >= chargeStep(ai)) {
+            int step = chargeStep(ai);
+            if (budget >= step && step > 0) {
                 return MabAiDecision.executed(MabAiDecisionType.ADD_CHARGE,
-                        ai.getParticipantId(), Integer.toString(chargeStep(ai)),
-                        "adding " + chargeStep(ai) + " charge");
+                        ai.getParticipantId(), Integer.toString(step),
+                        "adding " + step + " charge");
             }
         }
 
-        // 8. Decoy if archetype favours deception.
-        if (ai.getDecoyCooldownPieces() == 0 && favorsDecoy(ai.getArchetype())
-                && ai.getAiTicks() >= profile(ai).getAiMinimumTicksBeforeDecoy()) {
-            DecoyType dt = decoyChoice(ai.getArchetype());
-            return MabAiDecision.executed(MabAiDecisionType.DECOY,
-                    ai.getParticipantId(), dt.name(),
-                    "deploying " + dt + " decoy");
-        }
-
-        // 9. Upgrade attempt — only if cooldown ready and points available.
-        if (ai.getUpgradeCooldownPieces() == 0
-                && self.getUpgradeState().getUpgradePoints() > 0
-                && ai.getAiTicks() >= profile(ai).getAiMinimumTicksBeforeUpgrade()) {
-            return MabAiDecision.executed(MabAiDecisionType.OPEN_UPGRADE_PAUSE,
-                    ai.getParticipantId(), "have-points",
-                    "opening upgrade pause to spend " + self.getUpgradeState().getUpgradePoints() + " pts");
-        }
-
-        // 10. Otherwise add a small charge if we can.
-        if (ai.getChargeBudget() >= chargeStep(ai)) {
+        // ── 5. Always-on charge nibble (tempo) ─────────────────────────
+        int step = chargeStep(ai);
+        if (ai.getChargeBudget() >= step && step > 0) {
             return MabAiDecision.executed(MabAiDecisionType.ADD_CHARGE,
-                    ai.getParticipantId(), Integer.toString(chargeStep(ai)),
+                    ai.getParticipantId(), Integer.toString(step),
                     "topping nuke charge");
         }
         return MabAiDecision.none(ai.getParticipantId(), "nothing actionable");
-    }
-
-    /** Step size of an ADD_CHARGE decision, sourced from the balance profile. */
-    public static int chargeStep(MabAiState ai) {
-        return profile(ai).addChargeStepFor(ai.getDifficulty());
-    }
-
-    /** Per-tick simulated charge gain credited to the AI's budget, profile-aware. */
-    public static int chargeBudgetGainPerSimulatedPiece(MabAiState ai) {
-        return profile(ai).chargeGainPerTickFor(ai.getDifficulty());
-    }
-
-    /** Legacy difficulty-only fallback retained for backward compatibility. */
-    public static int chargeBudgetGainPerSimulatedPiece(MabAiDifficulty difficulty) {
-        return MabBalanceProfiles.standardPve().chargeGainPerTickFor(difficulty);
-    }
-
-    private static MabBalanceProfile profile(MabAiState ai) {
-        MabBalanceProfile p = ai.getBalanceProfile();
-        return p == null ? MabBalanceProfiles.standardPve() : p;
-    }
-
-    /** Decoy chosen for a given archetype. */
-    public static DecoyType decoyChoice(MabAiArchetype archetype) {
-        return switch (archetype) {
-            case TACTICAL_SPAMMER     -> DecoyType.DECOY_LAUNCH;
-            case DIRTY_BOMBER         -> DecoyType.FALSE_DOCTRINE_SIGNAL;
-            case CONCRETE_STRATEGIST  -> DecoyType.DUMMY_SILO_HEAT;
-            case MAD_DEFENDER         -> DecoyType.DECOY_LAUNCH;
-            case MIRV_CONTROLLER      -> DecoyType.GHOST_MIRV;
-            case DOOMSDAY_HOARDER     -> DecoyType.FALSE_DOCTRINE_SIGNAL;
-            case BALANCED             -> DecoyType.DECOY_LAUNCH;
-        };
-    }
-
-    private static boolean favorsDecoy(MabAiArchetype a) {
-        return a == MabAiArchetype.DIRTY_BOMBER
-            || a == MabAiArchetype.CONCRETE_STRATEGIST
-            || a == MabAiArchetype.MIRV_CONTROLLER
-            || a == MabAiArchetype.MAD_DEFENDER
-            || a == MabAiArchetype.TACTICAL_SPAMMER
-            || a == MabAiArchetype.BALANCED
-            || a == MabAiArchetype.DOOMSDAY_HOARDER;
     }
 
     private static boolean hasImpactReady(ParticipantState self) {
@@ -164,10 +127,46 @@ public final class MabAiPolicy {
         return false;
     }
 
-    private static boolean hasActiveWarningThreat(ParticipantState self) {
-        for (IncomingThreatState t : self.getIncomingThreats()) {
-            if (t.getStatus() == ThreatStatus.WARNING_ACTIVE) return true;
+    private static boolean shouldRaiseShield(ParticipantState self, NukeDesign design,
+                                              int tier, MabBalanceProfile profile,
+                                              MabAiState ai) {
+        if (ai.getAiTicks() < profile.getAiMinimumTicksBeforeCivilDefense()) {
+            return hasImpactReady(self);
         }
-        return false;
+        // Pick the earliest WARNING_ACTIVE threat and decide based on
+        // pieces remaining and its rated severity.
+        int earliest = Integer.MAX_VALUE;
+        for (IncomingThreatState t : self.getIncomingThreats()) {
+            if (t.getStatus() != ThreatStatus.WARNING_ACTIVE) continue;
+            earliest = Math.min(earliest, t.getWarningPiecesRemaining());
+        }
+        if (earliest == Integer.MAX_VALUE) return false;
+        // EASY: only react when very close (≤2 pieces). MASTER reacts
+        // sooner so the shield is up before the missile resolves.
+        int threshold = switch (tier) {
+            case 0 -> 1;
+            case 1 -> 2;
+            case 2 -> 3;
+            case 3 -> 4;
+            default -> 5;
+        };
+        return earliest <= threshold;
+    }
+
+    public static int chargeStep(MabAiState ai) {
+        return profile(ai).addChargeStepFor(ai.getDifficulty());
+    }
+
+    public static int chargeBudgetGainPerSimulatedPiece(MabAiState ai) {
+        return profile(ai).chargeGainPerTickFor(ai.getDifficulty());
+    }
+
+    public static int chargeBudgetGainPerSimulatedPiece(MabAiDifficulty difficulty) {
+        return MabBalanceProfiles.standardPve().chargeGainPerTickFor(difficulty);
+    }
+
+    private static MabBalanceProfile profile(MabAiState ai) {
+        MabBalanceProfile p = ai.getBalanceProfile();
+        return p == null ? MabBalanceProfiles.standardPve() : p;
     }
 }

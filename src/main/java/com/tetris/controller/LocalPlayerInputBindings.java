@@ -36,7 +36,7 @@ public final class LocalPlayerInputBindings {
         b.keys.put(LocalPlayerAction.MOVE_DOWN,      KeyEvent.VK_S);
         b.keys.put(LocalPlayerAction.MOVE_UP,        KeyEvent.VK_W);
         b.keys.put(LocalPlayerAction.HARD_DROP,      KeyEvent.VK_R);
-        b.keys.put(LocalPlayerAction.ROTATE_CW,      KeyEvent.VK_Q);
+        b.keys.put(LocalPlayerAction.ROTATE_CW,      KeyEvent.VK_T);
         b.keys.put(LocalPlayerAction.ROTATE_CCW,     KeyEvent.VK_F);
         b.keys.put(LocalPlayerAction.HOLD,           KeyEvent.VK_E);
         b.keys.put(LocalPlayerAction.PAUSE,          KeyEvent.VK_K);

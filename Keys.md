@@ -10,7 +10,7 @@ Used for: Normal Tetris, MAB PvE, and the left station in local PvP.
 | 3 | Move Down / Soft Drop | S | Soft drops in game; navigates down in menus |
 | 4 | Move Up | W | Navigates up in menus/overlays |
 | 5 | Hard Drop / Confirm | R | Hard drops in game; confirms/activates menus and overlays |
-| 6 | Rotate Clockwise | Q | |
+| 6 | Rotate Clockwise | T | Q is reserved for MAB active commands |
 | 7 | Rotate Counterclockwise | F | |
 | 8 | Hold | E | |
 | 9 | Pause | K | |

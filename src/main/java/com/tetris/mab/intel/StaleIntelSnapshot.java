@@ -12,7 +12,7 @@ package com.tetris.mab.intel;
  */
 public class StaleIntelSnapshot {
 
-    /** Threshold at which the stored intel is considered stale. */
+    /** Threshold at which the stored readout is considered stale. */
     public static final int STALE_SCORE_THRESHOLD = 4;
 
     private final RadarScanResult lastScan;
@@ -77,8 +77,8 @@ public class StaleIntelSnapshot {
     }
 
     public String toDebugString() {
-        if (lastScan == null) return "Intel{none}";
-        return "Intel{level=" + lastScan.intelLevel()
+        if (lastScan == null) return "Readout{none}";
+        return "Readout{level=" + lastScan.intelLevel()
                 + " conf=" + lastScan.confidencePercent()
                 + " stale=" + stale
                 + " score=" + estimatedStalenessScore

@@ -43,7 +43,7 @@ public final class UpgradeRegistry {
                 "Reduces immediate silo integrity loss."));
         r.add(new UpgradeDefinition(UpgradeType.SILO_CAMOUFLAGE, "silo_camouflage",
                 "Silo Camouflage", UpgradeCategory.SILO_SYSTEMS, 2, 1, 5, List.of(),
-                "Later affects radar/intel visibility."));
+                "Later affects launch visibility."));
 
         // Defense
         r.add(new UpgradeDefinition(UpgradeType.SHELTERS, "shelters",
@@ -71,10 +71,10 @@ public final class UpgradeRegistry {
                 "Countdown Automation", UpgradeCategory.LAUNCH_SYSTEMS, 2, 2, 2, List.of(),
                 "Later improves late-DEFCON launch tempo."));
 
-        // Warning / radar
+        // Threat tracking
         r.add(new UpgradeDefinition(UpgradeType.EARLY_WARNING_RADAR, "early_warning_radar",
-                "Early Warning Radar", UpgradeCategory.WARNING_RADAR, 3, 1, 5, List.of(),
-                "Later improves threat warning and intel."));
+                "Threat Sensor Grid", UpgradeCategory.WARNING_RADAR, 3, 1, 5, List.of(),
+                "Later improves threat tracking and route clarity."));
         r.add(new UpgradeDefinition(UpgradeType.SIGNAL_ANALYSIS, "signal_analysis",
                 "Signal Analysis", UpgradeCategory.WARNING_RADAR, 2, 2, 4,
                 List.of(UpgradeType.EARLY_WARNING_RADAR),

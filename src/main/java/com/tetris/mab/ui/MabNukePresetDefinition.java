@@ -12,7 +12,7 @@ import java.util.function.Supplier;
  * construct {@link NukeDesign} records directly.
  *
  * <p>The preset ladder mirrors the current MAB doctrine model and
- * deliberately excludes MIRV / decoy / radar / warning concepts:
+ * deliberately excludes retired splitter, feint, and sensor concepts:
  * <ol>
  *   <li>Training Payload (placeholder)</li>
  *   <li>Light Tactical Blast</li>

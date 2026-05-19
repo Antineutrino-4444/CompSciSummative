@@ -99,7 +99,7 @@ public class MabHudPanel extends JPanel {
         center.add(section("Alerts", alertArea));
         center.add(section("Your arsenal", playerArea));
         center.add(section("Incoming threats", threatArea));
-        center.add(section("Opponent intel", opponentArea));
+        center.add(section("Opponent status", opponentArea));
         center.add(section("Action code", actionArea));
         center.add(section("Recent events", eventArea));
         add(center, BorderLayout.CENTER);
@@ -107,7 +107,7 @@ public class MabHudPanel extends JPanel {
         helpLabel = new JLabel("<html><pre style='margin:0;font-size:10px'>"
                 + "Controls: standard Tetris keys.\n"
                 + "Strategic actions = line-clear sequences:\n"
-                + "  Radar Scan         2,1,2\n"
+                + "  Status Check       2,1,2\n"
                 + "  Civil Defense      1,1,2\n"
                 + "  Emergency Intercept 1,2,1\n"
                 + "  Launch nuke         use the current nuke's launch code\n"

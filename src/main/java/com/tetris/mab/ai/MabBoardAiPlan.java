@@ -1,13 +1,11 @@
 package com.tetris.mab.ai;
 
 /**
- * Step 20 Second Refinement (extended in Third Refinement) — read-only
- * snapshot of the visible-board AI's current intent. Surfaced to
- * {@link com.tetris.mab.ui.MabOpponentBoardPanel} so the player can
- * see what the opponent is trying to do (col, rotation, phase,
- * evaluation score, target PPS, hard-drop count).
+ * Read-only snapshot of the visible-board AI's current intent. Surfaced to
+ * {@link com.tetris.mab.ui.MabOpponentBoardPanel} so the player can see
+ * what the opponent is aiming at.
  *
- * <p><b>Offline-only.</b>
+ * <p>Offline-only.
  */
 public final class MabBoardAiPlan {
 
@@ -30,7 +28,6 @@ public final class MabBoardAiPlan {
         this.hardDropCount = hardDropCount;
     }
 
-    /** Legacy constructor kept for source compatibility. */
     public MabBoardAiPlan(Phase phase, int targetCol, int targetRotation, int score) {
         this(phase, targetCol, targetRotation, score, 0.0, 0);
     }
@@ -42,7 +39,6 @@ public final class MabBoardAiPlan {
     public double getTargetPps() { return targetPps; }
     public int getHardDropCount() { return hardDropCount; }
 
-    /** Short one-line debug-friendly description. */
     public String describe() {
         if (targetCol < 0) {
             return "phase=" + phase

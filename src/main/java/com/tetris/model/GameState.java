@@ -174,6 +174,7 @@ public class GameState {
     private boolean gameOver;
     private boolean paused;
     private boolean gravityFrozen;
+    private double mabGravityMultiplier = 1.0;
 
     /** Flag indicating a new piece was just spawned (for IRS/IHS). */
     private boolean justSpawned;
@@ -890,7 +891,7 @@ public class GameState {
         long now = System.currentTimeMillis();
 
         // Gravity: automatically drop the piece
-        int interval = scoreSystem.getGravityInterval();
+        int interval = getEffectiveGravityInterval();
         if (gravityFrozen) { lastGravityDrop = now; }
         else if (now - lastGravityDrop >= interval) {
             Tetromino moved = currentPiece.moveDown();
@@ -928,6 +929,23 @@ public class GameState {
     public void setGravityFrozen(boolean frozen) {
         this.gravityFrozen = frozen;
         if (!frozen) lastGravityDrop = System.currentTimeMillis();
+    }
+
+    public void setMabGravityMultiplier(double multiplier) {
+        double next = multiplier;
+        if (!Double.isFinite(next) || next <= 0.0) next = 1.0;
+        if (Math.abs(mabGravityMultiplier - next) < 0.0001) return;
+        mabGravityMultiplier = next;
+        lastGravityDrop = System.currentTimeMillis();
+    }
+
+    public double getMabGravityMultiplier() {
+        return mabGravityMultiplier;
+    }
+
+    public int getEffectiveGravityInterval() {
+        int base = scoreSystem.getGravityInterval();
+        return Math.max(1, (int) Math.round(base / mabGravityMultiplier));
     }
 
     public void togglePause() {

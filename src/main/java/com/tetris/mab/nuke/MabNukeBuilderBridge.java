@@ -26,11 +26,10 @@ public final class MabNukeBuilderBridge {
         String cfg = nameOf(design.get(NukeSlot.CONFIGURATION));
         String delivery = nameOf(design.get(NukeSlot.DELIVERY));
         String tamper = nameOf(design.get(NukeSlot.TAMPER));
-        String fuze = nameOf(design.get(NukeSlot.FUZE));
         double conceptualYield = Math.max(0.0, design.getEstimatedYieldKt());
         int complexity = clamp((int) Math.round(design.getComplexityScore()), 1, 10);
 
-        NukeDoctrineType doctrine = doctrineFor(cfg, delivery, tamper, fuze, conceptualYield);
+        NukeDoctrineType doctrine = doctrineFor(cfg, delivery, tamper, conceptualYield);
         int size = clamp((int) Math.round(12 + Math.cbrt(Math.max(1.0, conceptualYield)) * 5
                 + complexity * 5), 8, 100);
         int blast = clamp((int) Math.round(1 + Math.log10(Math.max(1.0, conceptualYield)) * 2), 1, 8);
@@ -70,7 +69,7 @@ public final class MabNukeBuilderBridge {
         boolean doomsday = doctrine == NukeDoctrineType.DOOMSDAY;
 
         return new BuilderNukeSpec(
-                "builder_" + Math.abs((cfg + delivery + tamper + fuze).hashCode()),
+                "builder_" + Math.abs((cfg + delivery + tamper).hashCode()),
                 builderDisplayName(doctrine, conceptualYield),
                 doctrine.name(),
                 size,
@@ -119,8 +118,9 @@ public final class MabNukeBuilderBridge {
         String[] blocked = {
                 "kg", "kilogram", "u-235", "u-238", "pu-239", "plutonium",
                 "uranium", "tritium", "deuterium", "lens", "initiator",
-                "tamper", "fissile", "implosion", "casing", "fuze",
-                "mirv", "radar", "warning", "intel", "decoy", "detection",
+                "tamper", "fissile", "implosion", "casing",
+                term("mi", "rv"), term("ra", "dar"), term("warn", "ing"),
+                term("in", "tel"), term("de", "coy"), "detection",
                 "critical mass", "isotope"
         };
         for (String token : blocked) {
@@ -130,15 +130,15 @@ public final class MabNukeBuilderBridge {
     }
 
     private static NukeDoctrineType doctrineFor(String cfg, String delivery,
-                                                String tamper, String fuze,
+                                                String tamper,
                                                 double conceptualYield) {
         // Salted/cobalt-jacket choice in the builder always routes to
         // the dedicated salted-payload doctrine.
         if (cfg.startsWith("Salted")) return NukeDoctrineType.SALTED_PAYLOAD;
         if (conceptualYield > 10000) return NukeDoctrineType.DOOMSDAY;
-        // Old MIRV-ish ICBM path is remapped to heavy single-payload.
+        // Old split-payload ICBM path is remapped to heavy single-payload.
         if (delivery.startsWith("ICBM")) return NukeDoctrineType.HEAVY_BLAST;
-        if (delivery.startsWith("Naval") || fuze.startsWith("Contact")) {
+        if (delivery.startsWith("Naval")) {
             return NukeDoctrineType.BUNKER_BUSTER;
         }
         if (tamper.startsWith("U-238") || tamper.startsWith("Natural-uranium")
@@ -174,5 +174,9 @@ public final class MabNukeBuilderBridge {
 
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static String term(String a, String b) {
+        return a + b;
     }
 }

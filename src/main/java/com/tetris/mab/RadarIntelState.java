@@ -5,12 +5,12 @@ import com.tetris.mab.intel.RadarScanResult;
 import com.tetris.mab.intel.StaleIntelSnapshot;
 
 /**
- * Per-participant radar/intel state. Stores the most recent enemy
+ * Per-participant route-readout state. Stores the most recent enemy
  * scan result wrapped in a {@link StaleIntelSnapshot}, plus running
  * totals about how many scans have been performed.
  *
  * <p>Step 10 replaces the placeholder. Scans are truthful at the time
- * they are produced \u2014 decoys / false-doctrine signals are NOT
+ * they are produced - feints / false-doctrine signals are NOT
  * implemented yet.
  */
 public class RadarIntelState {
@@ -32,7 +32,7 @@ public class RadarIntelState {
     public int getLastScanSequenceNumber() { return lastScanSequenceNumber; }
     public String getLastScanSummary() { return lastScanSummary; }
 
-    /** Stores a new scan. Failed scans count toward stats but do not wipe last good intel. */
+    /** Stores a new scan. Failed scans count toward stats but do not wipe last good readout. */
     public void recordScan(RadarScanResult result) {
         if (result == null) return;
         totalScansPerformed++;
@@ -49,21 +49,21 @@ public class RadarIntelState {
         } else {
             failedScans++;
             lastScanSummary = "failed: " + result.message();
-            // Keep the previous enemyIntel so we don't wipe last good info.
+            // Keep the previous enemyIntel so we don't wipe the last good readout.
         }
     }
 
-    /** Tick when the scanner places a piece. Safe with no current intel. */
+    /** Tick when the scanner places a piece. Safe with no current readout. */
     public void tickScannerPiece() {
         if (enemyIntel != null) enemyIntel.tickScannerPiece();
     }
 
-    /** Tick when the target places a piece. Safe with no current intel. */
+    /** Tick when the target places a piece. Safe with no current readout. */
     public void tickTargetPiece() {
         if (enemyIntel != null) enemyIntel.tickTargetPiece();
     }
 
-    /** Hard mark stored intel as stale (e.g. enemy redesigned/launched). */
+    /** Hard mark stored readout as stale (e.g. enemy redesigned/launched). */
     public void markEnemyIntelStale(String reason) {
         if (enemyIntel != null) enemyIntel.markStale(reason);
     }
@@ -87,11 +87,11 @@ public class RadarIntelState {
     }
 
     public String toDebugString() {
-        return "Radar{scans=" + totalScansPerformed
+        return "RouteReadout{scans=" + totalScansPerformed
                 + " ok=" + successfulScans
                 + " fail=" + failedScans
                 + " best=" + bestIntelRankAchieved
-                + " " + (enemyIntel == null ? "Intel{none}" : enemyIntel.toDebugString())
+                + " " + (enemyIntel == null ? "Readout{none}" : enemyIntel.toDebugString())
                 + "}";
     }
 }

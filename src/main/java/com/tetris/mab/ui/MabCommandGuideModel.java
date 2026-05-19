@@ -55,6 +55,8 @@ public final class MabCommandGuideModel {
         if (reg != null) {
             for (ActionCodeDefinition def : reg.getAll()) {
                 if (def.getCategory() == ActionCategory.LAUNCH) continue;
+                if (def.getCategory() == ActionCategory.ANALYSIS
+                        || def.getCategory() == ActionCategory.FEINT) continue;
                 out.add(toEntry(def, inUpgradePause, armed, hasIncoming));
             }
         }
@@ -116,7 +118,7 @@ public final class MabCommandGuideModel {
                                          boolean armed,
                                          boolean hasIncoming) {
         ActionCategory cat = def.getCategory();
-        String catName = cat == null ? "Other" : cat.name();
+        String catName = categoryLabel(cat);
         String code = formatTokens(def.getSequence());
         String desc = def.getDescription() == null ? "" : def.getDescription();
         if (def.getConfirmationMode() == ActionConfirmationMode.HARD_FOUR_CONFIRM) {
@@ -130,8 +132,8 @@ public final class MabCommandGuideModel {
                 code, desc, avail,
                 cat == ActionCategory.LAUNCH,
                 cat == ActionCategory.DEFENSE,
-                cat == ActionCategory.INTEL,
-                cat == ActionCategory.DECOY,
+                cat == ActionCategory.ANALYSIS,
+                cat == ActionCategory.FEINT,
                 cat == ActionCategory.UTILITY || cat == ActionCategory.RESTRAINT);
     }
 
@@ -143,6 +145,18 @@ public final class MabCommandGuideModel {
         if (def.requiresArmedNuke() && !armed) return "Requires armed nuke";
         if (def.requiresIncomingThreat() && !hasIncoming) return "No incoming threat";
         return "Available";
+    }
+
+    private static String categoryLabel(ActionCategory cat) {
+        if (cat == null) return "Other";
+        return switch (cat) {
+            case LAUNCH -> "Launch";
+            case DEFENSE -> "Defense";
+            case UTILITY -> "Utility";
+            case RESTRAINT -> "Restraint";
+            case CUSTOM -> "Other";
+            case ANALYSIS, FEINT -> "Utility";
+        };
     }
 
     /** Renders a token sequence as e.g. "1, A2, 3, C4". */

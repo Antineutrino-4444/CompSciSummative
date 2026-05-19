@@ -11,7 +11,7 @@ import com.tetris.mab.nuke.NukeSizeCategory;
  * Mutable per-launch state owned by the attacker {@link ParticipantState}.
  * Step 5 fills this in for real (was a placeholder); impact resolution
  * itself still happens in a later step — this state simply tracks the
- * launch through countdown and warning phases until it is marked
+ * launch through countdown and impact-delay phases until it is marked
  * IMPACT_READY for a future resolver.
  */
 public class ActiveLaunchState {
@@ -167,7 +167,7 @@ public class ActiveLaunchState {
                 + " size=" + sizeCategory
                 + " defcon=" + defconAtLaunch
                 + " countdown=" + launchCountdownPieces
-                + " warning=" + warningPieces
+                + " impactDelay=" + warningPieces
                 + " phase=" + phase
                 + (manualOverride ? " manualOverride" : "")
                 + (empWeakened ? " empWeakened" : "")

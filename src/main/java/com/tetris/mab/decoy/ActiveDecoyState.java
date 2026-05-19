@@ -114,7 +114,7 @@ public class ActiveDecoyState {
     }
 
     public String toDebugString() {
-        return "Decoy{" + decoyId
+        return "Feint{" + decoyId
                 + " type=" + type
                 + " owner=" + owner
                 + " remaining=" + durationPiecesRemaining + "/" + durationPiecesTotal

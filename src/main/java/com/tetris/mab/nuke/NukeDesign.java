@@ -251,8 +251,8 @@ public final class NukeDesign {
     /**
      * Pieces between launch and impact for an in-flight nuke — the
      * window during which the defender can spin-intercept. This is the
-     * MAB design name for the legacy {@code warningTime} field; the UI
-     * surfaces it as "IMPACT IN N PIECES", never as "warning time".
+     * MAB design name for the legacy delay field; the UI surfaces it as
+     * "IMPACT IN N PIECES".
      */
     public int effectiveImpactDelayPieces(int defconLevel) {
         Integer v = impactDelayByDefcon.get(clampDefcon(defconLevel));

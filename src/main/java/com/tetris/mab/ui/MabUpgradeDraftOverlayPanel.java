@@ -513,7 +513,6 @@ public final class MabUpgradeDraftOverlayPanel extends JPanel {
         }
         for (String t : tags) {
             if (t.startsWith("defense_"))        return "PASSIVE";
-            if (t.startsWith("intel_"))          return "PASSIVE";
         }
         return "NEW DOCTRINE";
     }

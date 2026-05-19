@@ -4,7 +4,7 @@ package com.tetris.mab.ui;
 public enum MabAlertSeverity {
     INFO("INFO"),
     SUCCESS("OK"),
-    WARNING("WARN"),
+    WARNING("ALRT"),
     CRITICAL("CRIT");
 
     private final String shortTag;

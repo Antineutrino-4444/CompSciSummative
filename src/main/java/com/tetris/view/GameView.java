@@ -13,9 +13,8 @@ import java.awt.*;
  *
  * Bundles the {@link SidePanel} HUD on the left, the {@link GamePanel}
  * playfield on the right, and a thin top toolbar (Back / Settings /
- * Restart). It owns its own ~60fps repaint timer; callers must invoke
- * {@link #shutdown()} when removing the view from the UI so the timer
- * stops cleanly.
+ * Restart). Repaint cadence is owned by {@link com.tetris.controller.GameController}
+ * so embedded and windowed play share the same fixed 60 FPS pacing.
  *
  * Designed to live inside {@link StartMenu}'s CardLayout so the player
  * never leaves the launcher window when starting a match. {@link MainFrame}
@@ -27,8 +26,6 @@ public class GameView extends JPanel {
     private final GamePanel gamePanel;
     private final SidePanel sidePanel;
     private final NextPanel nextPanel;
-    private final Timer repaintTimer;
-
     /** True once {@link #shutdown()} has run, so we don't double-stop. */
     private boolean disposed = false;
 
@@ -52,12 +49,6 @@ public class GameView extends JPanel {
         gamePanel.addKeyListener(inputHandler);
         SwingUtilities.invokeLater(gamePanel::requestFocusInWindow);
 
-        repaintTimer = new Timer(16, e -> {
-            gamePanel.repaint();
-            sidePanel.repaint();
-            nextPanel.repaint();
-        });
-        repaintTimer.start();
     }
 
     /** Lets the controller swap state on restart. */
@@ -83,11 +74,10 @@ public class GameView extends JPanel {
     public NextPanel getNextPanel() { return nextPanel; }
     public SidePanel getSidePanel() { return sidePanel; }
 
-    /** Stops the repaint timer. Idempotent. */
+    /** Marks the view as disposed. Idempotent. */
     public void shutdown() {
         if (disposed) return;
         disposed = true;
-        repaintTimer.stop();
     }
 
 }

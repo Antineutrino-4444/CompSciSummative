@@ -17,6 +17,9 @@ import java.util.TreeMap;
  */
 public class DefconState {
 
+    private static final double[] GRAVITY_MULTIPLIERS_BY_LEVEL =
+            { 0.0, 1.65, 1.38, 1.18, 1.05, 1.00 };
+
     private int level;
     private int escalationMeter;
     private final TreeMap<Integer, Integer> thresholds; // escalation -> defcon level
@@ -57,6 +60,13 @@ public class DefconState {
 
     public int getLevel() { return level; }
     public int getEscalationMeter() { return escalationMeter; }
+    public double getGravityMultiplier() { return gravityMultiplierForLevel(level); }
+
+    public static double gravityMultiplierForLevel(int level) {
+        if (level < 1) level = 1;
+        if (level > 5) level = 5;
+        return GRAVITY_MULTIPLIERS_BY_LEVEL[level];
+    }
 
     /**
      * Returns the escalation value at which the level will next drop, or

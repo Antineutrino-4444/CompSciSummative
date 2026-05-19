@@ -546,6 +546,10 @@ public final class KeyMappingWizardPanel extends JPanel {
         if (code == KeyEvent.VK_UNDEFINED || code == 0) {
             return true;
         }
+        if (code == KeyEvent.VK_WINDOWS) {
+            showSeqWarning("The Windows key cannot be bound. Choose a different key.");
+            return true;
+        }
         p1Keys[seqIdx] = code;
         seqIdx++;
         if (seqIdx >= P1_SEQ.length) {
@@ -577,6 +581,10 @@ public final class KeyMappingWizardPanel extends JPanel {
             return true;
         }
         if (code == KeyEvent.VK_UNDEFINED || code == 0) {
+            return true;
+        }
+        if (code == KeyEvent.VK_WINDOWS) {
+            showSeqWarning("The Windows key cannot be bound. Choose a different key.");
             return true;
         }
         LocalPlayerAction p2Action = P2_SEQ[seqIdx];

@@ -64,8 +64,6 @@ import java.util.Set;
 public class InputHandler implements KeyListener {
 
     /** Game-loop frame interval — must match GameController's value. */
-    private static final int FRAME_INTERVAL_MS = 16;
-
     // ─────────────────────── State ──────────────────────────────
 
     private final Set<Integer> pressedKeys  = new HashSet<>();
@@ -216,10 +214,10 @@ public class InputHandler implements KeyListener {
         if (isNewPress(s.getKeySettings())) controller.openSettings();
 
         // ──── Frame-counting DAS / ARR ────
-        int dasFrames = Math.max(1, (s.getDasDelay() + FRAME_INTERVAL_MS - 1) / FRAME_INTERVAL_MS);
+        int dasFrames = FrameRate.framesForMillisCeil(s.getDasDelay());
         int arrFrames = s.getArrInterval() == 0
                 ? 0
-                : Math.max(1, (s.getArrInterval() + FRAME_INTERVAL_MS / 2) / FRAME_INTERVAL_MS);
+                : FrameRate.framesForMillisRounded(s.getArrInterval());
 
         // Move left (MoveUp has no repeating game action — it's navigation-only in menus)
 

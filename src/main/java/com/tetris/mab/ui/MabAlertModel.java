@@ -66,9 +66,6 @@ public final class MabAlertModel {
                         "You have " + me.upgradePoints() + " upgrade point(s). "
                                 + "Open Upgrades when safe to spend them."));
             }
-            // Legacy intel-staleness alert removed — the MAB design has
-            // no radar / intel UI, so there is nothing for the player to
-            // refresh.
             if (me.pendingConfirmationActionId() != null) {
                 out.add(new MabAlert(0, MabAlertSeverity.WARNING,
                         "Confirmation pending",
@@ -125,13 +122,6 @@ public final class MabAlertModel {
             case "THREAT_PARTIALLY_INTERCEPTED":
                 return new MabAlert(e.sequenceNumber(), MabAlertSeverity.WARNING,
                         "Intercept partial / failed", e.message());
-            case "RADAR_SCAN_COMPLETED":
-            case "RADAR_SCAN_REJECTED":
-            case "DECOY_ACTIVATED":
-                // Legacy radar / decoy events are no longer surfaced to
-                // the player. The MAB design intentionally has no radar,
-                // intel, or decoy player-facing UI.
-                return null;
             case "UPGRADE_APPLIED":
                 return new MabAlert(e.sequenceNumber(), MabAlertSeverity.SUCCESS,
                         "Upgrade applied", e.message());

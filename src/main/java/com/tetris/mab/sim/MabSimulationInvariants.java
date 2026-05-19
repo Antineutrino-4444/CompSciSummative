@@ -105,7 +105,7 @@ public final class MabSimulationInvariants {
 
         for (ActiveDecoyState d : p.getActiveDecoys()) {
             if (d.getDurationPiecesRemaining() < 0) {
-                failures.add(id + " decoy " + d.getDecoyId()
+                failures.add(id + " feint " + d.getDecoyId()
                         + " has negative remaining pieces: "
                         + d.getDurationPiecesRemaining());
             }

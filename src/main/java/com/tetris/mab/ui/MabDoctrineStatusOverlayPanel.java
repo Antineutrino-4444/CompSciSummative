@@ -236,7 +236,7 @@ public final class MabDoctrineStatusOverlayPanel extends JPanel {
 
     private Map<String, List<MabUpgradeCard>> grouped(MabUpgradeInventory inv) {
         Map<String, List<MabUpgradeCard>> groups = new LinkedHashMap<>();
-        for (String g : List.of("CHARGE", "TETRIS", "SPIN", "DEFENSE", "POWER", "INTEL", "TEMPO")) {
+        for (String g : List.of("CHARGE", "TETRIS", "SPIN", "DEFENSE", "POWER", "TEMPO")) {
             groups.put(g, new ArrayList<>());
         }
         if (inv != null) {

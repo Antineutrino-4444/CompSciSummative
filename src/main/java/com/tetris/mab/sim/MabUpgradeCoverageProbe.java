@@ -60,7 +60,7 @@ public final class MabUpgradeCoverageProbe {
         boolean deadHandHooked = MabUpgradeEffectResolver.deadHandProtocolActive(inv)
                 && MabUpgradeEffectResolver.hardenedSilosActive(inv);
 
-        boolean intelVisible = true; // v2 has no INTEL cards; Step 25 UI still exposes status lanes.
+        boolean statusLanesVisible = true; // v2 keeps the Step 25 status lanes.
         boolean allCardsClassified = true;
         for (MabUpgradeCard card : reg.getAllCards()) {
             boolean classified = false;
@@ -85,7 +85,7 @@ public final class MabUpgradeCoverageProbe {
                 && manualOverrideActive
                 && empActive
                 && deadHandHooked
-                && intelVisible
+                && statusLanesVisible
                 && noSilentNoOps
                 && sharedSequenceUnaffected
                 && allCardsClassified;
@@ -95,7 +95,7 @@ public final class MabUpgradeCoverageProbe {
         System.out.println("manualOverrideActive=" + manualOverrideActive);
         System.out.println("empActive=" + empActive);
         System.out.println("deadHandHooked=" + deadHandHooked);
-        System.out.println("intelVisible=" + intelVisible);
+        System.out.println("statusLanesVisible=" + statusLanesVisible);
         System.out.println("noSilentNoOps=" + noSilentNoOps);
         System.out.println("sharedSequenceUnaffected=" + sharedSequenceUnaffected);
         System.out.println("success=" + success);

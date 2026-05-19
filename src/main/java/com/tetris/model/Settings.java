@@ -132,7 +132,7 @@ public class Settings {
     private int keyMoveDown     = KeyEvent.VK_S;
     private int keyMoveUp       = KeyEvent.VK_W;
     private int keyHardDrop     = KeyEvent.VK_R;
-    private int keyRotateCW     = KeyEvent.VK_Q;
+    private int keyRotateCW     = KeyEvent.VK_T;
     private int keyRotateCCW    = KeyEvent.VK_F;
     private int keyHold         = KeyEvent.VK_E;
     private int keyHoldAlt      = 0;
@@ -226,6 +226,7 @@ public class Settings {
 
             controlsWizardCompleted = boolProp(p, "controls.wizardCompleted",
                     controlsWizardCompleted);
+            reserveMabActiveCommandKey();
 
         } catch (IOException e) {
             System.err.println("Failed to load settings: " + e.getMessage());
@@ -306,7 +307,7 @@ public class Settings {
         keyMoveLeft = KeyEvent.VK_A;      keyMoveRight = KeyEvent.VK_D;
         keyMoveDown = KeyEvent.VK_S;      keyMoveUp = KeyEvent.VK_W;
         keyHardDrop = KeyEvent.VK_R;
-        keyRotateCW = KeyEvent.VK_Q;      keyRotateCCW = KeyEvent.VK_F;
+        keyRotateCW = KeyEvent.VK_T;      keyRotateCCW = KeyEvent.VK_F;
         keyHold = KeyEvent.VK_E;          keyHoldAlt = 0;
         keyPause = KeyEvent.VK_K;         keyPauseAlt = 0;
         keySettings = KeyEvent.VK_F1;
@@ -325,7 +326,7 @@ public class Settings {
         keyMoveLeft = KeyEvent.VK_A;      keyMoveRight = KeyEvent.VK_D;
         keyMoveDown = KeyEvent.VK_S;      keyMoveUp = KeyEvent.VK_W;
         keyHardDrop = KeyEvent.VK_R;
-        keyRotateCW = KeyEvent.VK_Q;      keyRotateCCW = KeyEvent.VK_F;
+        keyRotateCW = KeyEvent.VK_T;      keyRotateCCW = KeyEvent.VK_F;
         keyHold = KeyEvent.VK_E;          keyHoldAlt = 0;
         keyPause = KeyEvent.VK_K;         keyPauseAlt = 0;
         keySettings = KeyEvent.VK_F1;
@@ -471,6 +472,22 @@ public class Settings {
     public boolean isP2Reset(int code)     { return code == keyP2Reset; }
 
     // ─────────────────────── Private helpers ─────────────────────
+
+    private void reserveMabActiveCommandKey() {
+        int q = KeyEvent.VK_Q;
+        if (keyMoveLeft == q) keyMoveLeft = KeyEvent.VK_A;
+        if (keyMoveRight == q) keyMoveRight = KeyEvent.VK_D;
+        if (keyMoveDown == q) keyMoveDown = KeyEvent.VK_S;
+        if (keyHardDrop == q) keyHardDrop = KeyEvent.VK_R;
+        if (keyRotateCW == q) keyRotateCW = KeyEvent.VK_T;
+        if (keyRotateCCW == q) keyRotateCCW = KeyEvent.VK_F;
+        if (keyHold == q) keyHold = KeyEvent.VK_E;
+        if (keyHoldAlt == q) keyHoldAlt = 0;
+        if (keyPause == q) keyPause = KeyEvent.VK_K;
+        if (keyPauseAlt == q) keyPauseAlt = 0;
+        if (keyExitStage == q) keyExitStage = KeyEvent.VK_Z;
+        if (keySettings == q) keySettings = KeyEvent.VK_F1;
+    }
 
     private static int clamp(int val, int min, int max) {
         return Math.max(min, Math.min(max, val));

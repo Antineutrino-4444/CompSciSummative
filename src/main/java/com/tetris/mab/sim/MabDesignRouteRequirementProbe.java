@@ -2,6 +2,7 @@ package com.tetris.mab.sim;
 
 import com.tetris.mab.MatchDifficulty;
 import com.tetris.mab.MutuallyAssuredBlocksMatch;
+import com.tetris.mab.NukeBuildState;
 import com.tetris.mab.ParticipantId;
 import com.tetris.mab.nuke.NukeDesign;
 import com.tetris.mab.nuke.NukeDesignFactory;
@@ -54,15 +55,35 @@ public final class MabDesignRouteRequirementProbe {
         boolean upgradesStillApply =
                 m.getParticipant(ParticipantId.PLAYER_A).getSimplifiedState().launchTetrisGoal() == 2;
 
+        m.getParticipant(ParticipantId.PLAYER_A).getNukeBuildState().addCharge(40);
+        m.openUpgradePause("history_probe");
+        boolean redesignApplied = m.redesignNukeDuringUpgradePause(ParticipantId.PLAYER_A, emp, 0.5);
+        java.util.List<NukeBuildState.DesignHistoryEntry> aHistory =
+                m.getParticipant(ParticipantId.PLAYER_A).getNukeBuildState().getDesignHistory();
+        java.util.List<NukeBuildState.DesignHistoryEntry> bHistory =
+                m.getParticipant(ParticipantId.PLAYER_B).getNukeBuildState().getDesignHistory();
+        NukeBuildState.DesignHistoryEntry last = aHistory.isEmpty()
+                ? null : aHistory.get(aHistory.size() - 1);
+        boolean separateDesignHistory = redesignApplied
+                && aHistory.size() >= 3
+                && bHistory.size() == 1
+                && last != null
+                && "redesign".equals(last.source())
+                && emp.getId().equals(last.designId())
+                && last.chargeBefore() == 40
+                && last.chargeAfter() == 20;
+
         report("lightRouteFast", lightRouteFast);
         report("heavyRouteSlower", heavyRouteSlower);
         report("empRouteMedium", empRouteMedium);
         report("doomsdayRouteHard", doomsdayRouteHard);
         report("uiRouteRequirementVisible", uiRouteRequirementVisible);
         report("upgradesStillApply", upgradesStillApply);
+        report("separateDesignHistory", separateDesignHistory);
 
         boolean success = lightRouteFast && heavyRouteSlower && empRouteMedium
-                && doomsdayRouteHard && uiRouteRequirementVisible && upgradesStillApply;
+                && doomsdayRouteHard && uiRouteRequirementVisible && upgradesStillApply
+                && separateDesignHistory;
         report("success", success);
         if (!success) System.exit(1);
     }

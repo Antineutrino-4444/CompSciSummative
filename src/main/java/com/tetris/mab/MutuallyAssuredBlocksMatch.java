@@ -136,6 +136,8 @@ public class MutuallyAssuredBlocksMatch {
     private com.tetris.mab.upgrade.draft.MabUpgradeDraftManager upgradeDraftManager;
     private final com.tetris.mab.upgrade.draft.MabUpgradeDraftRegistry upgradeDraftRegistry =
             new com.tetris.mab.upgrade.draft.MabUpgradeDraftRegistry();
+    private long matchStartedAtMs;
+    private long matchEndedAtMs;
 
     // ─────────────────────────── Construction ────────────────────
 
@@ -155,6 +157,7 @@ public class MutuallyAssuredBlocksMatch {
         this.listenerB = buildListener(playerB);
         gameA.addListener(listenerA);
         gameB.addListener(listenerB);
+        applyDefconGravityToBoards();
     }
 
     /** Local PvP match between two human-driven {@link GameState} instances. */
@@ -216,6 +219,8 @@ public class MutuallyAssuredBlocksMatch {
         switch (currentPhase) {
             case SETUP -> {
                 currentPhase = MatchPhase.ACTIVE;
+                matchStartedAtMs = System.currentTimeMillis();
+                matchEndedAtMs = 0L;
                 log("MATCH_STARTED", null, "mode=" + matchMode + " difficulty=" + difficulty, null);
             }
             case ACTIVE ->
@@ -347,6 +352,11 @@ public class MutuallyAssuredBlocksMatch {
     public boolean isPaused() { return paused; }
     public boolean isGameOver() { return currentPhase == MatchPhase.GAME_OVER; }
     public ParticipantId getWinner() { return winner; }
+    public long getElapsedMatchMillis() {
+        if (matchStartedAtMs <= 0L) return 0L;
+        long end = matchEndedAtMs > 0L ? matchEndedAtMs : System.currentTimeMillis();
+        return Math.max(0L, end - matchStartedAtMs);
+    }
     public List<MatchEventLogEntry> getEventLog() { return Collections.unmodifiableList(eventLog); }
 
     public List<MabActiveDoctrineAvailability> getActiveDoctrineOptions(ParticipantId id) {
@@ -722,6 +732,7 @@ public class MutuallyAssuredBlocksMatch {
                     return;
                 }
                 advanceStrategicPieceClockFor(participant, "engine");
+                participant.refreshMaxStackHeight();
                 Map<String, Object> meta = new LinkedHashMap<>();
                 meta.put("piece", e.type());
                 meta.put("totalPieces", participant.getPiecesLocked());
@@ -747,6 +758,7 @@ public class MutuallyAssuredBlocksMatch {
                     return;
                 }
                 participant.addLinesCleared(e.count());
+                participant.refreshMaxStackHeight();
 
                 // Step 22: simplified MAB routing has moved to
                 // onPieceLockedDetailed so 0-line spins also count.
@@ -789,6 +801,7 @@ public class MutuallyAssuredBlocksMatch {
                     return;
                 }
                 participant.addGarbageReceived(e.rows());
+                participant.refreshMaxStackHeight();
                 int escalation = e.rows() * 2;
                 DefconChangeResult dcr = (escalation > 0)
                         ? defconState.addEscalation(escalation, "garbage")
@@ -827,8 +840,10 @@ public class MutuallyAssuredBlocksMatch {
                 }
                 // Phase is ACTIVE and there is no winner yet.
                 participant.markToppedOut();
+                participant.refreshMaxStackHeight();
                 winner = participant.getId().opponent();
                 currentPhase = MatchPhase.GAME_OVER;
+                matchEndedAtMs = System.currentTimeMillis();
                 Map<String, Object> meta = new LinkedHashMap<>();
                 meta.put("reason", e.reason());
                 meta.put("playerId", e.playerId());
@@ -860,6 +875,7 @@ public class MutuallyAssuredBlocksMatch {
         int newLevel = dcr.currentLevel();
         playerA.getNukeBuildState().refreshForDefcon(newLevel);
         playerB.getNukeBuildState().refreshForDefcon(newLevel);
+        applyDefconGravityToBoards();
         // Step 26 (Nuke Builder integration) \u2014 refresh the simplified
         // strategic state so the live HUD shows the new design-specific
         // charge requirement and route goals after a DEFCON drop.
@@ -881,6 +897,12 @@ public class MutuallyAssuredBlocksMatch {
         if (newLevel <= dcr.previousLevel()) {
             maybeAwardDefconUpgradePoints(newLevel);
         }
+    }
+
+    private void applyDefconGravityToBoards() {
+        double multiplier = defconState.getGravityMultiplier();
+        playerA.getGameState().setMabGravityMultiplier(multiplier);
+        playerB.getGameState().setMabGravityMultiplier(multiplier);
     }
 
     // ─────────────────── Step 9: upgrade-point earning ─────────
@@ -1106,6 +1128,7 @@ public class MutuallyAssuredBlocksMatch {
         ParticipantState p = getParticipant(participantId);
         NukeDesign oldDesign = p.getNukeBuildState().getCurrentDesign();
         p.getNukeBuildState().redesign(newDesign, defconState.getLevel(), retainedChargeRatio);
+        applyDesignToSimplifiedState(p);
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("oldDesignId", oldDesign == null ? null : oldDesign.getId());
         meta.put("newDesignId", newDesign.getId());
@@ -1146,13 +1169,13 @@ public class MutuallyAssuredBlocksMatch {
     public RadarScanResult performRadarScan(ParticipantId scannerId, RadarScanType type) {
         ParticipantState scanner = getParticipant(scannerId);
         if (scanner == null) {
-            log("RADAR_SCAN_REJECTED", scannerId, "unknown scanner", null);
+            log("ROUTE_SCAN_REJECTED", scannerId, "unknown scanner", null);
             return RadarScanResult.failed(scannerId, null,
                     type == null ? RadarScanType.BASIC : type,
                     (int) (radarScanSequence + 1), "unknown scanner");
         }
         if (!isGameplayMutationAllowed()) {
-            log("RADAR_SCAN_REJECTED", scannerId,
+            log("ROUTE_SCAN_REJECTED", scannerId,
                     "phase=" + currentPhase, metaOf("phase", currentPhase));
             return RadarScanResult.failed(scannerId, null,
                     type == null ? RadarScanType.BASIC : type,
@@ -1181,7 +1204,7 @@ public class MutuallyAssuredBlocksMatch {
                                               String source) {
         ParticipantState target = getOpponent(scanner.getId());
         if (target == null) {
-            log("RADAR_SCAN_REJECTED", scanner.getId(),
+            log("ROUTE_SCAN_REJECTED", scanner.getId(),
                     "no opponent", metaOf("source", source));
             RadarScanResult fail = RadarScanResult.failed(scanner.getId(), null, type,
                     (int) (radarScanSequence + 1), "no opponent");
@@ -1189,7 +1212,7 @@ public class MutuallyAssuredBlocksMatch {
             return fail;
         }
         radarScanSequence++;
-        log("RADAR_SCAN_STARTED", scanner.getId(), type.name(),
+        log("ROUTE_SCAN_STARTED", scanner.getId(), type.name(),
                 metaOf("scanner", scanner.getId(),
                         "target", target.getId(),
                         "scanType", type,
@@ -1200,56 +1223,56 @@ public class MutuallyAssuredBlocksMatch {
                 defconState.getLevel(), (int) radarScanSequence, type);
         scanner.getRadarIntel().recordScan(result);
 
-        log("RADAR_SCAN_COMPLETED", scanner.getId(),
+        log("ROUTE_SCAN_COMPLETED", scanner.getId(),
                 result.intelLevel() + " conf=" + result.confidencePercent(),
                 metaOf("scanner", scanner.getId(),
                         "target", target.getId(),
                         "scanType", type,
-                        "intelLevel", result.intelLevel(),
+                        "readoutLevel", result.intelLevel(),
                         "confidence", result.confidencePercent(),
                         "success", result.success(),
                         "stale", result.staleImmediately(),
                         "source", source));
-        log("RADAR_INTEL_UPDATED", scanner.getId(),
+        log("ROUTE_READOUT_UPDATED", scanner.getId(),
                 result.intelLevel().name(),
                 metaOf("scanner", scanner.getId(),
                         "target", target.getId(),
-                        "intelLevel", result.intelLevel(),
+                        "readoutLevel", result.intelLevel(),
                         "confidence", result.confidencePercent(),
                         "designId", result.targetNukeDesignId(),
                         "doctrine", result.targetDoctrineType(),
                         "size", result.targetSizeCategory(),
                         "stale", result.staleImmediately()));
 
-        // Step 11 refinement: emit RADAR_DECOY_EFFECT_APPLIED whenever the
-        // scan succeeds against a target that has at least one active decoy.
-        // This is informational/debug; it does not mutate decoy state, even
+        // Step 11 refinement: emit ROUTE_FEINT_EFFECT_APPLIED whenever the
+        // scan succeeds against a target that has at least one active feint.
+        // This is informational/debug; it does not mutate feint state, even
         // if the scan pierced their signatures.
         if (result.success()) {
-            int activeDecoyCount = 0;
+            int activeFeintCount = 0;
             int falseLaunchSig = 0;
             int falseThreatSig = 0;
             int decoyConfPenalty = 0;
             for (ActiveDecoyState d : target.getActiveDecoys()) {
                 if (!d.isActive()) continue;
-                activeDecoyCount++;
+                activeFeintCount++;
                 decoyConfPenalty += d.getConfidencePenalty();
                 if (d.createsFalseLaunchSignature()) falseLaunchSig += d.getFalseLaunchCount();
                 if (d.createsFalseThreatSignature()) falseThreatSig += d.getFalseThreatCount();
             }
-            if (activeDecoyCount > 0) {
-                log("RADAR_DECOY_EFFECT_APPLIED", scanner.getId(),
+            if (activeFeintCount > 0) {
+                log("ROUTE_FEINT_EFFECT_APPLIED", scanner.getId(),
                         result.message(),
                         metaOf("scanner", scanner.getId(),
                                 "target", target.getId(),
                                 "scanSequenceNumber", result.scanSequenceNumber(),
                                 "scanType", type,
-                                "intelLevel", result.intelLevel(),
+                                "readoutLevel", result.intelLevel(),
                                 "confidence", result.confidencePercent(),
-                                "activeDecoyCount", activeDecoyCount,
+                                "activeFeintCount", activeFeintCount,
                                 "falseLaunchSignatureCount", falseLaunchSig,
                                 "falseThreatSignatureCount", falseThreatSig,
-                                "activeDecoyConfidencePenalty", decoyConfPenalty,
+                                "activeFeintConfidencePenalty", decoyConfPenalty,
                                 "message", result.message()));
             }
         }
@@ -1267,7 +1290,7 @@ public class MutuallyAssuredBlocksMatch {
         if (opp == null) return;
         if (opp.getRadarIntel().getEnemyIntel() == null) return;
         opp.getRadarIntel().markEnemyIntelStale(reason);
-        log("RADAR_INTEL_MARKED_STALE", opp.getId(), reason,
+        log("ROUTE_READOUT_MARKED_STALE", opp.getId(), reason,
                 metaOf("scanner", opp.getId(),
                         "target", participant.getId(),
                         "reason", reason));
@@ -1277,7 +1300,7 @@ public class MutuallyAssuredBlocksMatch {
 
     private String nextDecoyId(DecoyType type) {
         decoySequence++;
-        String prefix = type == null ? "decoy" : type.name().toLowerCase();
+        String prefix = type == null ? "feint" : type.name().toLowerCase();
         return prefix + "-" + decoySequence;
     }
 
@@ -1292,13 +1315,13 @@ public class MutuallyAssuredBlocksMatch {
             int before = d.getDurationPiecesRemaining();
             d.tickPiece();
             if (before > 0 && d.isExpired()) {
-                log("DECOY_EXPIRED", owner.getId(), d.getDecoyId(),
+                log("FEINT_EXPIRED", owner.getId(), d.getDecoyId(),
                         metaOf("owner", owner.getId(),
                                 "target", d.getTarget(),
-                                "decoyId", d.getDecoyId(),
+                                "feintId", d.getDecoyId(),
                                 "type", d.getType(),
                                 "linkedLaunchId", d.getLinkedLaunchId()));
-                markOpponentIntelStale(owner, "decoy-expired:" + d.getDecoyId());
+                markOpponentIntelStale(owner, "feint-expired:" + d.getDecoyId());
             }
         }
     }
@@ -1318,13 +1341,13 @@ public class MutuallyAssuredBlocksMatch {
         }
         DecoyDefinition ddef = decoyRegistry.getByActionType(def.getActionType());
         if (ddef == null) {
-            log("DECOY_MANUAL_ACTIVATION_REJECTED", owner.getId(),
-                    "no decoy definition for " + def.getActionType(),
+            log("FEINT_MANUAL_ACTIVATION_REJECTED", owner.getId(),
+                    "no feint definition for " + def.getActionType(),
                     metaOf("actionId", def.getId(),
                             "actionType", def.getActionType()));
             return DecoyResolutionResult.failed(null, def.getActionType(),
                     owner.getId(), null,
-                    "no decoy definition for " + def.getActionType());
+                    "no feint definition for " + def.getActionType());
         }
         ParticipantState target = getOpponent(owner.getId());
         String decoyId = nextDecoyId(ddef.type());
@@ -1334,7 +1357,7 @@ public class MutuallyAssuredBlocksMatch {
             Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("owner", owner.getId());
             meta.put("target", target == null ? null : target.getId());
-            meta.put("decoyId", decoyId);
+            meta.put("feintId", decoyId);
             meta.put("type", ddef.type());
             meta.put("actionType", def.getActionType());
             meta.put("durationPieces", ddef.durationPieces());
@@ -1343,8 +1366,8 @@ public class MutuallyAssuredBlocksMatch {
             meta.put("confidencePenalty", ddef.confidencePenalty());
             meta.put("linkedLaunchId", linkedLaunchId);
             meta.put("source", "action:" + def.getId());
-            log("DECOY_ACTIVATED", owner.getId(), decoyId, meta);
-            markOpponentIntelStale(owner, "decoy:" + decoyId);
+            log("FEINT_ACTIVATED", owner.getId(), decoyId, meta);
+            markOpponentIntelStale(owner, "feint:" + decoyId);
         }
         return result;
     }
@@ -1364,21 +1387,21 @@ public class MutuallyAssuredBlocksMatch {
     public DecoyResolutionResult activateDecoyManually(ParticipantId ownerId, DecoyType type) {
         ParticipantState owner = getParticipant(ownerId);
         if (owner == null || type == null) {
-            log("DECOY_MANUAL_ACTIVATION_REJECTED", ownerId,
+            log("FEINT_MANUAL_ACTIVATION_REJECTED", ownerId,
                     "invalid owner/type",
                     metaOf("owner", ownerId, "type", type));
             return DecoyResolutionResult.failed(type, null, ownerId, null,
                     "invalid owner/type");
         }
         if (!isGameplayMutationAllowed()) {
-            log("DECOY_MANUAL_ACTIVATION_REJECTED", ownerId,
+            log("FEINT_MANUAL_ACTIVATION_REJECTED", ownerId,
                     "phase=" + currentPhase,
                     metaOf("owner", ownerId, "type", type, "phase", currentPhase));
             return DecoyResolutionResult.failed(type, null, ownerId, null,
                     "phase " + currentPhase + " not mutation-allowed");
         }
         if (type == DecoyType.MASKED_LAUNCH) {
-            log("DECOY_MANUAL_ACTIVATION_REJECTED", ownerId,
+            log("FEINT_MANUAL_ACTIVATION_REJECTED", ownerId,
                     "MASKED_LAUNCH requires a real launch",
                     metaOf("owner", ownerId, "type", type));
             return DecoyResolutionResult.failed(type, ActionType.MASKED_LAUNCH,
@@ -1387,7 +1410,7 @@ public class MutuallyAssuredBlocksMatch {
         }
         DecoyDefinition ddef = decoyRegistry.getByType(type);
         if (ddef == null) {
-            log("DECOY_MANUAL_ACTIVATION_REJECTED", ownerId,
+            log("FEINT_MANUAL_ACTIVATION_REJECTED", ownerId,
                     "no definition for " + type,
                     metaOf("owner", ownerId, "type", type));
             return DecoyResolutionResult.failed(type, null, ownerId, null,
@@ -1398,10 +1421,10 @@ public class MutuallyAssuredBlocksMatch {
         DecoyResolutionResult result = decoyResolver.activateDecoy(
                 ddef, owner, target, decoyId, null);
         if (result.success()) {
-            log("DECOY_ACTIVATED", ownerId, decoyId,
+            log("FEINT_ACTIVATED", ownerId, decoyId,
                     metaOf("owner", ownerId,
                             "target", target == null ? null : target.getId(),
-                            "decoyId", decoyId,
+                            "feintId", decoyId,
                             "type", type,
                             "actionType", ddef.actionType(),
                             "durationPieces", ddef.durationPieces(),
@@ -1409,7 +1432,7 @@ public class MutuallyAssuredBlocksMatch {
                             "falseThreatCount", ddef.falseThreatCount(),
                             "confidencePenalty", ddef.confidencePenalty(),
                             "source", "manual"));
-            markOpponentIntelStale(owner, "decoy:" + decoyId);
+            markOpponentIntelStale(owner, "feint:" + decoyId);
         }
         return result;
     }
@@ -1509,7 +1532,7 @@ public class MutuallyAssuredBlocksMatch {
                 Map<String, Object> meta = new LinkedHashMap<>();
                 meta.put("actionId", def.getId());
                 log("ACTION_START_REJECTED_NO_ACTIVE_THREAT", participant.getId(),
-                        def.getId() + " requires WARNING_ACTIVE threat", meta);
+                    def.getId() + " requires impact-pending threat", meta);
                 return false;
             }
         }
@@ -2420,7 +2443,7 @@ public class MutuallyAssuredBlocksMatch {
     }
 
     private static String flightTimerId(String launchId) {
-        return "flight_warning:" + launchId;
+        return "flight_impact_delay:" + launchId;
     }
 
     private static String threatIdForLaunch(String launchId) {
@@ -2563,7 +2586,7 @@ public class MutuallyAssuredBlocksMatch {
         meta.put("size", design.getSizeCategory());
         meta.put("defcon", defcon);
         meta.put("countdownPieces", countdownPieces);
-        meta.put("warningPieces", warnPieces);
+        meta.put("impactDelayPieces", warnPieces);
         meta.put("escalationAdded", escalation);
         meta.put("extraGarbageLines", outgoingBonus);
         log("LAUNCH_AUTHORIZED", attacker.getId(), design.getDisplayName(), meta);
@@ -2599,8 +2622,8 @@ public class MutuallyAssuredBlocksMatch {
         if (reason.startsWith("launch_countdown:")) {
             String launchId = reason.substring("launch_countdown:".length());
             handleLaunchCountdownCompleted(launchId);
-        } else if (reason.startsWith("flight_warning:")) {
-            String launchId = reason.substring("flight_warning:".length());
+        } else if (reason.startsWith("flight_impact_delay:")) {
+            String launchId = reason.substring("flight_impact_delay:".length());
             handleFlightWarningCompleted(launchId);
         } else if (reason.startsWith("impact_garbage_wave:")) {
             handleImpactGarbageWaveTimer(timer.getId());
@@ -2658,12 +2681,12 @@ public class MutuallyAssuredBlocksMatch {
                 launch.getWarningPieces(), warnId);
         defender.getIncomingThreats().add(threat);
 
-        // Warning timer owned by defender; ticks on defender's own piece
-        // locks (so "5 pieces of warning" means the defender places 5 of
+        // Impact-delay timer owned by defender; ticks on defender's own piece
+        // locks (so a 5-piece impact delay means the defender places 5 of
         // their pieces before impact).
         pieceTimerManager.addTimer(new PieceCountdownTimer(
                 warnId, defender.getId(), TimerAdvanceMode.OWNER_PIECES,
-                launch.getWarningPieces(), "flight_warning:" + launchId));
+                launch.getWarningPieces(), "flight_impact_delay:" + launchId));
 
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("launchId", launchId);
@@ -2674,7 +2697,7 @@ public class MutuallyAssuredBlocksMatch {
         meta.put("designName", launch.getNukeDisplayName());
         meta.put("doctrine", launch.getDoctrineType());
         meta.put("size", launch.getSizeCategory());
-        meta.put("warningPieces", launch.getWarningPieces());
+        meta.put("impactDelayPieces", launch.getWarningPieces());
         log("LAUNCH_IN_FLIGHT", launch.getAttacker(), launchId, meta);
         log("INCOMING_THREAT_CREATED", launch.getDefender(), threat.getThreatId(), meta);
     }
@@ -2740,7 +2763,7 @@ public class MutuallyAssuredBlocksMatch {
             activateCivilDefense(participant, "action:" + def.getId());
             return;
         }
-        if (type == ActionType.RADAR_SCAN) {
+        if (type == ActionType.ROUTE_SCAN) {
             performRadarScan(participant, RadarScanType.BASIC, "action:" + def.getId());
             return;
         }
@@ -2775,14 +2798,14 @@ public class MutuallyAssuredBlocksMatch {
         if (threat.getStatus() != com.tetris.mab.launch.ThreatStatus.WARNING_ACTIVE) {
             log("INTERCEPT_TARGET_SELECT_FAILED", defenderId, threatId,
                     metaOf("threatId", threatId, "status", threat.getStatus(),
-                            "reason", "not_warning_active"));
+                            "reason", "not_impact_pending"));
             return false;
         }
         participant.setSelectedInterceptThreatId(threatId);
         log("INTERCEPT_TARGET_SELECTED", defenderId, threatId,
                 metaOf("threatId", threatId,
                         "launchId", threat.getLaunchId(),
-                        "warningPiecesRemaining", threat.getWarningPiecesRemaining()));
+                        "impactDelayPiecesRemaining", threat.getWarningPiecesRemaining()));
         return true;
     }
 
@@ -2844,7 +2867,7 @@ public class MutuallyAssuredBlocksMatch {
         IncomingThreatState threat = pickInterceptTarget(defender);
         if (threat == null) {
             return InterceptResult.failed(InterceptOutcome.FAILED_NO_THREAT, idef,
-                    null, null, defender.getId(), "no warning-active threat");
+                    null, null, defender.getId(), "no impact-pending threat");
         }
         ActiveLaunchState launch = findLaunchById(threat.getLaunchId());
         ParticipantState attacker = launch == null ? null : getParticipant(launch.getAttacker());
@@ -3413,11 +3436,11 @@ public class MutuallyAssuredBlocksMatch {
      */
     public RadarScanResult debugRadarScan(ParticipantId scannerId) {
         RadarScanResult r = performRadarScan(scannerId, RadarScanType.DEBUG);
-        log("DEBUG_RADAR_SCAN", scannerId,
+        log("DEBUG_ROUTE_SCAN", scannerId,
                 r == null ? "null" : (r.intelLevel() + " conf=" + r.confidencePercent()),
                 metaOf("scanner", scannerId,
                         "success", r != null && r.success(),
-                        "intelLevel", r == null ? null : r.intelLevel(),
+                        "readoutLevel", r == null ? null : r.intelLevel(),
                         "confidence", r == null ? -1 : r.confidencePercent()));
         return r;
     }
@@ -3436,11 +3459,11 @@ public class MutuallyAssuredBlocksMatch {
     public DecoyResolutionResult debugActivateDecoy(ParticipantId participantId, DecoyType type) {
         DecoyResolutionResult r = activateDecoyManually(participantId, type);
         if (r != null && r.success()) {
-            log("DEBUG_DECOY_ACTIVATED", participantId,
+            log("DEBUG_FEINT_ACTIVATED", participantId,
                     type == null ? "null" : type.name(),
                     metaOf("participant", participantId,
                             "type", type,
-                            "decoyId", r.decoyId()));
+                            "feintId", r.decoyId()));
         }
         return r;
     }
@@ -3460,7 +3483,7 @@ public class MutuallyAssuredBlocksMatch {
         participant.getRadarIntel().tickScannerPiece();
         ParticipantState opp = getOpponent(participant.getId());
         if (opp != null) opp.getRadarIntel().tickTargetPiece();
-        // Decoy expirations (logs DECOY_EXPIRED internally).
+        // Feint expirations (logs FEINT_EXPIRED internally).
         tickAndExpireDecoys(participant);
         // Civil-defence shield decay.
         CivilDefenseState cds = participant.getCivilDefenseState();

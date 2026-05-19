@@ -28,17 +28,17 @@ public final class DecoyRegistry {
     public static DecoyRegistry createDefault() {
         List<DecoyDefinition> defs = new ArrayList<>();
         defs.add(new DecoyDefinition(
-                DecoyType.DECOY_LAUNCH, ActionType.DECOY_LAUNCH,
-                "decoy_launch", "Decoy Launch",
+                DecoyType.FEINT_LAUNCH, ActionType.FEINT_LAUNCH,
+                "feint_launch", "Feint Launch",
                 12, 1, 1, 10,
                 true, true, false, false, false,
-                "Produces a false launch-like radar signature."));
+                "Produces a false launch-like signal."));
         defs.add(new DecoyDefinition(
-                DecoyType.GHOST_MIRV, ActionType.GHOST_MIRV,
-                "ghost_mirv", "Ghost MIRV",
+                DecoyType.GHOST_SPLIT, ActionType.GHOST_SPLIT,
+                "ghost_split", "Ghost Split",
                 16, 3, 3, 15,
                 true, true, false, false, false,
-                "Produces multiple false MIRV-like signatures."));
+                "Produces multiple false split-launch signatures."));
         defs.add(new DecoyDefinition(
                 DecoyType.FALSE_DOCTRINE_SIGNAL, ActionType.FALSE_DOCTRINE_SIGNAL,
                 "false_doctrine_signal", "False Doctrine Signal",
@@ -56,7 +56,7 @@ public final class DecoyRegistry {
                 "masked_launch", "Masked Launch",
                 10, 0, 0, 20,
                 false, false, false, false, true,
-                "Real launch action that starts a launch with reduced radar visibility."));
+                "Real launch action that starts a launch with reduced visibility."));
         return new DecoyRegistry(defs);
     }
 

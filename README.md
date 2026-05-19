@@ -248,16 +248,16 @@ This file alone is the largest UI weakness in the project; see the dedicated sec
 
 ### 3.1 Architectural problems
 
-1. **God class.** Dialog construction, schematic painting (`SchematicPanel` inner class), terminal painting (`FuzeTerminal`), switcher rail painting (`SwitcherRail`), keyboard model (`FocusCol`, `fusionRowIndex`), domain logic (`FusionDetails` static struct, `slotApplicable`), styling, and dialog lifecycle all live in one file.
+1. **God class.** Dialog construction, schematic painting (`SchematicPanel` inner class), switcher rail painting (`SwitcherRail`), keyboard model (`FocusCol`, `fusionRowIndex`), domain logic (`FusionDetails` static struct, `slotApplicable`), styling, and dialog lifecycle all live in one file.
 2. **No MVP/MVC.** The dialog *owns* a `NukeDesign`. There is no separate controller, no presenter, no event bus — every interaction directly mutates `design` from inside a button listener and then calls `refresh()` to rebuild the world.
-3. **`refresh()` is a sledgehammer.** Every state change rebuilds the parts list, repaints the schematic, repaints the fuze terminal, repaints the switcher rail, recomputes the build summary, recomputes the info text, recomputes derived stats, and repaints chrome. There is no diffing — clicking a single radio option rebuilds the entire palette column.
+3. **`refresh()` is a sledgehammer.** Every state change rebuilds the parts list, repaints the schematic, repaints the switcher rail, recomputes the build summary, recomputes the info text, recomputes derived stats, and repaints chrome. There is no diffing — clicking a single radio option rebuilds the entire palette column.
 4. **Duplicated palette of constants.** `DARK_BG`, `PANEL_BG`, `TEXT_FG`, `ACCENT`, `ACCENT_DIM`, `BTN_BG` are re-declared inside this class (lines 56–62) with values that drift from `SettingsPanel`'s "identical" palette.
 5. **Custom keyboard focus model.** `FocusCol` enum + `fusionRowIndex` integer + manual chrome highlighting + `setFocusable(false)` on every button to prevent Swing's real focus from interfering. This re-implements Swing's focus traversal — badly — because the original was getting in the way of arrow-key bindings on the window.
 
 ### 3.2 Layout problems
 
-- **Hybrid `BorderLayout` abuse.** The root uses `BorderLayout`, but `NORTH` is itself a `BorderLayout` containing header / schematic / fuze terminal stacked vertically. `WEST` is a multi-column `BorderLayout` palette. `CENTER` is the info sidebar. `EAST` is the stats sidebar. This makes the visual order **(palette | info | stats)** with the schematic floating on top — an uncommon arrangement that fights muscle memory ("schematic should be the centrepiece").
-- **Hardcoded column widths** — `720` for the palette wrap, `180` for slots column, `280` for the fusion column, `300` for schematic height, `108` for fuze terminal. None scale; on a 1920 × 1080 screen the actual schematic gets ~600 px of width while the palette eats almost half the window.
+- **Hybrid `BorderLayout` abuse.** The root uses `BorderLayout`, but `NORTH` is itself a `BorderLayout` containing header / schematic stacked vertically. `WEST` is a multi-column `BorderLayout` palette. `CENTER` is the info sidebar. `EAST` is the stats sidebar. This makes the visual order **(palette | info | stats)** with the schematic floating on top — an uncommon arrangement that fights muscle memory ("schematic should be the centrepiece").
+- **Hardcoded column widths** — `720` for the palette wrap, `180` for slots column, `280` for the fusion column, `300` for schematic height. None scale; on a 1920 × 1080 screen the actual schematic gets ~600 px of width while the palette eats almost half the window.
 - **Two-level nesting just to "hug content"** — `slotsBarHost`, `partsHost`, `fusionPair`, `rightCols`, `leftCol`, `wrap` are wrapper panels added solely to defeat `BorderLayout.CENTER`'s stretch behaviour. A `MigLayout` or a single `GridBagLayout` would replace ~150 lines of nesting.
 - **Fullscreen-only undecorated dialog** ([NukeBuilderDialog.java](src/main/java/com/tetris/view/NukeBuilderDialog.java#L138-L143)) — same problems as `StartMenu`. There is no way to keep the dialog at a smaller size, snap it to half the screen, or alt-tab back to the underlying game window cleanly.
 
@@ -290,7 +290,6 @@ This file alone is the largest UI weakness in the project; see the dedicated sec
 ### 3.6 What it does well (keep these)
 
 - The **schematic cross-section** concept is genuinely cool and educational — preserve and *promote* it to the centre of the redesign.
-- The **fuze terminal** as a small "diegetic" readout is a nice touch — keep, but make it smaller and corner-pinned.
 - The **build summary** at the bottom of the slot column is a good idea — keep, but render it as proper components.
 - The **per-slot color coding** is a sound idea — but rebuild the palette with a consistent perceptual scale.
 - The **educational info text** is the actual product value — the new UI must give this even more space.
@@ -340,7 +339,6 @@ src/main/java/com/tetris/view/
     ├── BuildSummaryCard.java    // proper component
     ├── StatsCard.java           // yield / mass / complexity
     ├── EducationCard.java       // long-form info text, scrollable
-    ├── FuzeTerminal.java        // moved out as its own component
     └── controller/NukeBuilderPresenter.java
 ```
 
@@ -386,7 +384,6 @@ Goal: the schematic becomes the centerpiece; everything else orbits it.
 │  │ Boost  │  │     ║                             ║   │  EFFECTS           │
 │  │ Sec    │  │     ║                             ║   │  …                 │
 │  │ Casing │  │     ╚═════════════════════════════╝   │  WARNINGS          │
-│  │ Fuze   │  │                                       │  …                 │
 │  │ Safety │  │   ┌─ Education ────────────────────┐  │                    │
 │  │ Delivr │  │   │ scrollable long-form text for  │  │                    │
 │  └────────┘  │   │ the currently-selected part …  │  │                    │
@@ -394,7 +391,6 @@ Goal: the schematic becomes the centerpiece; everything else orbits it.
 ├──────────────┴───────────────────────────────────────┴────────────────────┤
 │  BUILD SUMMARY:  W88-style · 2-stage TN · 475 kt           [ Reset Build ]│
 └───────────────────────────────────────────────────────────────────────────┘
-                  ↑ FUZE terminal slides up from this bar when fuze is active
 ```
 
 Interaction model:
@@ -404,7 +400,6 @@ Interaction model:
 - **Fusion sub-designer** becomes a *modal overlay* anchored to the secondary region of the schematic, not a third column. Activated when a Teller-Ulam configuration is committed.
 - **Build summary** is a single bottom strip with a one-line description ("W88-style two-stage thermonuclear, ~475 kt") plus a Reset button. Detailed stats live in the right-hand stats card.
 - **Education text** is always visible under the schematic at the size it deserves, with Markdown-ish formatting (headings, lists).
-- **Fuze terminal** becomes an opt-in overlay anchored to the bottom edge — slides up only when the fuze slot is active.
 - **Save / Load / Share** lives in the title bar; designs serialise to a small JSON.
 
 Engineering tasks:

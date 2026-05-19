@@ -33,7 +33,7 @@ public final class MabHeadlessSimulation {
             return switch (config.mode()) {
                 case SMOKE         -> runSmokeScenario(config);
                 case LAUNCH_IMPACT -> runLaunchImpactScenario(config);
-                case RADAR_DECOY   -> runRadarDecoyScenario(config);
+                case ROUTE_FEINT   -> runRouteFeintScenario(config);
                 case CIVIL_DEFENSE -> runCivilDefenseScenario(config);
                 case UPGRADE_FLOW  -> runUpgradeFlowScenario(config);
                 case AI_VS_DUMMY   -> runAiVsDummyScenario(config);
@@ -55,8 +55,8 @@ public final class MabHeadlessSimulation {
         s.match.debugAddNukeCharge(ParticipantId.PLAYER_A, 1_000);
         s.match.debugArmCurrentNuke(ParticipantId.PLAYER_A);
         boolean launched = s.match.debugStartLaunch(ParticipantId.PLAYER_A);
-        // Decoy on B and a radar scan from A.
-        s.match.debugActivateDecoy(ParticipantId.PLAYER_B, DecoyType.DECOY_LAUNCH);
+        // Feint on B and a route scan from A.
+        s.match.debugActivateDecoy(ParticipantId.PLAYER_B, DecoyType.FEINT_LAUNCH);
         s.match.debugRadarScan(ParticipantId.PLAYER_A);
         // Civil defence on B.
         s.match.debugActivateCivilDefense(ParticipantId.PLAYER_B);
@@ -76,8 +76,8 @@ public final class MabHeadlessSimulation {
         Verdict v = collect(cfg, s);
         boolean ok = v.invariantFailures.isEmpty()
                 && v.tel.countEvents("LAUNCH_AUTHORIZED") >= 1
-                && v.tel.countEvents("RADAR_SCAN_COMPLETED") >= 1
-                && v.tel.countEvents("DECOY_ACTIVATED") >= 1;
+                && v.tel.countEvents("ROUTE_SCAN_COMPLETED") >= 1
+                && v.tel.countEvents("FEINT_ACTIVATED") >= 1;
         if (!launched) ok = false;
         return finish(cfg, s, v, ok,
                 ok ? "" : "smoke acceptance not met");
@@ -106,9 +106,9 @@ public final class MabHeadlessSimulation {
                 ok ? "" : "launch/impact acceptance not met");
     }
 
-    private MabSimulationResult runRadarDecoyScenario(MabSimulationConfig cfg) {
+    private MabSimulationResult runRouteFeintScenario(MabSimulationConfig cfg) {
         Setup s = setup(cfg);
-        s.match.debugActivateDecoy(ParticipantId.PLAYER_B, DecoyType.DECOY_LAUNCH);
+        s.match.debugActivateDecoy(ParticipantId.PLAYER_B, DecoyType.FEINT_LAUNCH);
         tally(s);
         for (int i = 0; i < Math.max(cfg.ticks(), 4); i++) {
             s.match.debugRadarScan(ParticipantId.PLAYER_A);
@@ -118,11 +118,11 @@ public final class MabHeadlessSimulation {
         }
         Verdict v = collect(cfg, s);
         boolean ok = v.invariantFailures.isEmpty()
-                && v.tel.countEvents("DECOY_ACTIVATED") >= 1
-                && v.tel.countEvents("RADAR_SCAN_COMPLETED") >= 1
-                && v.tel.countEvents("RADAR_DECOY_EFFECT_APPLIED") >= 1;
+                && v.tel.countEvents("FEINT_ACTIVATED") >= 1
+                && v.tel.countEvents("ROUTE_SCAN_COMPLETED") >= 1
+                && v.tel.countEvents("ROUTE_FEINT_EFFECT_APPLIED") >= 1;
         return finish(cfg, s, v, ok,
-                ok ? "" : "radar/decoy acceptance not met");
+                ok ? "" : "route/feint acceptance not met");
     }
 
     private MabSimulationResult runCivilDefenseScenario(MabSimulationConfig cfg) {
@@ -290,8 +290,8 @@ public final class MabHeadlessSimulation {
                 + " events=" + v.tel.totalEvents()
                 + " launches=" + v.tel.countEvents("LAUNCH_AUTHORIZED")
                 + " impacts=" + v.tel.countEvents("IMPACT_RESOLVED")
-                + " scans=" + v.tel.countEvents("RADAR_SCAN_COMPLETED")
-                + " decoys=" + v.tel.countEvents("DECOY_ACTIVATED")
+                + " routeScans=" + v.tel.countEvents("ROUTE_SCAN_COMPLETED")
+                + " feints=" + v.tel.countEvents("FEINT_ACTIVATED")
                 + " civDef=" + v.tel.countEvents("CIVIL_DEFENSE_ACTIVATED")
                 + " upgrades=" + v.tel.countEvents("UPGRADE_APPLIED")
                 + " aiExec=" + v.tel.countEvents("AI_DECISION_EXECUTED")
@@ -304,8 +304,8 @@ public final class MabHeadlessSimulation {
                 v.tel.totalEvents(),
                 v.tel.countEvents("LAUNCH_AUTHORIZED"),
                 v.tel.countEvents("IMPACT_RESOLVED"),
-                v.tel.countEvents("RADAR_SCAN_COMPLETED"),
-                v.tel.countEvents("DECOY_ACTIVATED"),
+                v.tel.countEvents("ROUTE_SCAN_COMPLETED"),
+                v.tel.countEvents("FEINT_ACTIVATED"),
                 v.tel.countEvents("CIVIL_DEFENSE_ACTIVATED"),
                 v.tel.countEvents("UPGRADE_APPLIED"),
                 v.tel.countEvents("AI_DECISION_EXECUTED"),

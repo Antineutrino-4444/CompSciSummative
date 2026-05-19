@@ -70,6 +70,7 @@ public class ParticipantState {
     private int piecesLocked;
     private int linesClearedTotal;
     private int garbageReceivedTotal;
+    private int maxStackHeight;
     private boolean toppedOut;
     private String selectedInterceptThreatId;
 
@@ -233,7 +234,7 @@ public class ParticipantState {
         for (ActiveDecoyState d : activeDecoys) {
             if (d.isActive()) { first = d; break; }
         }
-        return "Decoys{active=" + getActiveDecoyCount()
+        return "Feints{active=" + getActiveDecoyCount()
                 + " falseLaunch=" + getFalseLaunchSignatureCount()
                 + " falseThreat=" + getFalseThreatSignatureCount()
                 + " penalty=" + getActiveConfidencePenaltyAgainstScanners()
@@ -244,6 +245,7 @@ public class ParticipantState {
     public int getPiecesLocked() { return piecesLocked; }
     public int getLinesClearedTotal() { return linesClearedTotal; }
     public int getGarbageReceivedTotal() { return garbageReceivedTotal; }
+    public int getMaxStackHeight() { return maxStackHeight; }
     public boolean isToppedOut() { return toppedOut; }
 
     public String getSelectedInterceptThreatId() { return selectedInterceptThreatId; }
@@ -257,11 +259,19 @@ public class ParticipantState {
     void addGarbageReceived(int n) { if (n > 0) garbageReceivedTotal += n; }
     void markToppedOut() { toppedOut = true; }
 
+    void refreshMaxStackHeight() {
+        try {
+            int h = gameState.getBoard().getStackHeight();
+            if (h > maxStackHeight) maxStackHeight = h;
+        } catch (RuntimeException ignored) {}
+    }
+
     public String toDebugString() {
         return "Participant{" + id
                 + " pieces=" + piecesLocked
                 + " lines=" + linesClearedTotal
                 + " garbage=" + garbageReceivedTotal
+                + " maxHeight=" + maxStackHeight
                 + (toppedOut ? " TOPPED_OUT" : "")
                 + " " + nukeBuildState.toDebugString()
                 + " " + actionDebugString()
@@ -313,7 +323,7 @@ public class ParticipantState {
                 + " target=" + (selectedInterceptThreatId == null ? "-" : selectedInterceptThreatId)
                 + (first == null ? ""
                         : " first=" + first.getThreatId()
-                                + " warning=" + first.getWarningPiecesRemaining())
+                                + " impactDelay=" + first.getWarningPiecesRemaining())
                 + "}";
     }
 

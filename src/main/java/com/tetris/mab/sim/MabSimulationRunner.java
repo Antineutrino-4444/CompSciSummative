@@ -15,7 +15,7 @@ import com.tetris.mab.balance.MabBalanceReporter;
  *   java -cp target\classes com.tetris.mab.sim.MabSimulationRunner [scenario] [ticks] [--profile id]
  * </pre>
  *
- * Scenarios: {@code smoke}, {@code launch-impact}, {@code radar-decoy},
+ * Scenarios: {@code smoke}, {@code launch-impact}, {@code route-feint},
  * {@code civil-defense}, {@code upgrade-flow}, {@code ai-vs-dummy},
  * {@code ai-vs-ai}, {@code balance}. With no args, runs {@code smoke}.
  *
@@ -61,7 +61,7 @@ public final class MabSimulationRunner {
         MabSimulationConfig cfg = switch (scenario) {
             case "smoke"          -> MabSimulationConfig.smoke();
             case "launch-impact"  -> MabSimulationConfig.launchImpact();
-            case "radar-decoy"    -> MabSimulationConfig.radarDecoy();
+            case "route-feint"    -> MabSimulationConfig.routeFeint();
             case "civil-defense"  -> MabSimulationConfig.civilDefense();
             case "upgrade-flow"   -> MabSimulationConfig.upgradeFlow();
             case "ai-vs-dummy"    -> MabSimulationConfig.aiVsDummy(ticks == null ? 60 : ticks);
@@ -188,8 +188,8 @@ public final class MabSimulationRunner {
         }
         System.out.println("counts: launches=" + r.launchCount()
                 + " impacts=" + r.impactResolvedCount()
-                + " scans=" + r.radarScanCount()
-                + " decoys=" + r.decoyActivatedCount()
+                + " routeScans=" + r.routeScanCount()
+                + " feints=" + r.feintActivatedCount()
                 + " civDef=" + r.civilDefenseActivatedCount()
                 + " upgrades=" + r.upgradeAppliedCount()
                 + " aiExec=" + r.aiDecisionExecutedCount()

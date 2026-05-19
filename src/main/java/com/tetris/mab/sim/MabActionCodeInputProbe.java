@@ -40,7 +40,7 @@ public final class MabActionCodeInputProbe {
     public static void main(String[] args) {
         System.out.println("=== MAB Action Code Input Probe ===");
 
-        runScenario("radar-scan", new int[] {2, 1, 2}, ExpectedOutcome.COMPLETED);
+        runScenario("route-analysis", new int[] {2, 1, 2}, ExpectedOutcome.COMPLETED);
         runScenario("civil-defense", new int[] {1, 1, 2}, ExpectedOutcome.COMPLETED);
         runScenario("emergency-intercept-no-threat",
                 new int[] {1, 2, 1}, ExpectedOutcome.ANY_NON_NULL);

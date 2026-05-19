@@ -8,7 +8,7 @@ import com.tetris.mab.ai.MabAiDifficulty;
  * <p>This is Balance Pass v1: a single struct that centralizes the
  * AI pacing knobs (per-tick charge gain, per-decision charge step,
  * post-action cooldowns) plus a small set of PvE pressure gates
- * (early-launch delay, minimum ticks before decoy/upgrade/civil
+ * (early-launch delay, minimum ticks before feint/upgrade/civil
  * defence) and a few preferred safety values.
  *
  * <p>Profiles are model-only and Swing-independent. Values are
@@ -38,15 +38,15 @@ public final class MabBalanceProfile {
     private final int hardLaunchCooldown;
     private final int debugLaunchCooldown;
 
-    private final int easyRadarCooldown;
-    private final int normalRadarCooldown;
-    private final int hardRadarCooldown;
-    private final int debugRadarCooldown;
+    private final int easyRouteScanCooldown;
+    private final int normalRouteScanCooldown;
+    private final int hardRouteScanCooldown;
+    private final int debugRouteScanCooldown;
 
-    private final int easyDecoyCooldown;
-    private final int normalDecoyCooldown;
-    private final int hardDecoyCooldown;
-    private final int debugDecoyCooldown;
+    private final int easyFeintCooldown;
+    private final int normalFeintCooldown;
+    private final int hardFeintCooldown;
+    private final int debugFeintCooldown;
 
     private final int easyDefenseCooldown;
     private final int normalDefenseCooldown;
@@ -60,7 +60,7 @@ public final class MabBalanceProfile {
 
     // --- PvE pressure ---
     private final int aiEarlyLaunchDelayTicks;
-    private final int aiMinimumTicksBeforeDecoy;
+    private final int aiMinimumTicksBeforeFeint;
     private final int aiMinimumTicksBeforeUpgrade;
     private final int aiMinimumTicksBeforeCivilDefense;
     private final int maxAiLaunchesBeforeTick80;
@@ -97,15 +97,15 @@ public final class MabBalanceProfile {
         this.hardLaunchCooldown   = positive(b.hardLaunchCooldown,   "hardLaunchCooldown");
         this.debugLaunchCooldown  = nonNegative(b.debugLaunchCooldown,  "debugLaunchCooldown");
 
-        this.easyRadarCooldown   = positive(b.easyRadarCooldown,   "easyRadarCooldown");
-        this.normalRadarCooldown = positive(b.normalRadarCooldown, "normalRadarCooldown");
-        this.hardRadarCooldown   = positive(b.hardRadarCooldown,   "hardRadarCooldown");
-        this.debugRadarCooldown  = nonNegative(b.debugRadarCooldown,  "debugRadarCooldown");
+        this.easyRouteScanCooldown   = positive(b.easyRouteScanCooldown,   "easyRouteScanCooldown");
+        this.normalRouteScanCooldown = positive(b.normalRouteScanCooldown, "normalRouteScanCooldown");
+        this.hardRouteScanCooldown   = positive(b.hardRouteScanCooldown,   "hardRouteScanCooldown");
+        this.debugRouteScanCooldown  = nonNegative(b.debugRouteScanCooldown,  "debugRouteScanCooldown");
 
-        this.easyDecoyCooldown   = positive(b.easyDecoyCooldown,   "easyDecoyCooldown");
-        this.normalDecoyCooldown = positive(b.normalDecoyCooldown, "normalDecoyCooldown");
-        this.hardDecoyCooldown   = positive(b.hardDecoyCooldown,   "hardDecoyCooldown");
-        this.debugDecoyCooldown  = nonNegative(b.debugDecoyCooldown,  "debugDecoyCooldown");
+        this.easyFeintCooldown   = positive(b.easyFeintCooldown,   "easyFeintCooldown");
+        this.normalFeintCooldown = positive(b.normalFeintCooldown, "normalFeintCooldown");
+        this.hardFeintCooldown   = positive(b.hardFeintCooldown,   "hardFeintCooldown");
+        this.debugFeintCooldown  = nonNegative(b.debugFeintCooldown,  "debugFeintCooldown");
 
         this.easyDefenseCooldown   = positive(b.easyDefenseCooldown,   "easyDefenseCooldown");
         this.normalDefenseCooldown = positive(b.normalDefenseCooldown, "normalDefenseCooldown");
@@ -118,7 +118,7 @@ public final class MabBalanceProfile {
         this.debugUpgradeCooldown  = nonNegative(b.debugUpgradeCooldown,  "debugUpgradeCooldown");
 
         this.aiEarlyLaunchDelayTicks         = nonNegative(b.aiEarlyLaunchDelayTicks,         "aiEarlyLaunchDelayTicks");
-        this.aiMinimumTicksBeforeDecoy       = nonNegative(b.aiMinimumTicksBeforeDecoy,       "aiMinimumTicksBeforeDecoy");
+        this.aiMinimumTicksBeforeFeint       = nonNegative(b.aiMinimumTicksBeforeFeint,       "aiMinimumTicksBeforeFeint");
         this.aiMinimumTicksBeforeUpgrade     = nonNegative(b.aiMinimumTicksBeforeUpgrade,     "aiMinimumTicksBeforeUpgrade");
         this.aiMinimumTicksBeforeCivilDefense = nonNegative(b.aiMinimumTicksBeforeCivilDefense, "aiMinimumTicksBeforeCivilDefense");
         this.maxAiLaunchesBeforeTick80       = nonNegative(b.maxAiLaunchesBeforeTick80,       "maxAiLaunchesBeforeTick80");
@@ -155,8 +155,8 @@ public final class MabBalanceProfile {
     public int chargeGainPerTickFor(MabAiDifficulty d) {
         return switch (d) {
             case EASY -> easyAiChargeGainPerTick;
-            case NORMAL -> normalAiChargeGainPerTick;
-            case HARD -> hardAiChargeGainPerTick;
+            case MEDIUM, NORMAL -> normalAiChargeGainPerTick;
+            case HARD, EXPERT, MASTER -> hardAiChargeGainPerTick;
             case DEBUG -> debugAiChargeGainPerTick;
         };
     }
@@ -164,8 +164,8 @@ public final class MabBalanceProfile {
     public int addChargeStepFor(MabAiDifficulty d) {
         return switch (d) {
             case EASY -> easyAiAddChargeStep;
-            case NORMAL -> normalAiAddChargeStep;
-            case HARD -> hardAiAddChargeStep;
+            case MEDIUM, NORMAL -> normalAiAddChargeStep;
+            case HARD, EXPERT, MASTER -> hardAiAddChargeStep;
             case DEBUG -> debugAiAddChargeStep;
         };
     }
@@ -173,35 +173,35 @@ public final class MabBalanceProfile {
     public int launchCooldownFor(MabAiDifficulty d) {
         return switch (d) {
             case EASY -> easyLaunchCooldown;
-            case NORMAL -> normalLaunchCooldown;
-            case HARD -> hardLaunchCooldown;
+            case MEDIUM, NORMAL -> normalLaunchCooldown;
+            case HARD, EXPERT, MASTER -> hardLaunchCooldown;
             case DEBUG -> debugLaunchCooldown;
         };
     }
 
-    public int radarCooldownFor(MabAiDifficulty d) {
+    public int routeScanCooldownFor(MabAiDifficulty d) {
         return switch (d) {
-            case EASY -> easyRadarCooldown;
-            case NORMAL -> normalRadarCooldown;
-            case HARD -> hardRadarCooldown;
-            case DEBUG -> debugRadarCooldown;
+            case EASY -> easyRouteScanCooldown;
+            case MEDIUM, NORMAL -> normalRouteScanCooldown;
+            case HARD, EXPERT, MASTER -> hardRouteScanCooldown;
+            case DEBUG -> debugRouteScanCooldown;
         };
     }
 
-    public int decoyCooldownFor(MabAiDifficulty d) {
+    public int feintCooldownFor(MabAiDifficulty d) {
         return switch (d) {
-            case EASY -> easyDecoyCooldown;
-            case NORMAL -> normalDecoyCooldown;
-            case HARD -> hardDecoyCooldown;
-            case DEBUG -> debugDecoyCooldown;
+            case EASY -> easyFeintCooldown;
+            case MEDIUM, NORMAL -> normalFeintCooldown;
+            case HARD, EXPERT, MASTER -> hardFeintCooldown;
+            case DEBUG -> debugFeintCooldown;
         };
     }
 
     public int defenseCooldownFor(MabAiDifficulty d) {
         return switch (d) {
             case EASY -> easyDefenseCooldown;
-            case NORMAL -> normalDefenseCooldown;
-            case HARD -> hardDefenseCooldown;
+            case MEDIUM, NORMAL -> normalDefenseCooldown;
+            case HARD, EXPERT, MASTER -> hardDefenseCooldown;
             case DEBUG -> debugDefenseCooldown;
         };
     }
@@ -209,14 +209,14 @@ public final class MabBalanceProfile {
     public int upgradeCooldownFor(MabAiDifficulty d) {
         return switch (d) {
             case EASY -> easyUpgradeCooldown;
-            case NORMAL -> normalUpgradeCooldown;
-            case HARD -> hardUpgradeCooldown;
+            case MEDIUM, NORMAL -> normalUpgradeCooldown;
+            case HARD, EXPERT, MASTER -> hardUpgradeCooldown;
             case DEBUG -> debugUpgradeCooldown;
         };
     }
 
     public int getAiEarlyLaunchDelayTicks() { return aiEarlyLaunchDelayTicks; }
-    public int getAiMinimumTicksBeforeDecoy() { return aiMinimumTicksBeforeDecoy; }
+    public int getAiMinimumTicksBeforeFeint() { return aiMinimumTicksBeforeFeint; }
     public int getAiMinimumTicksBeforeUpgrade() { return aiMinimumTicksBeforeUpgrade; }
     public int getAiMinimumTicksBeforeCivilDefense() { return aiMinimumTicksBeforeCivilDefense; }
     public int getMaxAiLaunchesBeforeTick80() { return maxAiLaunchesBeforeTick80; }
@@ -255,15 +255,15 @@ public final class MabBalanceProfile {
         private int hardLaunchCooldown;
         private int debugLaunchCooldown;
 
-        private int easyRadarCooldown;
-        private int normalRadarCooldown;
-        private int hardRadarCooldown;
-        private int debugRadarCooldown;
+        private int easyRouteScanCooldown;
+        private int normalRouteScanCooldown;
+        private int hardRouteScanCooldown;
+        private int debugRouteScanCooldown;
 
-        private int easyDecoyCooldown;
-        private int normalDecoyCooldown;
-        private int hardDecoyCooldown;
-        private int debugDecoyCooldown;
+        private int easyFeintCooldown;
+        private int normalFeintCooldown;
+        private int hardFeintCooldown;
+        private int debugFeintCooldown;
 
         private int easyDefenseCooldown;
         private int normalDefenseCooldown;
@@ -276,7 +276,7 @@ public final class MabBalanceProfile {
         private int debugUpgradeCooldown;
 
         private int aiEarlyLaunchDelayTicks;
-        private int aiMinimumTicksBeforeDecoy;
+        private int aiMinimumTicksBeforeFeint;
         private int aiMinimumTicksBeforeUpgrade;
         private int aiMinimumTicksBeforeCivilDefense;
         private int maxAiLaunchesBeforeTick80;
@@ -314,18 +314,18 @@ public final class MabBalanceProfile {
             this.debugLaunchCooldown = debug;
             return this;
         }
-        public Builder radarCooldown(int easy, int normal, int hard, int debug) {
-            this.easyRadarCooldown = easy;
-            this.normalRadarCooldown = normal;
-            this.hardRadarCooldown = hard;
-            this.debugRadarCooldown = debug;
+        public Builder routeScanCooldown(int easy, int normal, int hard, int debug) {
+            this.easyRouteScanCooldown = easy;
+            this.normalRouteScanCooldown = normal;
+            this.hardRouteScanCooldown = hard;
+            this.debugRouteScanCooldown = debug;
             return this;
         }
-        public Builder decoyCooldown(int easy, int normal, int hard, int debug) {
-            this.easyDecoyCooldown = easy;
-            this.normalDecoyCooldown = normal;
-            this.hardDecoyCooldown = hard;
-            this.debugDecoyCooldown = debug;
+        public Builder feintCooldown(int easy, int normal, int hard, int debug) {
+            this.easyFeintCooldown = easy;
+            this.normalFeintCooldown = normal;
+            this.hardFeintCooldown = hard;
+            this.debugFeintCooldown = debug;
             return this;
         }
         public Builder defenseCooldown(int easy, int normal, int hard, int debug) {
@@ -344,7 +344,7 @@ public final class MabBalanceProfile {
         }
 
         public Builder aiEarlyLaunchDelayTicks(int v) { this.aiEarlyLaunchDelayTicks = v; return this; }
-        public Builder aiMinimumTicksBeforeDecoy(int v) { this.aiMinimumTicksBeforeDecoy = v; return this; }
+        public Builder aiMinimumTicksBeforeFeint(int v) { this.aiMinimumTicksBeforeFeint = v; return this; }
         public Builder aiMinimumTicksBeforeUpgrade(int v) { this.aiMinimumTicksBeforeUpgrade = v; return this; }
         public Builder aiMinimumTicksBeforeCivilDefense(int v) { this.aiMinimumTicksBeforeCivilDefense = v; return this; }
         public Builder maxAiLaunchesBeforeTick80(int v) { this.maxAiLaunchesBeforeTick80 = v; return this; }

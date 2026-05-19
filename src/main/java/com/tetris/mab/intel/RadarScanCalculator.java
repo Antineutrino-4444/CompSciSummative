@@ -139,7 +139,7 @@ public final class RadarScanCalculator {
             if (!piercing && hasActiveDecoyOfFlag(activeDecoys, DecoyFlag.DOCTRINE)) {
                 NukeDoctrineType fake = spoofDoctrine(realDoctrine);
                 doctrine = fake == null ? null : fake.name();
-                appendMsg(decoyMsg, "doctrine spoofed by decoy");
+                appendMsg(decoyMsg, "doctrine spoofed by feint");
             } else {
                 doctrine = realDoctrine == null ? null : realDoctrine.name();
                 if (piercing && hasActiveDecoyOfFlag(activeDecoys, DecoyFlag.DOCTRINE)) {
@@ -183,7 +183,7 @@ public final class RadarScanCalculator {
                 displayedLaunches = realLaunches;
                 displayedThreats = realThreats;
                 if (falseLaunches > 0 || falseThreats > 0) {
-                    appendMsg(decoyMsg, "decoy signatures identified");
+                    appendMsg(decoyMsg, "feint signatures identified");
                 }
                 if (maskedHidden > 0) {
                     appendMsg(decoyMsg, "masking pierced");

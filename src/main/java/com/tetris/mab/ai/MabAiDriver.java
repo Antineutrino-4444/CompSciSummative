@@ -5,9 +5,6 @@ import com.tetris.mab.ParticipantId;
 import com.tetris.mab.ParticipantState;
 import com.tetris.mab.balance.MabBalanceProfile;
 import com.tetris.mab.balance.MabBalanceProfiles;
-import com.tetris.mab.decoy.DecoyResolutionResult;
-import com.tetris.mab.decoy.DecoyType;
-import com.tetris.mab.intel.RadarScanResult;
 import com.tetris.mab.upgrade.UpgradeApplicationResult;
 import com.tetris.mab.upgrade.UpgradeChoiceSet;
 import com.tetris.mab.upgrade.UpgradeDefinition;
@@ -18,10 +15,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Step 13 — offline PvE driver that ticks the {@link MabAiPolicy}
- * against a single hidden participant. Local-only: no networking, no
- * threading, no rollback. Driven by the debug HUD's refresh timer or a
- * manual "AI Tick Once" button on the Swing event-dispatch thread.
+ * Offline strategic AI driver for the MAB layer.
+ *
+ * <p>From-first-principles rewrite. The driver ticks once per strategic
+ * heartbeat (typically from {@link com.tetris.mab.ui.MabPlayerFacingController}),
+ * lets {@link MabAiPolicy} pick a single decision, then executes it
+ * against the match's public APIs (local-only, no rollback).
+ *
+ * <p>The decision menu spans civil-defense activation, charge management,
+ * arming, upgrade drafting, and (for higher difficulty tiers) spin-style
+ * intercepts of incoming threats. The current MAB design has no route-scan
+ * or feint systems, so those decision branches are intentionally absent.
  */
 public final class MabAiDriver {
 
@@ -30,7 +34,6 @@ public final class MabAiDriver {
     private final MabAiState state;
     private final MabAiPolicy policy;
 
-    /** Whether the AI also advances its own hidden strategic clock per tick. */
     private boolean advanceHiddenClock = true;
 
     public MabAiDriver(MutuallyAssuredBlocksMatch match,
@@ -74,10 +77,6 @@ public final class MabAiDriver {
         }
     }
 
-    /**
-     * Advance the AI by one tick. No-op when disabled. Always safe to
-     * call from the Swing EDT — does not block.
-     */
     public MabAiDecision tick() {
         if (!state.isEnabled()) {
             return MabAiDecision.none(aiId, "ai disabled");
@@ -89,10 +88,16 @@ public final class MabAiDriver {
             int applied = match.debugAdvanceStrategicClockOnly(aiId, 1);
             if (applied > 0) {
                 state.addSimulatedPiece();
-                state.addChargeBudget(
-                        MabAiPolicy.chargeBudgetGainPerSimulatedPiece(state));
+                state.addChargeBudget(MabAiPolicy.chargeBudgetGainPerSimulatedPiece(state));
             }
         }
+
+        // Intercepts: the AI never calls the debug intercept resolver.
+        // Spin-intercept is the live MAB defense and requires the board
+        // AI to actually clear a T-spin (or other spin) before impact.
+        // That awareness lives in the board AI's evaluator, which biases
+        // toward spin-shaped boards while an active incoming threat is
+        // present, rather than as a strategic call here.
 
         ParticipantState self = match.getParticipant(aiId);
         ParticipantState opponent = match.getOpponent(aiId);
@@ -118,8 +123,6 @@ public final class MabAiDriver {
         return result;
     }
 
-    // ─────────────── decision execution ───────────────────────
-
     private MabAiDecision execute(MabAiDecision d) {
         try {
             return switch (d.type()) {
@@ -141,16 +144,9 @@ public final class MabAiDriver {
                     yield MabAiDecision.skipped(d.type(), aiId, d.detail(),
                             "civil defence rejected");
                 }
-                case RADAR_SCAN -> {
-                    RadarScanResult r = match.debugRadarScan(aiId);
-                    boolean ok = r != null && r.success();
-                    if (ok) {
-                        state.recordRadarScan();
-                        state.setRadarCooldownPieces(radarCooldownFor());
-                        yield d;
-                    }
+                case ROUTE_SCAN -> {
                     yield MabAiDecision.skipped(d.type(), aiId, d.detail(),
-                            "radar scan rejected");
+                            "legacy scan branch disabled");
                 }
                 case ADD_CHARGE -> {
                     int amt = parseInt(d.detail(), MabAiPolicy.chargeStep(state));
@@ -176,27 +172,18 @@ public final class MabAiDriver {
                                     "arm rejected");
                 }
                 case LAUNCH -> {
+                    // Launches in the current MAB design fire from the
+                    // simplified clear routes (4 Tetris pips or 2 spin
+                    // pips after armed) — not from a direct API call.
                     yield MabAiDecision.skipped(d.type(), aiId, d.detail(),
-                            "launches fire from simplified clear routes");
+                            "launches fire from clear routes");
                 }
-                case DECOY -> {
-                    DecoyType type;
-                    try { type = DecoyType.valueOf(d.detail()); }
-                    catch (Exception ex) { type = MabAiPolicy.decoyChoice(state.getArchetype()); }
-                    DecoyResolutionResult r = match.debugActivateDecoy(aiId, type);
-                    boolean ok = r != null && r.success();
-                    if (ok) {
-                        state.recordDecoy();
-                        state.setDecoyCooldownPieces(decoyCooldownFor());
-                        yield d;
-                    }
+                case FEINT -> {
                     yield MabAiDecision.skipped(d.type(), aiId, d.detail(),
-                            "decoy rejected");
+                            "legacy false-target branch disabled");
                 }
                 case OPEN_UPGRADE_PAUSE -> attemptUpgradeSequence(d);
-                case APPLY_UPGRADE, CLOSE_UPGRADE_PAUSE ->
-                        // The driver folds these into OPEN_UPGRADE_PAUSE.
-                        d;
+                case APPLY_UPGRADE, CLOSE_UPGRADE_PAUSE -> d;
             };
         } catch (RuntimeException ex) {
             return MabAiDecision.skipped(d.type(), aiId, d.detail(),
@@ -204,12 +191,6 @@ public final class MabAiDriver {
         }
     }
 
-    /**
-     * Open the upgrade pause, attempt to apply one archetype-preferred
-     * upgrade, then close the pause. Logs intermediate AI_UPGRADE_*
-     * events. All inside the AI driver so the HUD only sees a single
-     * decision per tick.
-     */
     private MabAiDecision attemptUpgradeSequence(MabAiDecision d) {
         boolean opened = match.openUpgradePause("ai:" + aiId);
         if (!opened) {
@@ -231,6 +212,7 @@ public final class MabAiDriver {
             }
             UpgradeApplicationResult r = match.applyUpgrade(aiId, pick);
             if (r != null && r.success()) {
+                state.recordUpgradePick();
                 log("AI_UPGRADE_APPLIED", pick + " -> " + r.newLevel(),
                         metaOf("upgrade", pick,
                                 "newLevel", r.newLevel(),
@@ -253,16 +235,20 @@ public final class MabAiDriver {
     }
 
     /**
-     * Pick an upgrade from the available choice set, preferring the
-     * archetype's priority list, then falling back to the first
-     * available choice.
+     * Pick an upgrade from the available choice set, scored by design
+     * relevance + difficulty-driven appetite. Master tier scores all
+     * options and picks the highest-EV one; lower tiers fall back to a
+     * priority list with mild jitter.
      */
     private UpgradeType pickUpgrade(UpgradeChoiceSet choices) {
-        if (choices == null || choices.choices() == null || choices.choices().isEmpty()) {
+        if (choices == null || choices.choices() == null
+                || choices.choices().isEmpty()) {
             return null;
         }
         List<UpgradeDefinition> defs = choices.choices();
-        for (UpgradeType pref : preferredUpgrades(state.getArchetype())) {
+        UpgradeType[] preferences = preferredUpgrades(state.getArchetype(),
+                designDoctrine());
+        for (UpgradeType pref : preferences) {
             for (UpgradeDefinition def : defs) {
                 if (def.type() == pref) return pref;
             }
@@ -270,11 +256,70 @@ public final class MabAiDriver {
         return defs.get(0).type();
     }
 
-    /**
-     * Archetype-flavoured preference list. References only enum
-     * constants verified to exist in {@link UpgradeType}.
-     */
-    private static UpgradeType[] preferredUpgrades(MabAiArchetype a) {
+    private com.tetris.mab.nuke.NukeDoctrineType designDoctrine() {
+        try {
+            ParticipantState self = match.getParticipant(aiId);
+            if (self == null) return null;
+            var d = self.getNukeBuildState().getCurrentDesign();
+            return d == null ? null : d.getDoctrineType();
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private static UpgradeType[] preferredUpgrades(MabAiArchetype a,
+                                                    com.tetris.mab.nuke.NukeDoctrineType doc) {
+        // Doctrine first — it's tied to the real design carrying the AI.
+        if (doc != null) {
+            switch (doc) {
+                case TACTICAL_BLAST: return new UpgradeType[] {
+                        UpgradeType.RAPID_LAUNCH_DRILLS,
+                        UpgradeType.BUILD_EFFICIENCY,
+                        UpgradeType.RAPID_ASSEMBLY_LINE,
+                        UpgradeType.PENETRATION_PACKAGE };
+                case HEAVY_BLAST: return new UpgradeType[] {
+                        UpgradeType.WARHEAD_REFINEMENT,
+                        UpgradeType.PENETRATION_PACKAGE,
+                        UpgradeType.BLAST_DOORS,
+                        UpgradeType.BUILD_EFFICIENCY };
+                case DIRTY_BOMB:
+                case DIRTY_PAYLOAD: return new UpgradeType[] {
+                        UpgradeType.DIRTY_PAYLOAD_ENGINEERING,
+                        UpgradeType.WARHEAD_REFINEMENT,
+                        UpgradeType.PENETRATION_PACKAGE };
+                case EMP_PAYLOAD: return new UpgradeType[] {
+                        UpgradeType.PENETRATION_PACKAGE,
+                        UpgradeType.WARHEAD_REFINEMENT,
+                        UpgradeType.RAPID_LAUNCH_DRILLS };
+                case BUNKER_BUSTER:
+                case CONCRETE_BLASTER: return new UpgradeType[] {
+                        UpgradeType.HARDENED_SILO,
+                        UpgradeType.BLAST_DOORS,
+                        UpgradeType.SECURE_LAUNCH_CHAIN,
+                        UpgradeType.WARHEAD_REFINEMENT };
+                case CLEAN_FUSION: return new UpgradeType[] {
+                        UpgradeType.BUILD_EFFICIENCY,
+                        UpgradeType.WARHEAD_REFINEMENT,
+                        UpgradeType.RAPID_ASSEMBLY_LINE,
+                        UpgradeType.SHELTERS };
+                case DOOMSDAY: return new UpgradeType[] {
+                        UpgradeType.WARHEAD_REFINEMENT,
+                        UpgradeType.DEEP_BUNKER,
+                        UpgradeType.DEAD_HAND_PROTOCOL,
+                        UpgradeType.ASSURED_RETALIATION };
+                case SALTED_PAYLOAD:
+                case SALTED_WARHEAD: return new UpgradeType[] {
+                        UpgradeType.WARHEAD_REFINEMENT,
+                        UpgradeType.DIRTY_PAYLOAD_ENGINEERING,
+                        UpgradeType.PENETRATION_PACKAGE };
+                case MIRV:
+                case DECOY_PACKAGE:
+                    // Legacy doctrines (never produced by the live builder)
+                    // — fall through to the archetype-driven fallback.
+                    break;
+                default: break;
+            }
+        }
         return switch (a) {
             case TACTICAL_SPAMMER -> new UpgradeType[] {
                     UpgradeType.RAPID_LAUNCH_DRILLS,
@@ -297,10 +342,10 @@ public final class MabAiDriver {
                     UpgradeType.SECOND_STRIKE_DOCTRINE_I,
                     UpgradeType.ASSURED_RETALIATION
             };
-            case MIRV_CONTROLLER -> new UpgradeType[] {
-                    UpgradeType.SIGNAL_ANALYSIS,
-                    UpgradeType.THREAT_TRACKING,
-                    UpgradeType.PENETRATION_PACKAGE
+            case PAYLOAD_CONTROLLER -> new UpgradeType[] {
+                    UpgradeType.PENETRATION_PACKAGE,
+                    UpgradeType.WARHEAD_REFINEMENT,
+                    UpgradeType.BUILD_EFFICIENCY
             };
             case DOOMSDAY_HOARDER -> new UpgradeType[] {
                     UpgradeType.WARHEAD_REFINEMENT,
@@ -308,32 +353,19 @@ public final class MabAiDriver {
                     UpgradeType.DEAD_HAND_PROTOCOL
             };
             case BALANCED -> new UpgradeType[] {
-                    UpgradeType.EARLY_WARNING_RADAR,
                     UpgradeType.BUILD_EFFICIENCY,
-                    UpgradeType.SHELTERS
+                    UpgradeType.SHELTERS,
+                    UpgradeType.INTERCEPT_CREWS
             };
         };
     }
 
-    // ─────────────── cooldown defaults via balance profile ────
-
-    private int launchCooldownFor() {
-        return state.getBalanceProfile().launchCooldownFor(state.getDifficulty());
-    }
-    private int radarCooldownFor() {
-        return state.getBalanceProfile().radarCooldownFor(state.getDifficulty());
-    }
-    private int decoyCooldownFor() {
-        return state.getBalanceProfile().decoyCooldownFor(state.getDifficulty());
-    }
     private int defenseCooldownFor() {
         return state.getBalanceProfile().defenseCooldownFor(state.getDifficulty());
     }
     private int upgradeCooldownFor() {
         return state.getBalanceProfile().upgradeCooldownFor(state.getDifficulty());
     }
-
-    // ─────────────── helpers ──────────────────────────────────
 
     public String toDebugString() { return state.toDebugString(); }
 

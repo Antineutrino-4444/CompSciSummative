@@ -66,8 +66,8 @@ public final class MabDoctrineStatusOverlayProbe {
                 && containsText(overlay, "SPIN")
                 && containsText(overlay, "DEFENSE")
                 && containsText(overlay, "POWER")
-                && containsText(overlay, "INTEL")
-                && containsText(overlay, "TEMPO"));
+                && containsText(overlay, "TEMPO")
+                && !containsText(overlay, "INTEL"));
         ok &= report("activeDoctrinesShown", containsText(overlay, "MANUAL OVERRIDE")
                 && containsText(overlay, "EMP"));
         ok &= report("multipleOwnedListScrollsOnlyListArea",

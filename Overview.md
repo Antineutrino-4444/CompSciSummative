@@ -679,7 +679,6 @@ The builder is a Swing panel with:
 - Parts palette filtered by active slot.
 - Cross-section schematic.
 - Info/stat panel.
-- Fuze terminal.
 - Reset behavior.
 - Embedded-host close/back behavior.
 
@@ -697,7 +696,6 @@ The conceptual slot catalog includes:
 - Boost Gas.
 - Fusion Secondary.
 - Casing.
-- Fuze.
 - Safety.
 - Delivery.
 

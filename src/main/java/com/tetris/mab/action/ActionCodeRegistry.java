@@ -56,8 +56,8 @@ public final class ActionCodeRegistry {
                 ActionType.DIRTY_LAUNCH,
                 List.of(anchored(1), normal(3), normal(2)),
                 false));
-        defs.add(launchHardFour("mirv_launch", "MIRV Launch",
-                ActionType.MIRV_LAUNCH,
+        defs.add(launchHardFour("heavy_split_launch", "Heavy Split Launch",
+                ActionType.HEAVY_SPLIT_LAUNCH,
                 List.of(anchored(3), anchored(2), normal(3)),
                 true));
         defs.add(launchHardFour("concrete_blaster_launch", "Concrete Blaster Launch",
@@ -99,12 +99,12 @@ public final class ActionCodeRegistry {
                 ActionConfirmationMode.NONE,
                 "Boost civilian survival."));
 
-        // ─── Intel ───
-        defs.add(actionFromTokens("radar_scan", "Radar Scan",
-                ActionType.RADAR_SCAN, ActionCategory.INTEL,
+        // ─── Retired analysis branch ───
+        defs.add(actionFromTokens("route_scan", "Route Analysis",
+                ActionType.ROUTE_SCAN, ActionCategory.ANALYSIS,
                 List.of(normal(2), normal(1), anchored(2)),
                 false, false, false, false,
-                ActionConfirmationMode.NONE, "Active radar sweep."));
+                ActionConfirmationMode.NONE, "Analyze route pressure."));
 
         // ─── Utility ───
         defs.add(actionFromTokens("silo_harden", "Silo Harden",
@@ -121,7 +121,7 @@ public final class ActionCodeRegistry {
                 ActionType.EMP_PULSE, ActionCategory.UTILITY,
                 List.of(normal(1), normal(2), anchored(2), normal(1)),
                 false, false, false, false,
-                ActionConfirmationMode.NONE, "Disrupt opponent radar / warning."));
+                ActionConfirmationMode.NONE, "Disrupt opponent launch timing."));
         defs.add(actionFromTokens("concrete_blaster_arm", "Concrete Blaster Arm",
                 ActionType.CONCRETE_BLASTER_ARM, ActionCategory.UTILITY,
                 List.of(normal(2), anchored(4), normal(2)),
@@ -136,33 +136,33 @@ public final class ActionCodeRegistry {
                 false, false, false, false,
                 ActionConfirmationMode.KEYBOARD_CONFIRM, "Lock self into restraint."));
 
-        // ─── Decoys ───
-        defs.add(actionFromTokens("decoy_launch", "Decoy Launch",
-                ActionType.DECOY_LAUNCH, ActionCategory.DECOY,
+        // ─── Retired feint branch ───
+        defs.add(actionFromTokens("feint_launch", "Feint Launch",
+                ActionType.FEINT_LAUNCH, ActionCategory.FEINT,
                 List.of(normal(1), anchored(3), normal(1)),
                 false, false, false, false,
                 ActionConfirmationMode.KEYBOARD_CONFIRM, "Fake a launch."));
-        defs.add(actionFromTokens("ghost_mirv", "Ghost MIRV",
-                ActionType.GHOST_MIRV, ActionCategory.DECOY,
+        defs.add(actionFromTokens("ghost_split", "Ghost Split",
+                ActionType.GHOST_SPLIT, ActionCategory.FEINT,
                 List.of(normal(2), anchored(1), normal(2), normal(1)),
                 false, false, false, false,
-                ActionConfirmationMode.KEYBOARD_CONFIRM, "Fake MIRV split signature."));
+                ActionConfirmationMode.KEYBOARD_CONFIRM, "Fake a split launch signature."));
         defs.add(actionFromTokens("false_doctrine_signal", "False Doctrine Signal",
-                ActionType.FALSE_DOCTRINE_SIGNAL, ActionCategory.DECOY,
+                ActionType.FALSE_DOCTRINE_SIGNAL, ActionCategory.FEINT,
                 List.of(anchored(3), anchored(1), normal(1)),
                 false, false, false, false,
                 ActionConfirmationMode.NONE, "Broadcast a misleading doctrine."));
         defs.add(actionFromTokens("dummy_silo_heat", "Dummy Silo Heat",
-                ActionType.DUMMY_SILO_HEAT, ActionCategory.DECOY,
+                ActionType.DUMMY_SILO_HEAT, ActionCategory.FEINT,
                 List.of(normal(2), anchored(2), normal(1)),
                 false, false, false, false,
                 ActionConfirmationMode.NONE, "Generate fake silo heat."));
         defs.add(actionFromTokens("masked_launch", "Masked Launch",
-                ActionType.MASKED_LAUNCH, ActionCategory.DECOY,
+                ActionType.MASKED_LAUNCH, ActionCategory.FEINT,
                 List.of(normal(1), anchored(2), normal(1), anchored(3)),
                 true, true, false, true,
                 ActionConfirmationMode.KEYBOARD_CONFIRM,
-                "Real launch hidden behind decoy."));
+                "Real launch hidden behind a feint."));
 
         return new ActionCodeRegistry(defs);
     }
@@ -273,7 +273,7 @@ public final class ActionCodeRegistry {
         if (d == null) d = NukeDoctrineType.PLACEHOLDER;
         switch (d) {
             case DIRTY_BOMB: return ActionType.DIRTY_LAUNCH;
-            case MIRV: return ActionType.MIRV_LAUNCH;
+            case MIRV: return ActionType.HEAVY_SPLIT_LAUNCH;
             case CONCRETE_BLASTER: return ActionType.CONCRETE_BLASTER_LAUNCH;
             case DOOMSDAY: return ActionType.DOOMSDAY_LAUNCH;
             default: break;

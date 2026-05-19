@@ -126,6 +126,7 @@ public class Main {
             // setup dialog can launch a configured PvE controller.
             menu.setMabPveFactory(com.tetris.controller.GameController::new);
             menu.setMabLocalPvpFactory(com.tetris.controller.GameController::new);
+            menu.setMabAiVsAiFactory(com.tetris.controller.GameController::new);
             menu.setVisible(true);
         });
     }

@@ -7,7 +7,7 @@ import java.util.Map;
 /**
  * Soft validator for {@link NukeDesign} instances. Returns a list of
  * human-readable messages prefixed with {@code ERROR:} or
- * {@code WARNING:}; never throws unless the design itself is null.
+ * {@code CHECK:}; never throws unless the design itself is null.
  */
 public class NukeDesignValidator {
 
@@ -42,7 +42,7 @@ public class NukeDesignValidator {
         if (design.getBaseLaunchTimePieces() <= 0)
             out.add("ERROR: baseLaunchTimePieces must be > 0");
         if (design.getBaseWarningTimePieces() <= 0)
-            out.add("ERROR: baseWarningTimePieces must be > 0");
+            out.add("ERROR: baseImpactDelayPieces must be > 0");
         if (design.getDetectionProfile() < 0)
             out.add("ERROR: detectionProfile must be >= 0");
 
@@ -68,7 +68,7 @@ public class NukeDesignValidator {
                 out.add("ERROR: launchTimeByDefcon key " + k + " must be in 1..5");
         for (Integer k : design.getWarningTimeByDefcon().keySet())
             if (k == null || k < 1 || k > 5)
-                out.add("ERROR: warningTimeByDefcon key " + k + " must be in 1..5");
+                out.add("ERROR: impactDelayByDefcon key " + k + " must be in 1..5");
         for (Map.Entry<Integer, List<Integer>> e : design.getLaunchCodeByDefcon().entrySet()) {
             Integer k = e.getKey();
             if (k == null || k < 1 || k > 5)
@@ -102,21 +102,21 @@ public class NukeDesignValidator {
         int silo = design.getSiloDamageRating();
 
         if (d == NukeDoctrineType.DIRTY_BOMB && rad < blast)
-            out.add("WARNING: DIRTY_BOMB usually has radiationRating >= blastRating");
+            out.add("CHECK: DIRTY_BOMB usually has radiationRating >= blastRating");
         if (d == NukeDoctrineType.CLEAN_FUSION && blast < rad)
-            out.add("WARNING: CLEAN_FUSION usually has blastRating >= radiationRating");
+            out.add("CHECK: CLEAN_FUSION usually has blastRating >= radiationRating");
         if (d == NukeDoctrineType.CONCRETE_BLASTER && disarm <= blast && silo <= blast)
-            out.add("WARNING: CONCRETE_BLASTER usually has disarmRating or siloDamageRating > blastRating");
+            out.add("CHECK: CONCRETE_BLASTER usually has disarmRating or siloDamageRating > blastRating");
         if (d == NukeDoctrineType.DECOY_PACKAGE && blast > 1)
-            out.add("WARNING: DECOY_PACKAGE usually has blastRating <= 1");
+            out.add("CHECK: SUPPORT_PACKAGE usually has blastRating <= 1");
         if (d == NukeDoctrineType.DOOMSDAY) {
             if (design.getBaseBuildChargeRequired() < 80)
-                out.add("WARNING: DOOMSDAY usually has baseBuildChargeRequired >= 80");
+                out.add("CHECK: DOOMSDAY usually has baseBuildChargeRequired >= 80");
             if (base != null && base.size() < 3)
-                out.add("WARNING: DOOMSDAY usually has baseLaunchCode length >= 3");
+                out.add("CHECK: DOOMSDAY usually has baseLaunchCode length >= 3");
         }
         if (rad >= 5 && blast >= 5 && d != NukeDoctrineType.DOOMSDAY)
-            out.add("WARNING: high blast+radiation outside DOOMSDAY is unusual");
+            out.add("CHECK: high blast+radiation outside DOOMSDAY is unusual");
 
         return out;
     }
