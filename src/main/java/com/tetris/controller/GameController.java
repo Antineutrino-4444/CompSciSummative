@@ -1,6 +1,9 @@
 package com.tetris.controller;
 
 import com.tetris.audio.MusicDirector;
+import com.tetris.audio.SfxGameEventBridge;
+import com.tetris.audio.SoundEffect;
+import com.tetris.audio.SoundEffectManager;
 import com.tetris.mab.MatchDifficulty;
 import com.tetris.mab.MatchMode;
 import com.tetris.mab.MatchPhase;
@@ -159,9 +162,21 @@ public class GameController {
     private Timer mabBoardAiTimerA;
     private Timer mabAiVsAiRefreshTimer;
     private final MusicDirector musicDirector = MusicDirector.shared();
+    private final SoundEffectManager sfx = SoundEffectManager.shared();
+    private final SfxGameEventBridge sfxBridge = new SfxGameEventBridge(sfx, "p1");
+    private final SfxGameEventBridge sfxBridgeP2 = new SfxGameEventBridge(sfx, "p2");
     private boolean mabMusicLaunchActive;
     private boolean mabMusicHighStackActive;
     private boolean mabMusicResultPlayed;
+
+    // ─────────────── MAB SFX bookkeeping ──────────────────────────
+    private int sfxLastDefconLevel = 0;
+    private double sfxLastDefconProgress = 0.0;
+    private int sfxLastWindupStage = -1;
+    private boolean sfxLaunchSfxFired;
+    private boolean sfxHighStackAlertFired;
+    private int sfxLastP1Garbage;
+    private int sfxLastP2Garbage;
 
     /** Set by the dev-console {@code ai pause} command. When true, AI
      *  tick sites skip their work while match bookkeeping (impact
@@ -245,6 +260,7 @@ public class GameController {
                 ? MabAiVsAiConfig.defaults()
                 : aiVsAiConfig;
         this.gameState = new GameState(this.startLevel);
+        this.gameState.addListener(sfxBridge);
         this.inputHandler = new InputHandler(this);
         this.renderIntervalMs = FrameRate.RENDER_INTERVAL_MS_ROUNDED;
     }
@@ -286,6 +302,7 @@ public class GameController {
         // Create the main window, passing this controller's input handler
         mainFrame = new MainFrame(gameState, inputHandler);
         mainFrame.setVisible(true);
+        installGlobalDebugDispatcher();
 
         // Stop the game loop when the window is closed so the menu can
         // come back cleanly without a stray timer ticking forever.
@@ -333,47 +350,7 @@ public class GameController {
 
         // Install global dispatcher first (FIFO — fires before any MAB adapter
         // added later) so F3, backtick, and the "debug" hotword work in all modes.
-        globalDebugDispatcher = e -> {
-            if (e.getID() != java.awt.event.KeyEvent.KEY_PRESSED) return false;
-            int code = e.getKeyCode();
-            if (code == java.awt.event.KeyEvent.VK_F3) {
-                togglePerfOverlay();
-                return true;
-            }
-            if (code == java.awt.event.KeyEvent.VK_BACK_QUOTE) {
-                consoleHwBuf.setLength(0);
-                toggleDevConsole();
-                return true;
-            }
-            if (isDevConsoleOpen()) {
-                if (code == java.awt.event.KeyEvent.VK_ENTER) {
-                    devConsole.submitCurrentInput();
-                    return true;
-                }
-                if (devConsole != null) {
-                    SwingUtilities.invokeLater(devConsole::focusInput);
-                }
-            }
-            // Hotword tracking — returns false so game controls still receive letters.
-            if (code >= java.awt.event.KeyEvent.VK_A
-                    && code <= java.awt.event.KeyEvent.VK_Z
-                    && !isDevConsoleOpen()) {
-                char c = (char) ('a' + (code - java.awt.event.KeyEvent.VK_A));
-                consoleHwBuf.append(c);
-                if (consoleHwBuf.length() > CONSOLE_HOTWORD.length())
-                    consoleHwBuf.deleteCharAt(0);
-                if (consoleHwBuf.toString().equals(CONSOLE_HOTWORD)) {
-                    consoleHwBuf.setLength(0);
-                    toggleDevConsole();
-                }
-            } else if (code < java.awt.event.KeyEvent.VK_A
-                    || code > java.awt.event.KeyEvent.VK_Z) {
-                consoleHwBuf.setLength(0);
-            }
-            return false;
-        };
-        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
-                .addKeyEventDispatcher(globalDebugDispatcher);
+        installGlobalDebugDispatcher();
 
         gameView = new GameView(gameState, inputHandler, exitAction);
         startTimers();
@@ -645,6 +622,7 @@ public class GameController {
         try {
             if (mabMatch == null) {
                 mabPlayerBState = new GameState(startLevel);
+                mabPlayerBState.addListener(sfxBridgeP2);
                 // Step 21: shared deterministic 7-bag — both players consume
                 // the SAME piece sequence in MAB modes (Player A's piece #n
                 // == Player B's piece #n). Offline-only; seed is local.
@@ -1309,6 +1287,121 @@ public class GameController {
             mabMusicHighStackActive = danger;
             musicDirector.setHighStackDanger(danger);
         }
+
+        refreshMabTacticalSfx();
+    }
+
+    /**
+     * Tactical SFX cues that mirror MAB state transitions (DEFCON escalation,
+     * inbound launch wind-up, sustained high-stack danger). Called once per
+     * frame from {@link #refreshMabMusicState()}.
+     */
+    private void refreshMabTacticalSfx() {
+        if (mabMatch == null) return;
+
+        // DEFCON escalation → one zenith_levelup tick on the new band.
+        com.tetris.mab.DefconState ds = mabMatch.getDefconState();
+        int defcon = ds == null ? 5 : ds.getLevel();
+        double progress = ds == null ? 0.0 : ds.getProgressToNextThreshold();
+        if (sfxLastDefconLevel == 0) {
+            sfxLastDefconLevel = defcon;
+            sfxLastDefconProgress = progress;
+        } else if (defcon < sfxLastDefconLevel) {
+            // DEFCON numbers count *down* as danger rises (5 → 1).
+            sfx.play(pickZenithLevelup());
+            sfxLastDefconLevel = defcon;
+            sfxLastDefconProgress = progress;
+        } else if (defcon == sfxLastDefconLevel
+                && progress - sfxLastDefconProgress >= 0.33) {
+            // Sub-tier ramp within a single DEFCON band.
+            sfx.play(pickZenithLevelup(), 0.7f);
+            sfxLastDefconProgress = progress;
+        }
+
+        // Inbound-launch wind-up. Stage 1-4 buckets based on warning pieces
+        // remaining: the closer to impact, the higher the wind-up severity.
+        int stage = -1;
+        for (ParticipantId pid : new ParticipantId[] {
+                ParticipantId.PLAYER_A, ParticipantId.PLAYER_B }) {
+            try {
+                var p = mabMatch.getParticipant(pid);
+                if (p == null) continue;
+                for (var threat : p.getIncomingThreats()) {
+                    if (threat == null) continue;
+                    int remaining = threat.getWarningPiecesRemaining();
+                    int total = Math.max(1, threat.getWarningPiecesTotal());
+                    double frac = 1.0 - ((double) remaining / total);
+                    int s;
+                    if (frac >= 0.85) s = 4;
+                    else if (frac >= 0.65) s = 3;
+                    else if (frac >= 0.4) s = 2;
+                    else s = 1;
+                    if (s > stage) stage = s;
+                }
+            } catch (RuntimeException ignored) {}
+        }
+        if (stage > 0 && stage != sfxLastWindupStage) {
+            sfxLastWindupStage = stage;
+            SoundEffect cue = switch (stage) {
+                case 4 -> SoundEffect.GARBAGE_WINDUP_4;
+                case 3 -> SoundEffect.GARBAGE_WINDUP_3;
+                case 2 -> SoundEffect.GARBAGE_WINDUP_2;
+                default -> SoundEffect.GARBAGE_WINDUP_1;
+            };
+            sfx.play(cue);
+        } else if (stage < 0) {
+            sfxLastWindupStage = -1;
+        }
+
+        // Launch in flight (no warning pieces remaining) → smash + damage alert.
+        boolean unresolved = hasUnresolvedMabLaunch();
+        if (unresolved && !sfxLaunchSfxFired) {
+            sfxLaunchSfxFired = true;
+        } else if (!unresolved) {
+            sfxLaunchSfxFired = false;
+        }
+
+        // High-stack danger pings the alert sound (manager throttles it).
+        if (mabMusicHighStackActive) {
+            if (!sfxHighStackAlertFired) {
+                sfxHighStackAlertFired = true;
+                sfx.play(SoundEffect.DAMAGE_ALERT);
+            }
+        } else {
+            sfxHighStackAlertFired = false;
+        }
+    }
+
+    private SoundEffect pickZenithLevelup() {
+        SoundEffect[] options = {
+                SoundEffect.ZENITH_LEVELUP_A,
+                SoundEffect.ZENITH_LEVELUP_AHALFSHARP,
+                SoundEffect.ZENITH_LEVELUP_B,
+                SoundEffect.ZENITH_LEVELUP_C,
+                SoundEffect.ZENITH_LEVELUP_E,
+                SoundEffect.ZENITH_LEVELUP_FSHARP,
+                SoundEffect.ZENITH_LEVELUP_G
+        };
+        int idx = (int) Math.floorMod(System.nanoTime() / 1_000_000L, options.length);
+        return options[idx];
+    }
+
+    /**
+     * Hook for the DEFCON redesign countdown widget to fire countdown SFX
+     * for each displayed number. Called once per visible number; the manager
+     * does not need throttle because we only invoke it on visible changes.
+     */
+    public void onMabCountdownTick(int secondsRemaining) {
+        SoundEffect cue = switch (secondsRemaining) {
+            case 5 -> SoundEffect.COUNTDOWN5;
+            case 4 -> SoundEffect.COUNTDOWN4;
+            case 3 -> SoundEffect.COUNTDOWN3;
+            case 2 -> SoundEffect.COUNTDOWN2;
+            case 1 -> SoundEffect.COUNTDOWN1;
+            case 0 -> SoundEffect.GO;
+            default -> null;
+        };
+        if (cue != null) sfx.play(cue);
     }
 
     private boolean hasUnresolvedMabLaunch() {
@@ -1513,11 +1606,15 @@ public class GameController {
     // These simply delegate to GameState.
 
     public void moveLeft() {
-        gameState.moveLeft();
+        if (!gameState.moveLeft()) {
+            sfxBridge.onFailedSideMove();
+        }
     }
 
     public void moveRight() {
-        gameState.moveRight();
+        if (!gameState.moveRight()) {
+            sfxBridge.onFailedSideMove();
+        }
     }
 
     public void softDrop() {
@@ -1609,6 +1706,7 @@ public class GameController {
             } else {
                 // Headless / no menu wired — fall back so tests still work.
                 gameState = new GameState(startLevel);
+                gameState.addListener(sfxBridge);
                 if (mainFrame != null) mainFrame.setGameState(gameState);
                 if (gameView  != null) gameView.setGameState(gameState);
             }
@@ -1616,6 +1714,7 @@ public class GameController {
         }
         // NORMAL_TETRIS / debug : standard board reset.
         gameState = new GameState(startLevel);
+        gameState.addListener(sfxBridge);
         if (mainFrame != null) mainFrame.setGameState(gameState);
         if (gameView  != null) gameView.setGameState(gameState);
     }
@@ -1654,28 +1753,72 @@ public class GameController {
         return devConsole != null && devConsole.isOpen();
     }
 
+    private void installGlobalDebugDispatcher() {
+        if (globalDebugDispatcher != null) return;
+        globalDebugDispatcher = this::dispatchGlobalDebugKey;
+        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                .addKeyEventDispatcher(globalDebugDispatcher);
+    }
+
+    private boolean dispatchGlobalDebugKey(java.awt.event.KeyEvent e) {
+        if (e == null || e.getID() != java.awt.event.KeyEvent.KEY_PRESSED) return false;
+        int code = e.getKeyCode();
+        if (code == java.awt.event.KeyEvent.VK_F3) {
+            togglePerfOverlay();
+            return true;
+        }
+        if (code == java.awt.event.KeyEvent.VK_BACK_QUOTE) {
+            consoleHwBuf.setLength(0);
+            toggleDevConsole();
+            return true;
+        }
+        if (isDevConsoleOpen()) {
+            if (code == java.awt.event.KeyEvent.VK_ENTER) {
+                devConsole.submitCurrentInput();
+                return true;
+            }
+            if (devConsole != null) {
+                SwingUtilities.invokeLater(devConsole::focusInput);
+            }
+        }
+        // Hotword tracking returns false so game controls still receive letters.
+        if (code >= java.awt.event.KeyEvent.VK_A
+                && code <= java.awt.event.KeyEvent.VK_Z
+                && !isDevConsoleOpen()) {
+            char c = (char) ('a' + (code - java.awt.event.KeyEvent.VK_A));
+            consoleHwBuf.append(c);
+            if (consoleHwBuf.length() > CONSOLE_HOTWORD.length()) {
+                consoleHwBuf.deleteCharAt(0);
+            }
+            if (consoleHwBuf.toString().equals(CONSOLE_HOTWORD)) {
+                consoleHwBuf.setLength(0);
+                toggleDevConsole();
+            }
+        } else if (code < java.awt.event.KeyEvent.VK_A
+                || code > java.awt.event.KeyEvent.VK_Z) {
+            consoleHwBuf.setLength(0);
+        }
+        return false;
+    }
+
     /** Toggle the dev console open/closed. Called by InputHandler on ` / ~ key. */
     public void toggleDevConsole() {
         if (devConsole == null) {
             devConsole = new DevConsolePanel(this::handleConsoleCommand);
         }
         // Mount into the root pane's layered pane if not already there.
-        java.awt.Window win = resolveWindow();
-        if (win != null) {
-            javax.swing.RootPaneContainer rpc = (win instanceof javax.swing.RootPaneContainer r) ? r : null;
-            if (rpc != null) {
-                JLayeredPane lp = rpc.getRootPane().getLayeredPane();
-                if (devConsole.getParent() != lp) {
-                    lp.add(devConsole, JLayeredPane.POPUP_LAYER);
-                }
-                // Position: bottom 40% of the window.
-                int w = lp.getWidth();
-                int h = lp.getHeight();
-                int consH = Math.max(240, h * 2 / 5);
-                devConsole.setBounds(0, h - consH, w, consH);
-                devConsole.revalidate();
-            }
+        JLayeredPane lp = resolveReadyLayeredPane();
+        if (lp == null) return;
+        if (devConsole.getParent() != lp) {
+            lp.add(devConsole, JLayeredPane.POPUP_LAYER);
         }
+        // Position: bottom 40% of the window.
+        int w = lp.getWidth();
+        int h = lp.getHeight();
+        int consH = Math.max(240, h * 2 / 5);
+        devConsole.setBounds(0, h - consH, w, consH);
+        devConsole.revalidate();
+        lp.repaint();
         boolean opening = !devConsole.isOpen();
         if (opening) releaseGameplayInputs();
         devConsole.toggle();
@@ -1691,22 +1834,18 @@ public class GameController {
         if (perfOverlay == null) {
             perfOverlay = new PerfOverlayPanel();
         }
-        java.awt.Window win = resolveWindow();
-        if (win != null) {
-            javax.swing.RootPaneContainer rpc = (win instanceof javax.swing.RootPaneContainer r) ? r : null;
-            if (rpc != null) {
-                JLayeredPane lp = rpc.getRootPane().getLayeredPane();
-                if (perfOverlay.getParent() != lp) {
-                    lp.add(perfOverlay, JLayeredPane.DRAG_LAYER);
-                }
-                // Fill the full layered pane so paintComponent can position the block.
-                perfOverlay.setBounds(0, 0, lp.getWidth(), lp.getHeight());
-                perfOverlay.revalidate();
-            }
+        JLayeredPane lp = resolveReadyLayeredPane();
+        if (lp == null) return;
+        if (perfOverlay.getParent() != lp) {
+            lp.add(perfOverlay, JLayeredPane.DRAG_LAYER);
         }
+        // Fill the full layered pane so paintComponent can position the block.
+        perfOverlay.setBounds(0, 0, lp.getWidth(), lp.getHeight());
+        perfOverlay.revalidate();
         boolean nowVisible = !perfOverlay.isVisible();
         perfOverlay.setVisible(nowVisible);
         if (nowVisible) perfOverlay.update(buildPerfString());
+        lp.repaint();
     }
 
     private String buildPerfString() {
@@ -1729,7 +1868,16 @@ public class GameController {
              + String.format(" Gravity  %d ms/row  |  Paused %b", getGravityInterval(), gameState.isPaused()) + "\n"
              + "§h\n"
              + String.format(" Heap     %d / %d MB  (max %d MB)", heapUsed, heapTotal, heapMax) + "\n"
-             + String.format(" Mode     %s", modeStr);
+             + String.format(" Mode     %s", modeStr) + "\n"
+             + String.format(" Music    %s", musicDirector.currentSoundtrackDisplay());
+    }
+
+    private JLayeredPane resolveReadyLayeredPane() {
+        java.awt.Window win = resolveWindow();
+        if (!(win instanceof javax.swing.RootPaneContainer rpc)) return null;
+        JLayeredPane lp = rpc.getRootPane().getLayeredPane();
+        if (lp == null || lp.getWidth() <= 0 || lp.getHeight() <= 0) return null;
+        return lp;
     }
 
     private java.awt.Window resolveWindow() {

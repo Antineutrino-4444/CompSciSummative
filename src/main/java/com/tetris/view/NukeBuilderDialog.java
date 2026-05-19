@@ -1133,19 +1133,28 @@ public class NukeBuilderDialog extends JPanel {
         this.activeFusionGroup = null;
         // Selecting a slot moves keyboard focus to the slots column.
         focusedColumn = FocusCol.SLOTS;
+        boolean selectionChanged = false;
         // If this slot still holds the implicit NONE placeholder, jump
         // to the first visible option so the user immediately sees a
         // concrete choice instead of an empty selection.
         if (design.get(s) == NukePart.NONE) {
             java.util.List<NukePart> opts = visibleParts(s);
             if (!opts.isEmpty()) {
-                design.set(s, opts.get(0));
+                NukePart picked = opts.get(0);
+                if (picked != design.get(s)) {
+                    design.set(s, picked);
+                    selectionChanged = true;
+                }
             }
+        }
+        showInfo(s, design.get(s));
+        if (selectionChanged) {
+            refresh();
+            return;
         }
         rebuildSlotList();
         updateSlotAvailability();
         rebuildPartsList();
-        showInfo(s, design.get(s));
         schematic.repaint();
         // Refill column headings + key hint after rebuildPartsList()
         // blanked paletteHeading. Without this the title for the parts
@@ -1712,14 +1721,15 @@ public class NukeBuilderDialog extends JPanel {
 
         // Arrow-key interaction model (plus ENTER to confirm/focus the
         // highlighted column and ESC to close the dialog).
-        bind(im, am, "prevItem",   KeyStroke.getKeyStroke("UP"),    e -> handleVertical(-1));
-        bind(im, am, "nextItem",   KeyStroke.getKeyStroke("DOWN"),  e -> handleVertical(+1));
-        bind(im, am, "prevHoriz",  KeyStroke.getKeyStroke("LEFT"),  e -> handleHorizontal(-1));
-        bind(im, am, "nextHoriz",  KeyStroke.getKeyStroke("RIGHT"), e -> handleHorizontal(+1));
+        bind(im, am, "builder.nav.up.arrow",    KeyStroke.getKeyStroke("UP"),    e -> handleVertical(-1));
+        bind(im, am, "builder.nav.down.arrow",  KeyStroke.getKeyStroke("DOWN"),  e -> handleVertical(+1));
+        bind(im, am, "builder.nav.left.arrow",  KeyStroke.getKeyStroke("LEFT"),  e -> handleHorizontal(-1));
+        bind(im, am, "builder.nav.right.arrow", KeyStroke.getKeyStroke("RIGHT"), e -> handleHorizontal(+1));
         bind(im, am, "confirm",    KeyStroke.getKeyStroke("ENTER"), e -> handleConfirm());
         bind(im, am, "close",      KeyStroke.getKeyStroke("ESCAPE"),e -> onClose.run());
         bindResetShortcut(im, am, "resetP1", Settings.get().getKeyReset());
         bindResetShortcut(im, am, "resetP2", Settings.get().getKeyP2Reset());
+        bindPlayerMovementNavigation(im, am, Settings.get());
 
         // ── Input quarantine ──────────────────────────────────────────
         // Gameplay keys must NEVER act as confirm/cancel shortcuts in
@@ -1727,10 +1737,31 @@ public class NukeBuilderDialog extends JPanel {
         // key from the prior gameplay frame (hard drop, hold, rotate)
         // is consumed by this panel and does not bubble up to a parent
         // input handler that might re-interpret it. Builder navigation
-        // keys (LEFT/RIGHT/UP/DOWN/ENTER/ESC, reset, slot digits) are
+        // keys (arrow keys, player movement bindings, ENTER/ESC, reset,
+        // slot digits) are
         // bound above and take precedence — quarantining only adds
         // bindings for keys that would otherwise be unhandled here.
         quarantineGameplayKeys(im, am);
+    }
+
+    private void bindPlayerMovementNavigation(InputMap im, ActionMap am, Settings s) {
+        if (s == null) return;
+        bindNavigationKey(im, am, "builder.nav.left.p1",  s.getKeyMoveLeft(),  e -> handleHorizontal(-1));
+        bindNavigationKey(im, am, "builder.nav.right.p1", s.getKeyMoveRight(), e -> handleHorizontal(+1));
+        bindNavigationKey(im, am, "builder.nav.down.p1",  s.getKeyMoveDown(),  e -> handleVertical(+1));
+        bindNavigationKey(im, am, "builder.nav.up.p1",    s.getKeyMoveUp(),    e -> handleVertical(-1));
+        bindNavigationKey(im, am, "builder.nav.left.p2",  s.getKeyP2MoveLeft(),  e -> handleHorizontal(-1));
+        bindNavigationKey(im, am, "builder.nav.right.p2", s.getKeyP2MoveRight(), e -> handleHorizontal(+1));
+        bindNavigationKey(im, am, "builder.nav.down.p2",  s.getKeyP2MoveDown(),  e -> handleVertical(+1));
+        bindNavigationKey(im, am, "builder.nav.up.p2",    s.getKeyP2MoveUp(),    e -> handleVertical(-1));
+    }
+
+    private void bindNavigationKey(InputMap im, ActionMap am, String name, int keyCode,
+                                   java.util.function.Consumer<java.awt.event.ActionEvent> action) {
+        if (keyCode == 0) return;
+        KeyStroke ks = KeyStroke.getKeyStroke(keyCode, 0);
+        if (ks == null) return;
+        bind(im, am, name, ks, action);
     }
 
     /** Bind every gameplay key from {@link Settings} to a no-op consume

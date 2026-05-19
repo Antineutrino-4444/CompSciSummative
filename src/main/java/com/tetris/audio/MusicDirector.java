@@ -1,6 +1,7 @@
 package com.tetris.audio;
 
 import com.tetris.mab.ParticipantId;
+import com.tetris.system.AppPaths;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -25,7 +26,7 @@ public final class MusicDirector {
 
     private static final int DEFAULT_FADE_MS = 900;
     private static final int RESULT_FADE_MS = 350;
-    private static final Path DEFAULT_ROOT = Path.of("music");
+    private static final Path DEFAULT_ROOT = AppPaths.musicDir();
     private static final MusicDirector SHARED = new MusicDirector(DEFAULT_ROOT, true);
 
     private final Path musicRoot;
@@ -150,6 +151,18 @@ public final class MusicDirector {
 
     public synchronized String currentRequestKeyForProbe() {
         return activeRequest == null ? "" : activeRequest.identity();
+    }
+
+    public synchronized String currentSoundtrackDisplay() {
+        if (activeRequest == null) return "none";
+        String request = activeRequest.displayName();
+        if (activeHandles.isEmpty()) return request;
+        List<String> names = new ArrayList<>();
+        for (MusicTrackHandle h : activeHandles) {
+            Path path = h.getPath();
+            names.add(path == null ? "unknown" : path.getFileName().toString());
+        }
+        return request + " - " + String.join(" + ", names);
     }
 
     public MusicPlaylist playlistForProbe(String key) {
@@ -407,6 +420,36 @@ public final class MusicDirector {
             if (resultMode != null) sb.append(':').append(resultMode.name());
             for (TrackSpec t : tracks) sb.append(':').append(t.playlistKey.name());
             return sb.toString();
+        }
+
+        String displayName() {
+            StringBuilder sb = new StringBuilder(displayState());
+            if (resultMode != null) {
+                sb.append(" / ").append(resultMode.name().replace('_', ' '));
+            }
+            if (!tracks.isEmpty()) {
+                sb.append(" [");
+                for (int i = 0; i < tracks.size(); i++) {
+                    if (i > 0) sb.append(" + ");
+                    sb.append(tracks.get(i).playlistKey.folderLabel);
+                }
+                sb.append(']');
+            }
+            return sb.toString();
+        }
+
+        private String displayState() {
+            return switch (state) {
+                case MENU -> "Menu";
+                case PREMATCH_LAB -> "Prematch lab";
+                case MIDGAME_BUILDER -> "Midgame builder";
+                case DEFCON_EARLY -> "DEFCON early";
+                case DEFCON_MID -> "DEFCON mid";
+                case DEFCON_LATE -> "DEFCON late";
+                case HIGH_STACK -> "High stack";
+                case LAUNCH -> "Launch";
+                case RESULT -> "Result";
+            };
         }
 
         @Override public boolean equals(Object o) {

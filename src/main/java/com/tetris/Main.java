@@ -1,8 +1,11 @@
 package com.tetris;
 
+import com.tetris.audio.SoundEffectManager;
 import com.tetris.controller.GameController;
 import com.tetris.controller.GameLaunchMode;
 import com.tetris.model.Settings;
+import com.tetris.system.AppPaths;
+import com.tetris.system.RuntimeBootstrap;
 import com.tetris.view.StartMenu;
 
 import javax.swing.SwingUtilities;
@@ -87,6 +90,12 @@ public class Main {
      * @param args command-line arguments (optional: first arg = start level)
      */
     public static void main(String[] args) {
+        RuntimeBootstrap.run();
+        if (hasArg(args, "--smoke-test")) {
+            runSmokeTest();
+            return;
+        }
+
         // Parse optional start level from command line
         int startLevel = DEFAULT_START_LEVEL;
         if (args.length > 0) {
@@ -116,6 +125,11 @@ public class Main {
                 Settings.get().setControlsWizardCompleted(false);
                 Settings.get().save();
             }
+            // SFX volume + mute mirror the persisted Settings on startup so
+            // the first menu hover plays at the right level immediately.
+            SoundEffectManager.shared().setMasterSfxVolume(
+                    (float) Settings.get().getSfxVolume());
+            SoundEffectManager.shared().setMuted(Settings.get().isSfxMuted());
             // Continuous menu: the StartMenu hosts every screen (settings,
             // nuke builder, the actual game) inside a CardLayout, so the
             // launcher window stays visible the whole session.
@@ -129,5 +143,20 @@ public class Main {
             menu.setMabAiVsAiFactory(com.tetris.controller.GameController::new);
             menu.setVisible(true);
         });
+    }
+
+    private static boolean hasArg(String[] args, String wanted) {
+        for (String arg : args) {
+            if (wanted.equalsIgnoreCase(arg)) return true;
+        }
+        return false;
+    }
+
+    private static void runSmokeTest() {
+        Settings.get();
+        System.out.println("[smoke] Modern Tetris startup complete.");
+        System.out.println("[smoke] Data dir: " + AppPaths.dataDir());
+        System.out.println("[smoke] Settings file: " + AppPaths.settingsFile());
+        System.out.println("[smoke] Music root: " + AppPaths.musicDir());
     }
 }

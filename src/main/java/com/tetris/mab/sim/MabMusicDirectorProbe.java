@@ -53,6 +53,9 @@ public final class MabMusicDirectorProbe {
     private static void checkStatePriorities(MusicDirector director) {
         director.playMenu();
         expect(director, MusicState.MENU, "MENU:MAIN", "menu");
+        check("soundtrackDisplay.menu",
+                director.currentSoundtrackDisplay().contains("Menu")
+                && director.currentSoundtrackDisplay().contains("main"));
         int menuLogSize = director.transitionLogForProbe().size();
         director.playMenu();
         check("duplicate.menuDoesNotRestart",

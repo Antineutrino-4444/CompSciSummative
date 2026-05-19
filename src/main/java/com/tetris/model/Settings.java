@@ -1,5 +1,7 @@
 package com.tetris.model;
 
+import com.tetris.system.AppPaths;
+
 import java.awt.event.KeyEvent;
 import java.io.*;
 import java.nio.file.*;
@@ -38,8 +40,8 @@ import java.util.Properties;
  * ═══════════════════════════════════════════════════════════════════════
  * PERSISTENCE
  * ═══════════════════════════════════════════════════════════════════════
- * Settings are saved as a Java Properties file at:
- *   {user.home}/.modern-tetris/settings.properties
+ * Settings are saved as a Java Properties file in the OS app data directory
+ * selected by {@code AppPaths}.
  *
  * On first launch, defaults are used and no file exists until the user
  * explicitly saves from the Settings dialog (or the game auto-saves).
@@ -122,6 +124,16 @@ public class Settings {
     private double ghostOpacity = 0.55;
 
     // ═══════════════════════════════════════════════════════════════
+    // AUDIO
+    // ═══════════════════════════════════════════════════════════════
+
+    /** Master SFX volume (0.0 = silent, 1.0 = full). Independent of music. */
+    private double sfxVolume = 0.75;
+
+    /** True when SFX should be silenced even with a non-zero volume. */
+    private boolean sfxMuted = false;
+
+    // ═══════════════════════════════════════════════════════════════
     // KEY BINDINGS
     // ═══════════════════════════════════════════════════════════════
     // Each action has a primary key and optional alternate key.
@@ -163,16 +175,14 @@ public class Settings {
     // PERSISTENCE (load / save / reset)
     // ═══════════════════════════════════════════════════════════════
 
-    private static final Path SETTINGS_DIR =
-            Paths.get(System.getProperty("user.home"), ".modern-tetris");
-    private static final Path SETTINGS_FILE =
-            SETTINGS_DIR.resolve("settings.properties");
+    private static final Path SETTINGS_FILE = AppPaths.settingsFile();
 
     /**
      * Loads settings from the properties file on disk.
      * If the file doesn't exist or a property is missing, defaults are kept.
      */
     public void load() {
+        migrateLegacySettingsIfNeeded();
         if (!Files.exists(SETTINGS_FILE)) return;
 
         try (InputStream in = Files.newInputStream(SETTINGS_FILE)) {
@@ -196,6 +206,10 @@ public class Settings {
             gridOpacity    = dblProp(p, "visual.gridOpacity",  gridOpacity,  0.0, 1.0);
             boardOpacity   = dblProp(p, "visual.boardOpacity", boardOpacity, 0.0, 1.0);
             ghostOpacity   = dblProp(p, "visual.ghostOpacity", ghostOpacity, 0.0, 1.0);
+
+            // Audio
+            sfxVolume      = dblProp(p, "audio.sfxVolume",     sfxVolume,    0.0, 1.0);
+            sfxMuted       = boolProp(p, "audio.sfxMuted",     sfxMuted);
 
             // Key bindings
             keyMoveLeft    = intProp(p, "keys.moveLeft",    keyMoveLeft,    0, 65535);
@@ -238,7 +252,7 @@ public class Settings {
      */
     public void save() {
         try {
-            Files.createDirectories(SETTINGS_DIR);
+            Files.createDirectories(SETTINGS_FILE.getParent());
 
             Properties p = new Properties();
 
@@ -259,6 +273,10 @@ public class Settings {
             p.setProperty("visual.gridOpacity",    String.valueOf(gridOpacity));
             p.setProperty("visual.boardOpacity",   String.valueOf(boardOpacity));
             p.setProperty("visual.ghostOpacity",   String.valueOf(ghostOpacity));
+
+            // Audio
+            p.setProperty("audio.sfxVolume",       String.valueOf(sfxVolume));
+            p.setProperty("audio.sfxMuted",        String.valueOf(sfxMuted));
 
             // Key bindings
             p.setProperty("keys.moveLeft",    String.valueOf(keyMoveLeft));
@@ -304,6 +322,7 @@ public class Settings {
         lockDelay = 500;  maxLockResets = 15;  previewCount = 5;
         irsMode = "tap";  ihsMode = "tap";
         gridOpacity = 0.1;  boardOpacity = 0.85;  ghostOpacity = 0.55;
+        sfxVolume = 0.75;   sfxMuted = false;
         keyMoveLeft = KeyEvent.VK_A;      keyMoveRight = KeyEvent.VK_D;
         keyMoveDown = KeyEvent.VK_S;      keyMoveUp = KeyEvent.VK_W;
         keyHardDrop = KeyEvent.VK_R;
@@ -362,6 +381,10 @@ public class Settings {
     public double getBoardOpacity() { return boardOpacity; }
     public double getGhostOpacity() { return ghostOpacity; }
 
+    // Audio
+    public double getSfxVolume()    { return sfxVolume; }
+    public boolean isSfxMuted()     { return sfxMuted; }
+
     // Key bindings
     public int getKeyMoveLeft()   { return keyMoveLeft; }
     public int getKeyMoveRight()  { return keyMoveRight; }
@@ -411,6 +434,10 @@ public class Settings {
     public void setGridOpacity(double v)  { gridOpacity = clampD(v, 0.0, 1.0); }
     public void setBoardOpacity(double v) { boardOpacity = clampD(v, 0.0, 1.0); }
     public void setGhostOpacity(double v) { ghostOpacity = clampD(v, 0.0, 1.0); }
+
+    // Audio
+    public void setSfxVolume(double v)    { sfxVolume = clampD(v, 0.0, 1.0); }
+    public void setSfxMuted(boolean v)    { sfxMuted = v; }
 
     // Key bindings
     public void setKeyMoveLeft(int v)   { keyMoveLeft = v; }
@@ -487,6 +514,19 @@ public class Settings {
         if (keyPauseAlt == q) keyPauseAlt = 0;
         if (keyExitStage == q) keyExitStage = KeyEvent.VK_Z;
         if (keySettings == q) keySettings = KeyEvent.VK_F1;
+    }
+
+    private static void migrateLegacySettingsIfNeeded() {
+        Path legacy = AppPaths.legacySettingsFile();
+        if (Files.exists(SETTINGS_FILE) || !Files.isRegularFile(legacy)) return;
+        try {
+            Files.createDirectories(SETTINGS_FILE.getParent());
+            Files.copy(legacy, SETTINGS_FILE);
+            System.out.println("[settings] Migrated settings to " + SETTINGS_FILE);
+        } catch (IOException ex) {
+            System.err.println("[settings] Unable to migrate legacy settings: "
+                    + ex.getMessage());
+        }
     }
 
     private static int clamp(int val, int min, int max) {

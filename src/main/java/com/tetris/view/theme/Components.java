@@ -1,5 +1,8 @@
 package com.tetris.view.theme;
 
+import com.tetris.audio.SoundEffect;
+import com.tetris.audio.SoundEffectManager;
+
 import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -21,6 +24,8 @@ import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
@@ -55,7 +60,49 @@ public final class Components {
         b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         b.setFocusPainted(false);
         b.setBorder(new EmptyBorder(Theme.SPACE_S, Theme.SPACE_L, Theme.SPACE_S, Theme.SPACE_L));
+        attachMenuSfx(b, style, text);
         return b;
+    }
+
+    /**
+     * Wires the standard hover / focus / click SFX bundle. PRIMARY and
+     * PRIMARY_BLUE buttons resolve to {@code menuconfirm}; DANGER and BACK
+     * / CANCEL labels resolve to {@code menuback}. Everything else fires
+     * {@code menuclick} on activation.
+     */
+    private static void attachMenuSfx(AbstractButton button, ButtonStyle style, String labelText) {
+        if (button == null) return;
+        if (Boolean.TRUE.equals(button.getClientProperty("sfx.attached"))) return;
+        button.putClientProperty("sfx.attached", Boolean.TRUE);
+        SoundEffect activation = activationSoundFor(style, labelText);
+        button.addMouseListener(new MouseAdapter() {
+            @Override public void mouseEntered(MouseEvent e) {
+                if (!button.isEnabled()) return;
+                SoundEffectManager.shared().play(SoundEffect.MENU_HOVER);
+            }
+        });
+        button.addFocusListener(new FocusAdapter() {
+            @Override public void focusGained(FocusEvent e) {
+                if (!button.isEnabled()) return;
+                SoundEffectManager.shared().play(SoundEffect.MENU_TAP);
+            }
+        });
+        button.addActionListener(e -> SoundEffectManager.shared().play(activation));
+    }
+
+    private static SoundEffect activationSoundFor(ButtonStyle style, String labelText) {
+        String text = labelText == null ? "" : labelText.toUpperCase();
+        if (text.contains("BACK") || text.contains("CANCEL") || text.contains("QUIT")
+                || text.contains("EXIT")) {
+            return SoundEffect.MENU_BACK;
+        }
+        if (style == ButtonStyle.PRIMARY || style == ButtonStyle.PRIMARY_BLUE) {
+            return SoundEffect.MENU_CONFIRM;
+        }
+        if (style == ButtonStyle.DANGER) {
+            return SoundEffect.MENU_BACK;
+        }
+        return SoundEffect.MENU_CLICK;
     }
 
     /** A label with the given style applied. */

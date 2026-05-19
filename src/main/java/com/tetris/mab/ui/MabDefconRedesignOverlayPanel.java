@@ -1,5 +1,7 @@
 package com.tetris.mab.ui;
 
+import com.tetris.audio.SoundEffect;
+import com.tetris.audio.SoundEffectManager;
 import com.tetris.mab.MutuallyAssuredBlocksMatch;
 import com.tetris.mab.NukeBuildState;
 import com.tetris.mab.ParticipantId;
@@ -181,13 +183,16 @@ public final class MabDefconRedesignOverlayPanel extends JPanel {
         body.add(centerMessage("Both boards paused. Strategic timers are frozen."), BorderLayout.CENTER);
         revalidate();
         repaint();
+        playCountdownCue(secondsRemaining);
         countdownTimer = new Timer(1000, e -> {
             secondsRemaining--;
             if (secondsRemaining <= 0) {
+                playCountdownCue(0);
                 stopCountdown();
                 if (onFinished != null) onFinished.run();
             } else {
                 countdownLabel.setText("REDESIGN REVIEW IN " + secondsRemaining);
+                playCountdownCue(secondsRemaining);
             }
         });
         countdownTimer.setRepeats(true);
@@ -474,6 +479,19 @@ public final class MabDefconRedesignOverlayPanel extends JPanel {
 
     private void requestFocusLater() {
         SwingUtilities.invokeLater(this::requestFocusInWindow);
+    }
+
+    private void playCountdownCue(int seconds) {
+        SoundEffect cue = switch (seconds) {
+            case 5 -> SoundEffect.COUNTDOWN5;
+            case 4 -> SoundEffect.COUNTDOWN4;
+            case 3 -> SoundEffect.COUNTDOWN3;
+            case 2 -> SoundEffect.COUNTDOWN2;
+            case 1 -> SoundEffect.COUNTDOWN1;
+            case 0 -> SoundEffect.GO;
+            default -> null;
+        };
+        if (cue != null) SoundEffectManager.shared().play(cue);
     }
 
     private void stopTimers() {
