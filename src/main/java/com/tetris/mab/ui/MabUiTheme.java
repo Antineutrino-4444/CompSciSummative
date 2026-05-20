@@ -79,22 +79,28 @@ public final class MabUiTheme {
      *  Medium (Win) \u2192 Segoe UI (Win) \u2192 Helvetica Neue (macOS) \u2192 Ubuntu /
      *  Liberation Sans (Linux) \u2192 JVM logical SansSerif. */
     public static final Font STENCIL_HEADLINE = pickFont(26, Font.BOLD,
-            "Bahnschrift", "Franklin Gothic Medium", "Segoe UI",
-            "Helvetica Neue", "Ubuntu", "Liberation Sans", Font.SANS_SERIF);
+            "Bahnschrift", "Franklin Gothic Medium", "Franklin Gothic",
+            "Segoe UI", "Helvetica Neue", "Ubuntu", "Liberation Sans",
+            Font.SANS_SERIF);
     public static final Font STENCIL_MID = pickFont(15, Font.BOLD,
-            "Bahnschrift", "Franklin Gothic Medium", "Segoe UI",
-            "Helvetica Neue", "Ubuntu", "Liberation Sans", Font.SANS_SERIF);
+            "Bahnschrift", "Franklin Gothic Medium", "Franklin Gothic",
+            "Segoe UI", "Helvetica Neue", "Ubuntu", "Liberation Sans",
+            Font.SANS_SERIF);
     public static final Font STENCIL_SMALL = pickFont(12, Font.BOLD,
-            "Bahnschrift", "Franklin Gothic Medium", "Segoe UI",
-            "Helvetica Neue", "Ubuntu", "Liberation Sans", Font.SANS_SERIF);
+            "Bahnschrift", "Franklin Gothic Medium", "Franklin Gothic",
+            "Segoe UI", "Helvetica Neue", "Ubuntu", "Liberation Sans",
+            Font.SANS_SERIF);
+    // Terminal/mono chain: Consolas (Win) -> Lucida Console (Win) -> the
+    // bundled, registered "Ubuntu Mono" (always present, see
+    // RuntimeBootstrap.registerBundledFonts) -> JVM logical Monospaced.
     public static final Font TERM_TINY = pickFont(9, Font.PLAIN,
-            "Consolas", "Lucida Console", Font.MONOSPACED);
+            "Consolas", "Lucida Console", "Ubuntu Mono", Font.MONOSPACED);
     public static final Font TERM_SMALL = pickFont(10, Font.PLAIN,
-            "Consolas", "Lucida Console", Font.MONOSPACED);
+            "Consolas", "Lucida Console", "Ubuntu Mono", Font.MONOSPACED);
     public static final Font TERM_MED = pickFont(13, Font.PLAIN,
-            "Consolas", "Lucida Console", Font.MONOSPACED);
+            "Consolas", "Lucida Console", "Ubuntu Mono", Font.MONOSPACED);
     public static final Font TERM_BIG = pickFont(18, Font.BOLD,
-            "Consolas", "Lucida Console", Font.MONOSPACED);
+            "Consolas", "Lucida Console", "Ubuntu Mono", Font.MONOSPACED);
 
     private static Font pickFont(int size, int style, String... preferred) {
         java.util.Set<String> available = new java.util.HashSet<>();

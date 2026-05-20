@@ -1,5 +1,6 @@
 package com.tetris.system;
 
+import java.awt.Font;
 import java.awt.GraphicsEnvironment;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -8,6 +9,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,8 +37,91 @@ public final class RuntimeBootstrap {
             System.err.println("[runtime] Unable to create app data directory: " + ex.getMessage());
         }
 
+        registerBundledFonts();
         checkFonts();
         bootstrapPackagedMusic();
+    }
+
+    /**
+     * Fonts bundled with the app and registered into the JVM at startup so the
+     * UI font chains ({@code MabUiTheme.pickFont}) resolve to the intended
+     * faces on every host, even one that has none of them installed.
+     *
+     * <p>Covers the primary chain choices (Bahnschrift for headlines, Consolas
+     * for the terminal text), their fallbacks (Segoe UI, Helvetica Neue,
+     * Franklin Gothic, Lucida Console), and the open-licensed final fallbacks
+     * (Ubuntu / Ubuntu Mono). {@code .otf} loads fine via
+     * {@link Font#TRUETYPE_FONT}.
+     */
+    private static final String[] BUNDLED_FONT_FILES = {
+            // Headline chain.
+            "Bahnschrift.ttf",
+            "SegoeUI-Regular.ttf",
+            "SegoeUI-Bold.ttf",
+            "HelveticaNeue-Roman.otf",
+            "HelveticaNeue-Bold.ttf",
+            "FranklinGothic.ttf",
+            // Terminal / mono chain.
+            "Consolas-Regular.ttf",
+            "Consolas-Bold.ttf",
+            "LucidaConsole.ttf",
+            // Open-licensed final fallbacks.
+            "Ubuntu-Regular.ttf",
+            "Ubuntu-Bold.ttf",
+            "UbuntuMono-Regular.ttf",
+            "UbuntuMono-Bold.ttf",
+    };
+
+    /**
+     * Registers the bundled fonts into this JVM so the UI font chains in
+     * {@code MabUiTheme.pickFont} can resolve them when the host lacks the
+     * proprietary originals. Fonts are loaded process-locally (no system
+     * install, no admin) and resolved from the classpath ({@code /fonts/...}
+     * in a packaged JAR) with a {@code ./fonts} filesystem fallback for
+     * development runs. Failures are non-fatal — the game always has the
+     * JVM logical fonts to fall back on.
+     */
+    private static void registerBundledFonts() {
+        if (!Boolean.parseBoolean(
+                System.getProperty("tetris.bootstrap.registerFonts", "true"))) {
+            System.out.println("[fonts] Bundled font registration disabled for this run.");
+            return;
+        }
+        GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+        int registered = 0;
+        for (String name : BUNDLED_FONT_FILES) {
+            try (InputStream in = openBundledFont(name)) {
+                if (in == null) {
+                    System.err.println("[fonts] Bundled font not found: " + name);
+                    continue;
+                }
+                Font font = Font.createFont(Font.TRUETYPE_FONT, in);
+                // registerFont returns false if the host already has a font
+                // with the same name — harmless, the host copy is used.
+                if (ge.registerFont(font)) {
+                    registered++;
+                }
+            } catch (Exception ex) {
+                System.err.println("[fonts] Unable to register " + name + ": "
+                        + ex.getMessage());
+            }
+        }
+        if (registered > 0) {
+            System.out.println("[fonts] Registered " + registered
+                    + " bundled font(s) for this run.");
+        }
+    }
+
+    private static InputStream openBundledFont(String name) throws IOException {
+        InputStream cp = RuntimeBootstrap.class.getResourceAsStream("/fonts/" + name);
+        if (cp != null) {
+            return cp;
+        }
+        Path local = Paths.get("fonts", name);
+        if (Files.isRegularFile(local)) {
+            return Files.newInputStream(local);
+        }
+        return null;
     }
 
     private static void checkFonts() {

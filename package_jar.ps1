@@ -110,6 +110,13 @@ $jarArgs = @(
     "-C", $classesDir, ".",
     "-C", $packageDir, "."
 )
+# Bundle the open-licensed fonts (registered at startup so the UI font
+# chains resolve on hosts lacking the proprietary originals).
+if (Test-Path -LiteralPath "fonts") {
+    $jarArgs += @("-C", (Get-Location).Path, "fonts")
+} else {
+    Write-Warning "[package] fonts\ folder not found; jar will rely on host fonts only."
+}
 if ($includeMusic) {
     $jarArgs += @("-C", (Get-Location).Path, "music")
 }

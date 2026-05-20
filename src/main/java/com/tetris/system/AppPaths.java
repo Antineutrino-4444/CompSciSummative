@@ -36,16 +36,23 @@ public final class AppPaths {
     }
 
     /**
-     * Uses extracted music for packaged runs, while preserving the repo-local
-     * music folder for development runs that were not launched from a JAR.
+     * Resolves the music root, preferring (in order):
+     * <ol>
+     *   <li>a {@code music/} folder in the current working directory — this
+     *       lets an "external assets" build drop music beside the JAR and
+     *       have it win even if a packaged copy was previously extracted to
+     *       app data;</li>
+     *   <li>the extracted packaged music in app data (bundled-JAR runs);</li>
+     *   <li>the packaged music dir as a final fallback.</li>
+     * </ol>
      */
     public static Path musicDir() {
-        if (Files.isRegularFile(PACKAGED_MUSIC_READY_MARKER)) {
-            return PACKAGED_MUSIC_DIR;
-        }
         Path localMusic = Paths.get("music");
         if (hasAnyWav(localMusic)) {
             return localMusic;
+        }
+        if (Files.isRegularFile(PACKAGED_MUSIC_READY_MARKER)) {
+            return PACKAGED_MUSIC_DIR;
         }
         if (hasAnyWav(PACKAGED_MUSIC_DIR)) {
             return PACKAGED_MUSIC_DIR;
