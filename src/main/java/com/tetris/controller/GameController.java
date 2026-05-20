@@ -30,8 +30,7 @@ import com.tetris.view.GameView;
 import com.tetris.view.MainFrame;
 import com.tetris.view.SettingsPanel;
 
-import com.tetris.view.DevConsolePanel;
-import com.tetris.view.PerfOverlayPanel;
+import com.tetris.view.DebugOverlay;
 
 import javax.swing.JLayeredPane;
 import javax.swing.SwingUtilities;
@@ -107,19 +106,14 @@ public class GameController {
     private FixedRateEdtLoop physicsLoop;
     private FixedRateEdtLoop renderLoop;
 
-    // ─────────────── Dev console ──────────────────────────────────
-    private DevConsolePanel devConsole;
-
-    // ─────────────── F3 performance overlay ───────────────────────
-    private PerfOverlayPanel perfOverlay;
+    // ─────────────── Dev console + F3 overlay ─────────────────────
+    // The console and performance overlay are owned by the global
+    // DebugOverlay singleton so they work on every screen (menu,
+    // settings, key bindings, in-game). This controller only registers
+    // its game-specific command handler and perf read-out with it.
 
     // ─────────────── Cheat menu ───────────────────────────────────
     private com.tetris.view.CheatMenuPanel cheatMenu;
-
-    // ─────────────── Global debug dispatcher (embedded mode) ──────
-    private java.awt.KeyEventDispatcher globalDebugDispatcher;
-    private final StringBuilder consoleHwBuf = new StringBuilder();
-    private static final String CONSOLE_HOTWORD = "debug";
 
     // ─────────────── FPS tracking ─────────────────────────────────
     private long   fpsBucketStartNs = -1L;
@@ -316,7 +310,7 @@ public class GameController {
         // Create the main window, passing this controller's input handler
         mainFrame = new MainFrame(gameState, inputHandler);
         mainFrame.setVisible(true);
-        installGlobalDebugDispatcher();
+        registerDebugContext();
 
         // Stop the game loop when the window is closed so the menu can
         // come back cleanly without a stray timer ticking forever.
@@ -330,11 +324,7 @@ public class GameController {
 
     /** Stops both timers. Safe to call multiple times. */
     public void stop() {
-        if (globalDebugDispatcher != null) {
-            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
-                    .removeKeyEventDispatcher(globalDebugDispatcher);
-            globalDebugDispatcher = null;
-        }
+        DebugOverlay.shared().clearContext();
         if (cheatMenu != null) {
             cheatMenu.setVisible(false);
             cheatMenu = null;
@@ -362,9 +352,10 @@ public class GameController {
         Runnable exitAction = () -> { stop(); if (onExit != null) onExit.run(); };
         this.exitStageCallback = exitAction;
 
-        // Install global dispatcher first (FIFO — fires before any MAB adapter
-        // added later) so F3, backtick, and the "debug" hotword work in all modes.
-        installGlobalDebugDispatcher();
+        // Register this game's console commands + perf read-out with the
+        // global DebugOverlay (which already handles F3, backtick, and the
+        // "debug" hotword everywhere).
+        registerDebugContext();
 
         gameView = new GameView(gameState, inputHandler, exitAction);
         startTimers();
@@ -1620,9 +1611,7 @@ public class GameController {
 
         // 3. Repaint
         if (mainFrame != null) mainFrame.repaint();
-        if (perfOverlay != null && perfOverlay.isVisible()) {
-            perfOverlay.update(buildPerfString());
-        }
+        DebugOverlay.shared().refreshPerf();
         if (gameView  != null) gameView.repaint();
         if (mabBattleShell != null) mabBattleShell.repaint();
         refreshMabMusicState();
@@ -1779,78 +1768,20 @@ public class GameController {
     // ─────────────────────── Dev console & perf overlay ──────────────────
 
     public boolean isDevConsoleOpen() {
-        return devConsole != null && devConsole.isOpen();
+        return DebugOverlay.shared().isConsoleOpen();
     }
 
-    private void installGlobalDebugDispatcher() {
-        if (globalDebugDispatcher != null) return;
-        globalDebugDispatcher = this::dispatchGlobalDebugKey;
-        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
-                .addKeyEventDispatcher(globalDebugDispatcher);
-    }
-
-    private boolean dispatchGlobalDebugKey(java.awt.event.KeyEvent e) {
-        if (e == null || e.getID() != java.awt.event.KeyEvent.KEY_PRESSED) return false;
-        int code = e.getKeyCode();
-        if (code == java.awt.event.KeyEvent.VK_F3) {
-            togglePerfOverlay();
-            return true;
-        }
-        if (code == java.awt.event.KeyEvent.VK_BACK_QUOTE) {
-            consoleHwBuf.setLength(0);
-            toggleDevConsole();
-            return true;
-        }
-        if (isDevConsoleOpen()) {
-            if (code == java.awt.event.KeyEvent.VK_ENTER) {
-                devConsole.submitCurrentInput();
-                return true;
-            }
-            if (devConsole != null) {
-                SwingUtilities.invokeLater(devConsole::focusInput);
-            }
-        }
-        // Hotword tracking returns false so game controls still receive letters.
-        if (code >= java.awt.event.KeyEvent.VK_A
-                && code <= java.awt.event.KeyEvent.VK_Z
-                && !isDevConsoleOpen()) {
-            char c = (char) ('a' + (code - java.awt.event.KeyEvent.VK_A));
-            consoleHwBuf.append(c);
-            if (consoleHwBuf.length() > CONSOLE_HOTWORD.length()) {
-                consoleHwBuf.deleteCharAt(0);
-            }
-            if (consoleHwBuf.toString().equals(CONSOLE_HOTWORD)) {
-                consoleHwBuf.setLength(0);
-                toggleDevConsole();
-            }
-        } else if (code < java.awt.event.KeyEvent.VK_A
-                || code > java.awt.event.KeyEvent.VK_Z) {
-            consoleHwBuf.setLength(0);
-        }
-        return false;
-    }
-
-    /** Toggle the dev console open/closed. Called by InputHandler on ` / ~ key. */
-    public void toggleDevConsole() {
-        if (devConsole == null) {
-            devConsole = new DevConsolePanel(this::handleConsoleCommand);
-        }
-        // Mount into the root pane's layered pane if not already there.
-        JLayeredPane lp = resolveReadyLayeredPane();
-        if (lp == null) return;
-        if (devConsole.getParent() != lp) {
-            lp.add(devConsole, JLayeredPane.POPUP_LAYER);
-        }
-        // Position: bottom 40% of the window.
-        int w = lp.getWidth();
-        int h = lp.getHeight();
-        int consH = Math.max(240, h * 2 / 5);
-        devConsole.setBounds(0, h - consH, w, consH);
-        devConsole.revalidate();
-        lp.repaint();
-        boolean opening = !devConsole.isOpen();
-        if (opening) releaseGameplayInputs();
-        devConsole.toggle();
+    /**
+     * Registers this game's console command handler, perf read-out, and the
+     * console-open hook with the global {@link DebugOverlay}. The overlay owns
+     * the key dispatcher and panels so they work on every screen.
+     */
+    private void registerDebugContext() {
+        DebugOverlay overlay = DebugOverlay.shared();
+        overlay.install();
+        overlay.setContextHandler(this::handleConsoleCommand);
+        overlay.setPerfSupplier(this::buildPerfString);
+        overlay.setConsoleOpenHook(this::releaseGameplayInputs);
     }
 
     private void releaseGameplayInputs() {
@@ -1858,23 +1789,14 @@ public class GameController {
         if (localPvpInputRouter != null) localPvpInputRouter.releaseAll();
     }
 
+    /** Toggle the dev console open/closed. Called by InputHandler on ` / ~ key. */
+    public void toggleDevConsole() {
+        DebugOverlay.shared().toggleConsole();
+    }
+
     /** Toggle the F3 performance overlay. Called by InputHandler on F3 key. */
     public void togglePerfOverlay() {
-        if (perfOverlay == null) {
-            perfOverlay = new PerfOverlayPanel();
-        }
-        JLayeredPane lp = resolveReadyLayeredPane();
-        if (lp == null) return;
-        if (perfOverlay.getParent() != lp) {
-            lp.add(perfOverlay, JLayeredPane.DRAG_LAYER);
-        }
-        // Fill the full layered pane so paintComponent can position the block.
-        perfOverlay.setBounds(0, 0, lp.getWidth(), lp.getHeight());
-        perfOverlay.revalidate();
-        boolean nowVisible = !perfOverlay.isVisible();
-        perfOverlay.setVisible(nowVisible);
-        if (nowVisible) perfOverlay.update(buildPerfString());
-        lp.repaint();
+        DebugOverlay.shared().togglePerf();
     }
 
     private String buildPerfString() {
@@ -1899,14 +1821,6 @@ public class GameController {
              + String.format(" Heap     %d / %d MB  (max %d MB)", heapUsed, heapTotal, heapMax) + "\n"
              + String.format(" Mode     %s", modeStr) + "\n"
              + String.format(" Music    %s", musicDirector.currentSoundtrackDisplay());
-    }
-
-    private JLayeredPane resolveReadyLayeredPane() {
-        java.awt.Window win = resolveWindow();
-        if (!(win instanceof javax.swing.RootPaneContainer rpc)) return null;
-        JLayeredPane lp = rpc.getRootPane().getLayeredPane();
-        if (lp == null || lp.getWidth() <= 0 || lp.getHeight() <= 0) return null;
-        return lp;
     }
 
     private java.awt.Window resolveWindow() {

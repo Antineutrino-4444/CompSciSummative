@@ -173,6 +173,8 @@ public final class DevConsolePanel extends JPanel {
                     clear           — clear console output
                     fps             — current render FPS
                     gc              — run garbage collector
+                    reloadaudio     — re-enable audio after it was disabled
+                    audio           — show audio status / failure count
                     freeze          — freeze piece gravity
                     unfreeze        — unfreeze piece gravity
                     debug           — freeze gravity + open cheat menu

@@ -145,6 +145,20 @@ public final class MusicDirector {
         for (MusicTrackHandle h : activeHandles) h.setMasterVolume(masterVolume);
     }
 
+    /**
+     * Re-applies the current music request from scratch. Used after audio is
+     * re-enabled via the dev-console {@code reloadaudio} command: while the
+     * breaker was tripped {@link #applyRequest} skipped opening handles, so the
+     * active request is set but silent. This reopens it.
+     */
+    public synchronized void reload() {
+        MusicRequest target = activeRequest;
+        if (target == null) return;
+        generation++;
+        long token = generation;
+        audioExecutor.execute(() -> applyRequest(target, token, 120));
+    }
+
     public synchronized MusicState currentStateForProbe() {
         return activeRequest == null ? null : activeRequest.state;
     }
@@ -222,7 +236,7 @@ public final class MusicDirector {
             for (TrackSpec spec : request.tracks) {
                 Path path = nextPath(spec.playlistKey);
                 if (path == null) continue;
-                if (audioEnabled) {
+                if (audioEnabled && !AudioHealth.shared().isDisabled()) {
                     try {
                         MusicTrackHandle handle = MusicTrackHandle.open(
                                 path, spec.pan, masterVolume,
@@ -230,6 +244,8 @@ public final class MusicDirector {
                         next.add(handle);
                     } catch (Exception ex) {
                         warn("Unable to play " + path + ": " + ex.getMessage());
+                        AudioHealth.shared().recordFailure("music "
+                                + path.getFileName() + ": " + ex.getMessage());
                     }
                 }
             }

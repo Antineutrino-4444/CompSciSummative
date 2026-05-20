@@ -147,7 +147,8 @@ public final class SoundEffectManager {
             }
         }
         lastPlayMs.put(effect, now);
-        if (muted || masterVolume <= 0.001f || !audioEnabled) {
+        if (muted || masterVolume <= 0.001f || !audioEnabled
+                || AudioHealth.shared().isDisabled()) {
             skippedCount.incrementAndGet();
             return;
         }
@@ -235,6 +236,10 @@ public final class SoundEffectManager {
     }
 
     private void playInternal(SoundEffect effect, float gain) {
+        if (AudioHealth.shared().isDisabled()) {
+            skippedCount.incrementAndGet();
+            return;
+        }
         try {
             byte[] data = loadBytes(effect);
             if (data == null) return;
@@ -262,10 +267,14 @@ public final class SoundEffectManager {
         } catch (LineUnavailableException | IOException ex) {
             warnOnce("sfx-play-" + effect.assetName(),
                     "[SFX] Unable to play " + effect.assetName() + ": " + ex.getMessage());
+            AudioHealth.shared().recordFailure("SFX " + effect.assetName()
+                    + ": " + ex.getMessage());
         } catch (RuntimeException ex) {
             warnOnce("sfx-play-" + effect.assetName(),
                     "[SFX] Unexpected playback failure for " + effect.assetName()
                             + ": " + ex.getMessage());
+            AudioHealth.shared().recordFailure("SFX " + effect.assetName()
+                    + ": " + ex.getMessage());
         }
     }
 

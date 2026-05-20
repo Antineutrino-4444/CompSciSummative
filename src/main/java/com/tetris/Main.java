@@ -1,15 +1,33 @@
 package com.tetris;
 
+import com.tetris.audio.AudioHealth;
 import com.tetris.audio.SoundEffectManager;
 import com.tetris.controller.GameController;
 import com.tetris.controller.GameLaunchMode;
 import com.tetris.model.Settings;
 import com.tetris.system.AppPaths;
 import com.tetris.system.RuntimeBootstrap;
+import com.tetris.view.DebugOverlay;
 import com.tetris.view.StartMenu;
 
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JDialog;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
+import javax.swing.JTextArea;
 import javax.swing.UIManager;
+import javax.swing.WindowConstants;
+
+import java.awt.BorderLayout;
+import java.awt.Dialog;
+import java.awt.FlowLayout;
+import java.awt.Frame;
+import java.awt.KeyboardFocusManager;
+import java.awt.Window;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
 /**
  * Main.java
@@ -83,6 +101,7 @@ public class Main {
 
     /** Default starting level. */
     private static final int DEFAULT_START_LEVEL = 1;
+    private static JDialog audioFailureDialog;
 
     /**
      * Application entry point.
@@ -95,6 +114,12 @@ public class Main {
             runSmokeTest();
             return;
         }
+
+        // Make the dev console + F3 overlay available on every screen
+        // (menu, settings, key bindings, in-game), and show a closeable
+        // popup the first time audio is disabled after repeated failures.
+        DebugOverlay.shared().install();
+        AudioHealth.shared().setOnTrip(Main::showAudioFailurePopup);
 
         // Parse optional start level from command line
         int startLevel = DEFAULT_START_LEVEL;
@@ -158,5 +183,68 @@ public class Main {
         System.out.println("[smoke] Data dir: " + AppPaths.dataDir());
         System.out.println("[smoke] Settings file: " + AppPaths.settingsFile());
         System.out.println("[smoke] Music root: " + AppPaths.musicDir());
+    }
+
+    private static void showAudioFailurePopup(String message) {
+        SwingUtilities.invokeLater(() -> {
+            if (audioFailureDialog != null && audioFailureDialog.isDisplayable()) {
+                audioFailureDialog.toFront();
+                audioFailureDialog.requestFocus();
+                return;
+            }
+
+            Window owner = resolveActiveWindow();
+            JDialog dialog = owner == null
+                    ? new JDialog((Frame) null, "Audio disabled", false)
+                    : new JDialog(owner, "Audio disabled", Dialog.ModalityType.MODELESS);
+            dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+
+            JPanel body = new JPanel(new BorderLayout(0, 12));
+            body.setBorder(BorderFactory.createEmptyBorder(16, 18, 14, 18));
+
+            JLabel title = new JLabel("Audio disabled after repeated playback failures");
+            body.add(title, BorderLayout.NORTH);
+
+            JTextArea text = new JTextArea(message == null ? "" : message);
+            text.setEditable(false);
+            text.setOpaque(false);
+            text.setLineWrap(true);
+            text.setWrapStyleWord(true);
+            text.setColumns(52);
+            text.setRows(5);
+            body.add(text, BorderLayout.CENTER);
+
+            JButton close = new JButton("Close");
+            close.addActionListener(e -> dialog.dispose());
+            JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+            actions.add(close);
+            body.add(actions, BorderLayout.SOUTH);
+
+            dialog.setContentPane(body);
+            dialog.pack();
+            dialog.setLocationRelativeTo(owner);
+            dialog.addWindowListener(new WindowAdapter() {
+                @Override public void windowClosed(WindowEvent e) {
+                    if (audioFailureDialog == dialog) {
+                        audioFailureDialog = null;
+                    }
+                }
+            });
+            audioFailureDialog = dialog;
+            dialog.setVisible(true);
+        });
+    }
+
+    private static Window resolveActiveWindow() {
+        KeyboardFocusManager kfm = KeyboardFocusManager.getCurrentKeyboardFocusManager();
+        Window win = kfm.getActiveWindow();
+        if (win == null) win = kfm.getFocusedWindow();
+        if (win != null) return win;
+        for (Window candidate : Window.getWindows()) {
+            if (candidate != null && candidate.isShowing()) {
+                return candidate;
+            }
+        }
+        return null;
     }
 }

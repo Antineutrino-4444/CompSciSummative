@@ -520,10 +520,20 @@ public final class KeyMappingWizardPanel extends JPanel {
     private boolean dispatchKey(KeyEvent e) {
         if (!isShowing()) return false;
         if (e == null || e.getID() != KeyEvent.KEY_PRESSED) return false;
+        int code = e.getKeyCode();
+        if (code == KeyEvent.VK_F3) {
+            DebugOverlay.shared().togglePerf();
+            return true;
+        }
+        if (code == KeyEvent.VK_BACK_QUOTE) {
+            DebugOverlay.shared().toggleConsole();
+            return true;
+        }
+        if (DebugOverlay.shared().isConsoleOpen()) return false;
         switch (phase) {
-            case P1_CAPTURE: return handleP1Key(e.getKeyCode());
-            case P2_CAPTURE: return handleP2Key(e.getKeyCode());
-            case SUMMARY:    return handleSummaryKey(e.getKeyCode());
+            case P1_CAPTURE: return handleP1Key(code);
+            case P2_CAPTURE: return handleP2Key(code);
+            case SUMMARY:    return handleSummaryKey(code);
             default:         return false; // VIEW_CURRENT: let keys through
         }
     }
