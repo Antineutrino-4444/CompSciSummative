@@ -39,24 +39,14 @@ if ! command -v java >/dev/null 2>&1; then
     pause_exit 1
 fi
 
-# ---- Font check ----
-# Checks every font in the game's pickFont priority chains.
-# Missing fonts are cosmetic — the game always falls back to the JVM default.
-echo "[fonts] Checking required fonts..."
-OS_TYPE="$(uname -s)"
+# ---- Bundled font check ----
+# Checks the font files the game registers from ./fonts at startup.
+# Missing fonts are cosmetic; the game falls back to JVM logical fonts.
+echo "[fonts] Checking bundled fonts..."
 FONTS_MISSING=0
 
-# fc-list output format: /path/to/font.ttf: Family Name:style=Style
-# We match case-insensitively against the family name field.
-font_present() {
-    # $1 = family name substring to match
-    if ! command -v fc-list >/dev/null 2>&1; then return 1; fi
-    fc-list | grep -qi "$1"
-}
-
-report() {
-    # $1 = display name,  $2 = fc-list search key
-    if font_present "$2"; then
+check_font_file() {
+    if [ -f "fonts/$1" ]; then
         printf "[fonts]   [OK]      %s\n" "$1"
     else
         printf "[fonts]   [MISSING] %s\n" "$1"
@@ -64,64 +54,29 @@ report() {
     fi
 }
 
-if command -v fc-list >/dev/null 2>&1; then
-    # Stencil / headline fonts  (preferred: Bahnschrift → Franklin Gothic → Segoe UI
-    #                             → Helvetica Neue → Ubuntu → Liberation Sans)
-    report "Bahnschrift"           "Bahnschrift"
-    report "Franklin Gothic Med."  "Franklin Gothic"
-    report "Segoe UI"              "Segoe UI"
-    report "Helvetica Neue"        "Helvetica Neue"
-    report "Ubuntu"                "Ubuntu"
-    report "Liberation Sans"       "Liberation Sans"
-    # Terminal / monospace fonts  (preferred: Consolas → Lucida Console)
-    report "Consolas"              "Consolas"
-    report "Lucida Console"        "Lucida Console"
-    # Broad fallbacks expected on most systems
-    report "DejaVu Sans"           "DejaVu Sans"
-    report "Noto Sans"             "Noto Sans"
-    report "FreeSans"              "FreeSans"
-    report "Arial"                 "Arial"
-    report "Helvetica"             "Helvetica"
-    report "Courier New"           "Courier New"
-    report "Tahoma"                "Tahoma"
-    report "Verdana"               "Verdana"
-else
-    echo "[fonts]   fc-list not available; skipping font check."
-fi
+for font_file in \
+    Bahnschrift.ttf \
+    FranklinGothic.ttf \
+    SegoeUI-Regular.ttf \
+    SegoeUI-Bold.ttf \
+    HelveticaNeue-Roman.otf \
+    HelveticaNeue-Bold.ttf \
+    Ubuntu-Regular.ttf \
+    Ubuntu-Bold.ttf \
+    Consolas-Regular.ttf \
+    Consolas-Bold.ttf \
+    LucidaConsole.ttf \
+    UbuntuMono-Regular.ttf \
+    UbuntuMono-Bold.ttf
+do
+    check_font_file "$font_file"
+done
 
 if [ "$FONTS_MISSING" -gt 0 ]; then
-    echo "[fonts] $FONTS_MISSING font(s) missing. Attempting to install..."
-    if [ "$OS_TYPE" = "Darwin" ]; then
-        # macOS ships Helvetica/Helvetica Neue; nothing critical to install.
-        echo "[fonts]   macOS: built-in system fonts are sufficient."
-    elif command -v apt-get >/dev/null 2>&1; then
-        echo "[fonts]   apt: installing fonts-urw-base35 fonts-liberation fonts-noto..."
-        sudo apt-get install -y fonts-urw-base35 fonts-liberation fonts-noto 2>/dev/null \
-            && { command -v fc-cache >/dev/null 2>&1 && fc-cache -f; } \
-            && echo "[fonts]   Done." \
-            || echo "[fonts]   Install skipped or failed; game uses JVM fallback fonts."
-    elif command -v dnf >/dev/null 2>&1; then
-        echo "[fonts]   dnf: installing urw-fonts liberation-fonts google-noto-sans-fonts..."
-        sudo dnf install -y urw-fonts liberation-fonts google-noto-sans-fonts 2>/dev/null \
-            && { command -v fc-cache >/dev/null 2>&1 && fc-cache -f; } \
-            && echo "[fonts]   Done." \
-            || echo "[fonts]   Install skipped or failed; game uses JVM fallback fonts."
-    elif command -v pacman >/dev/null 2>&1; then
-        echo "[fonts]   pacman: installing ttf-liberation noto-fonts..."
-        sudo pacman -S --noconfirm ttf-liberation noto-fonts 2>/dev/null \
-            && echo "[fonts]   Done." \
-            || echo "[fonts]   Install skipped or failed; game uses JVM fallback fonts."
-    elif command -v zypper >/dev/null 2>&1; then
-        echo "[fonts]   zypper: installing liberation-fonts..."
-        sudo zypper install -y liberation-fonts 2>/dev/null \
-            && echo "[fonts]   Done." \
-            || echo "[fonts]   Install skipped or failed; game uses JVM fallback fonts."
-    else
-        echo "[fonts]   Unknown package manager — install fonts manually if needed."
-        echo "[fonts]   Game will use JVM fallback fonts (cosmetic only)."
-    fi
+    echo "[fonts] No download or package install will be attempted."
+    echo "[fonts] The game will fall back to JVM logical fonts for any missing bundled file."
 else
-    echo "[fonts] All fonts present."
+    echo "[fonts] Bundled font check finished."
 fi
 echo
 

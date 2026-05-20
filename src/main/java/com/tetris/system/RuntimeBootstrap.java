@@ -48,8 +48,8 @@ public final class RuntimeBootstrap {
      * faces on every host, even one that has none of them installed.
      *
      * <p>Covers the primary chain choices (Bahnschrift for headlines, Consolas
-     * for the terminal text), their fallbacks (Segoe UI, Helvetica Neue,
-     * Franklin Gothic, Lucida Console), and the open-licensed final fallbacks
+     * for the terminal text), their bundled fallbacks (Segoe UI, Helvetica
+     * Neue, Franklin Gothic, Lucida Console), and the final bundled fallbacks
      * (Ubuntu / Ubuntu Mono). {@code .otf} loads fine via
      * {@link Font#TRUETYPE_FONT}.
      */
@@ -125,14 +125,14 @@ public final class RuntimeBootstrap {
     }
 
     private static void checkFonts() {
-        System.out.println("[fonts] Checking required fonts...");
+        System.out.println("[fonts] Checking bundled runtime fonts...");
         Set<String> families = installedFontFamilies();
         if (families.isEmpty()) {
             System.out.println("[fonts]   Font list unavailable; JVM fallbacks will be used.");
             return;
         }
 
-        List<String> checks = fontChecksForCurrentOs();
+        List<String> checks = bundledFontFamilyChecks();
         List<String> missing = new ArrayList<>();
         for (String font : checks) {
             if (containsFamily(families, font)) {
@@ -144,10 +144,11 @@ public final class RuntimeBootstrap {
         }
 
         if (missing.isEmpty()) {
-            System.out.println("[fonts] All fonts present.");
+            System.out.println("[fonts] Bundled font families available.");
         } else {
             System.out.println("[fonts] " + missing.size()
-                    + " font(s) missing; cosmetic only, game uses JVM fallbacks.");
+                    + " bundled font family/families unavailable; cosmetic only, "
+                    + "game uses JVM fallbacks.");
         }
     }
 
@@ -164,17 +165,10 @@ public final class RuntimeBootstrap {
         }
     }
 
-    private static List<String> fontChecksForCurrentOs() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (os.contains("win")) {
-            return List.of("Bahnschrift", "Franklin Gothic Medium", "Segoe UI",
-                    "Consolas", "Lucida Console", "Arial", "Courier New",
-                    "Tahoma", "Verdana");
-        }
+    private static List<String> bundledFontFamilyChecks() {
         return List.of("Bahnschrift", "Franklin Gothic", "Segoe UI",
-                "Helvetica Neue", "Ubuntu", "Liberation Sans", "Consolas",
-                "Lucida Console", "DejaVu Sans", "Noto Sans", "FreeSans",
-                "Arial", "Helvetica", "Courier New", "Tahoma", "Verdana");
+                "Helvetica Neue", "Ubuntu", "Ubuntu Mono", "Consolas",
+                "Lucida Console");
     }
 
     private static boolean containsFamily(Set<String> families, String wanted) {

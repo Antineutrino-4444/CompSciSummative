@@ -75,21 +75,17 @@ public final class MabUiTheme {
 
     /** Step 23 \u2014 condensed headline fonts. Impact is intentionally excluded:
      *  it renders with excessive fuzziness in Java Swing at all sizes.
-     *  Cross-platform fallback chain: Bahnschrift (Win10+) \u2192 Franklin Gothic
-     *  Medium (Win) \u2192 Segoe UI (Win) \u2192 Helvetica Neue (macOS) \u2192 Ubuntu /
-     *  Liberation Sans (Linux) \u2192 JVM logical SansSerif. */
+     *  Cross-platform fallback chain uses only bundled named fonts, then the
+     *  JVM logical SansSerif fallback. */
     public static final Font STENCIL_HEADLINE = pickFont(26, Font.BOLD,
             "Bahnschrift", "Franklin Gothic Medium", "Franklin Gothic",
-            "Segoe UI", "Helvetica Neue", "Ubuntu", "Liberation Sans",
-            Font.SANS_SERIF);
+            "Segoe UI", "Helvetica Neue", "Ubuntu", Font.SANS_SERIF);
     public static final Font STENCIL_MID = pickFont(15, Font.BOLD,
             "Bahnschrift", "Franklin Gothic Medium", "Franklin Gothic",
-            "Segoe UI", "Helvetica Neue", "Ubuntu", "Liberation Sans",
-            Font.SANS_SERIF);
+            "Segoe UI", "Helvetica Neue", "Ubuntu", Font.SANS_SERIF);
     public static final Font STENCIL_SMALL = pickFont(12, Font.BOLD,
             "Bahnschrift", "Franklin Gothic Medium", "Franklin Gothic",
-            "Segoe UI", "Helvetica Neue", "Ubuntu", "Liberation Sans",
-            Font.SANS_SERIF);
+            "Segoe UI", "Helvetica Neue", "Ubuntu", Font.SANS_SERIF);
     // Terminal/mono chain: Consolas (Win) -> Lucida Console (Win) -> the
     // bundled, registered "Ubuntu Mono" (always present, see
     // RuntimeBootstrap.registerBundledFonts) -> JVM logical Monospaced.

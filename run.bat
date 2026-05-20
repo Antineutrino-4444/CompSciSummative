@@ -16,7 +16,6 @@ set "SRC_DIR=src\main\java"
 set "OUT_DIR=target\classes"
 set "MAIN_CLASS=com.tetris.Main"
 set "SRC_LIST=%TEMP%\tetris_sources.txt"
-set "FONT_DIR=C:\Windows\Fonts"
 
 REM ---- Verify JDK is available ----
 where javac >nul 2>nul
@@ -32,30 +31,30 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM ---- Font check ----
-REM  Checks every font in the game's pickFont priority chains.
-REM  Missing fonts are cosmetic -- the game always has a JVM fallback.
-echo [fonts] Checking required fonts...
+REM ---- Bundled font check ----
+REM  The game registers these fonts from .\fonts at startup.
+REM  Missing files are cosmetic -- the game still has JVM logical fallbacks.
+echo [fonts] Checking bundled fonts...
 set "FONTS_MISSING=0"
 
-REM  Stencil/headline: Bahnschrift -> Franklin Gothic Med -> Segoe UI
-call :chkfont "Bahnschrift          " "%FONT_DIR%\Bahnschrift.TTF"
-call :chkfont "Franklin Gothic Med. " "%FONT_DIR%\framd.ttf"
-call :chkfont "Segoe UI             " "%FONT_DIR%\segoeui.ttf"
-REM  Terminal/monospace: Consolas -> Lucida Console
-call :chkfont "Consolas             " "%FONT_DIR%\consola.ttf"
-call :chkfont "Lucida Console       " "%FONT_DIR%\lucon.ttf"
-REM  Broad fallbacks expected on all Windows installs
-call :chkfont "Arial                " "%FONT_DIR%\arial.ttf"
-call :chkfont "Courier New          " "%FONT_DIR%\cour.ttf"
-call :chkfont "Tahoma               " "%FONT_DIR%\tahoma.ttf"
-call :chkfont "Verdana              " "%FONT_DIR%\verdana.ttf"
+call :chkfont "Bahnschrift.ttf      " "fonts\Bahnschrift.ttf"
+call :chkfont "FranklinGothic.ttf   " "fonts\FranklinGothic.ttf"
+call :chkfont "SegoeUI-Regular.ttf  " "fonts\SegoeUI-Regular.ttf"
+call :chkfont "SegoeUI-Bold.ttf     " "fonts\SegoeUI-Bold.ttf"
+call :chkfont "HelveticaNeue-Roman  " "fonts\HelveticaNeue-Roman.otf"
+call :chkfont "HelveticaNeue-Bold   " "fonts\HelveticaNeue-Bold.ttf"
+call :chkfont "Ubuntu-Regular.ttf   " "fonts\Ubuntu-Regular.ttf"
+call :chkfont "Ubuntu-Bold.ttf      " "fonts\Ubuntu-Bold.ttf"
+call :chkfont "Consolas-Regular.ttf " "fonts\Consolas-Regular.ttf"
+call :chkfont "Consolas-Bold.ttf    " "fonts\Consolas-Bold.ttf"
+call :chkfont "LucidaConsole.ttf    " "fonts\LucidaConsole.ttf"
+call :chkfont "UbuntuMono-Regular   " "fonts\UbuntuMono-Regular.ttf"
+call :chkfont "UbuntuMono-Bold.ttf  " "fonts\UbuntuMono-Bold.ttf"
 
 if "!FONTS_MISSING!"=="0" (
-    echo [fonts] All fonts present.
+    echo [fonts] Bundled fonts present.
 ) else (
-    echo [fonts] !FONTS_MISSING! font^(s^) missing -- cosmetic only, game uses JVM fallbacks.
-    echo [fonts] To restore: Settings ^> System ^> Optional Features ^> Add a feature ^> Fonts.
+    echo [fonts] !FONTS_MISSING! bundled font file^(s^) missing -- cosmetic only, game uses JVM fallbacks.
 )
 echo.
 goto :fonts_done
