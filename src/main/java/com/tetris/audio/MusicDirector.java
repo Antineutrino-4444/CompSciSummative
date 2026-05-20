@@ -26,6 +26,7 @@ public final class MusicDirector {
 
     private static final int DEFAULT_FADE_MS = 900;
     private static final int RESULT_FADE_MS = 350;
+    private static final float LOSE_RESULT_GAIN = 1.18f;
     private static final Path DEFAULT_ROOT = AppPaths.musicDir();
     private static final MusicDirector SHARED = new MusicDirector(DEFAULT_ROOT, true);
 
@@ -44,7 +45,7 @@ public final class MusicDirector {
     private boolean launchActive;
     private boolean highStackDanger;
     private ResultMusicMode resultMode;
-    private float masterVolume = 0.85f;
+    private float masterVolume = 0.70f;
     private long generation;
     private int naturalEndCount;
 
@@ -239,7 +240,7 @@ public final class MusicDirector {
                 if (audioEnabled && !AudioHealth.shared().isDisabled()) {
                     try {
                         MusicTrackHandle handle = MusicTrackHandle.open(
-                                path, spec.pan, masterVolume,
+                                path, spec.pan(), masterVolume, spec.gain(),
                                 () -> onTrackEnded(token, request));
                         next.add(handle);
                     } catch (Exception ex) {
@@ -299,17 +300,25 @@ public final class MusicDirector {
 
     private MusicRequest requestForResult(ResultMusicMode mode) {
         return switch (mode) {
+            // PvE uses the same stereo split as local PvP: human/player side
+            // on the left, AI/opponent side on the right.
             case PVE_WIN -> MusicRequest.result(mode,
-                    new TrackSpec(PlaylistKey.WIN_STEREO, 0f));
+                    new TrackSpec(PlaylistKey.WIN_MONO, -1f),
+                    loseTrack(1f));
             case PVE_LOSE -> MusicRequest.result(mode,
-                    new TrackSpec(PlaylistKey.LOSE_STEREO, 0f));
+                    loseTrack(-1f),
+                    new TrackSpec(PlaylistKey.WIN_MONO, 1f));
             case PVP_P1_WIN -> MusicRequest.result(mode,
                     new TrackSpec(PlaylistKey.WIN_MONO, -1f),
-                    new TrackSpec(PlaylistKey.LOSE_MONO, 1f));
+                    loseTrack(1f));
             case PVP_P2_WIN -> MusicRequest.result(mode,
-                    new TrackSpec(PlaylistKey.LOSE_MONO, -1f),
+                    loseTrack(-1f),
                     new TrackSpec(PlaylistKey.WIN_MONO, 1f));
         };
+    }
+
+    private static TrackSpec loseTrack(float pan) {
+        return new TrackSpec(PlaylistKey.LOSE_MONO, pan, LOSE_RESULT_GAIN);
     }
 
     private static MusicState stateForDefcon(int defcon) {
@@ -410,7 +419,11 @@ public final class MusicDirector {
         PlaylistKey(String folderLabel) { this.folderLabel = folderLabel; }
     }
 
-    private record TrackSpec(PlaylistKey playlistKey, float pan) {}
+    private record TrackSpec(PlaylistKey playlistKey, float pan, float gain) {
+        TrackSpec(PlaylistKey playlistKey, float pan) {
+            this(playlistKey, pan, 1f);
+        }
+    }
 
     private static final class MusicRequest {
         private final MusicState state;

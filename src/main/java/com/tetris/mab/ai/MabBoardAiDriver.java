@@ -85,6 +85,18 @@ public final class MabBoardAiDriver {
     private int tspins;
     private int perfectClears;
 
+    /** EDT timing telemetry; read by the F3 performance overlay. */
+    private long tickTimingSamples;
+    private long lastTickNs;
+    private long maxTickNs;
+    private long totalTickNs;
+    private long searchTimingSamples;
+    private long lastSearchNs;
+    private long maxSearchNs;
+    private long totalSearchNs;
+    private int lastSearchDepthReached;
+    private int lastSearchCandidates;
+
     /** Optional MAB strategic context — when present, the evaluator gets
      *  armed/route/threat info pulled from the live match. */
     private MutuallyAssuredBlocksMatch contextMatch;
@@ -127,6 +139,20 @@ public final class MabBoardAiDriver {
     public int getTspins() { return tspins; }
     public int getPerfectClears() { return perfectClears; }
     public int getLinesClearedTotal() { return linesClearedTotal; }
+    public long getTickTimingSamples() { return tickTimingSamples; }
+    public long getLastTickNs() { return lastTickNs; }
+    public long getMaxTickNs() { return maxTickNs; }
+    public long getAverageTickNs() {
+        return tickTimingSamples <= 0L ? 0L : totalTickNs / tickTimingSamples;
+    }
+    public long getSearchTimingSamples() { return searchTimingSamples; }
+    public long getLastSearchNs() { return lastSearchNs; }
+    public long getMaxSearchNs() { return maxSearchNs; }
+    public long getAverageSearchNs() {
+        return searchTimingSamples <= 0L ? 0L : totalSearchNs / searchTimingSamples;
+    }
+    public int getLastSearchDepthReached() { return lastSearchDepthReached; }
+    public int getLastSearchCandidates() { return lastSearchCandidates; }
 
     public void setDifficulty(MabAiDifficulty d) {
         applySettings(d == null ? MabAiDifficulty.MEDIUM : d);
@@ -208,18 +234,23 @@ public final class MabBoardAiDriver {
 
     /** Advance one game-loop frame. */
     public void tick() {
-        if (!enabled) return;
-        if (board.isGameOver()) {
-            phase = MabBoardAiPlan.Phase.WAITING;
-            return;
+        long startNs = System.nanoTime();
+        try {
+            if (!enabled) return;
+            if (board.isGameOver()) {
+                phase = MabBoardAiPlan.Phase.WAITING;
+                return;
+            }
+            if (board.isPaused()) return;
+            try { board.update(); } catch (RuntimeException ignored) {}
+            tickCount++;
+            actionCounter++;
+            if (actionCounter < settings.pacing.actionIntervalTicks) return;
+            actionCounter = 0;
+            try { stepPlan(); } catch (RuntimeException ignored) {}
+        } finally {
+            recordTickTiming(System.nanoTime() - startNs);
         }
-        if (board.isPaused()) return;
-        try { board.update(); } catch (RuntimeException ignored) {}
-        tickCount++;
-        actionCounter++;
-        if (actionCounter < settings.pacing.actionIntervalTicks) return;
-        actionCounter = 0;
-        try { stepPlan(); } catch (RuntimeException ignored) {}
     }
 
     private void stepPlan() {
@@ -354,7 +385,9 @@ public final class MabBoardAiDriver {
         AiSearch.Inputs inputs = new AiSearch.Inputs(
                 model, current, holdType, canHold, preview,
                 b2bActive, comboCount, ctx);
+        long searchStartNs = System.nanoTime();
         AiSearch.Result r = search.search(inputs);
+        recordSearchTiming(System.nanoTime() - searchStartNs, r);
         searchCandidates += Math.max(0, r.candidatesEvaluated);
         if (r.fromMistake) mistakes++;
         AiMove chosen = r.move;
@@ -374,6 +407,26 @@ public final class MabBoardAiDriver {
         planVersion++;
         if (chosen.isTspin()) tspins++;
         if (chosen.perfectClear) perfectClears++;
+    }
+
+    private void recordTickTiming(long elapsedNs) {
+        long safeNs = Math.max(0L, elapsedNs);
+        tickTimingSamples++;
+        lastTickNs = safeNs;
+        totalTickNs += safeNs;
+        if (safeNs > maxTickNs) maxTickNs = safeNs;
+    }
+
+    private void recordSearchTiming(long elapsedNs, AiSearch.Result result) {
+        long safeNs = Math.max(0L, elapsedNs);
+        searchTimingSamples++;
+        lastSearchNs = safeNs;
+        totalSearchNs += safeNs;
+        if (safeNs > maxSearchNs) maxSearchNs = safeNs;
+        if (result != null) {
+            lastSearchDepthReached = result.depthReached;
+            lastSearchCandidates = Math.max(0, result.candidatesEvaluated);
+        }
     }
 
     /**

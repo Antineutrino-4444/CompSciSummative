@@ -49,6 +49,8 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class SoundEffectManager {
 
+    private static final float OUTPUT_GAIN_BOOST = 1.15f;
+
     /** Minimum gap (ms) between consecutive plays of the same throttled effect. */
     private static final Map<SoundEffect, Long> DEFAULT_THROTTLE_MS = new EnumMap<>(SoundEffect.class);
     static {
@@ -98,7 +100,7 @@ public final class SoundEffectManager {
     private final AtomicLong skippedCount = new AtomicLong();
     private final AtomicLong droppedThrottled = new AtomicLong();
 
-    private volatile float masterVolume = 0.75f;
+    private volatile float masterVolume = 0.85f;
     private volatile boolean muted;
 
     public static SoundEffectManager shared() { return SHARED; }
@@ -320,7 +322,7 @@ public final class SoundEffectManager {
         try {
             if (!clip.isControlSupported(FloatControl.Type.MASTER_GAIN)) return;
             FloatControl ctrl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
-            float volume = clamp(masterVolume * gainMultiplier, 0f, 1f);
+            float volume = clamp(masterVolume * gainMultiplier * OUTPUT_GAIN_BOOST, 0f, 1f);
             float db;
             if (volume <= 0.0001f) {
                 db = ctrl.getMinimum();

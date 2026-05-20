@@ -128,7 +128,7 @@ public class Settings {
     // ═══════════════════════════════════════════════════════════════
 
     /** Master SFX volume (0.0 = silent, 1.0 = full). Independent of music. */
-    private double sfxVolume = 0.75;
+    private double sfxVolume = 0.85;
 
     /** True when SFX should be silenced even with a non-zero volume. */
     private boolean sfxMuted = false;
@@ -322,7 +322,7 @@ public class Settings {
         lockDelay = 500;  maxLockResets = 15;  previewCount = 5;
         irsMode = "tap";  ihsMode = "tap";
         gridOpacity = 0.1;  boardOpacity = 0.85;  ghostOpacity = 0.55;
-        sfxVolume = 0.75;   sfxMuted = false;
+        sfxVolume = 0.85;   sfxMuted = false;
         keyMoveLeft = KeyEvent.VK_A;      keyMoveRight = KeyEvent.VK_D;
         keyMoveDown = KeyEvent.VK_S;      keyMoveUp = KeyEvent.VK_W;
         keyHardDrop = KeyEvent.VK_R;

@@ -172,6 +172,7 @@ public final class DevConsolePanel extends JPanel {
                     help            — show this message
                     clear           — clear console output
                     fps             — current render FPS
+                    perf            — detailed FPS / EDT / paint / AI diagnostics
                     gc              — run garbage collector
                     reloadaudio     — re-enable audio after it was disabled
                     audio           — show audio status / failure count
@@ -189,6 +190,7 @@ public final class DevConsolePanel extends JPanel {
                     emp             — fire P1 EMP active doctrine
                     threat          — inject a test incoming threat against P1
                     resolve         — resolve all impact-ready threats now
+                    impactfx p1|p2|both [type] - play a weapon-specific impact VFX
                     points [N]      — add N upgrade points to P1 (default 100)
                     clock [N]       — advance P1 strategic clock N pieces (default 10)
                     ai pause        — pause all AI activity

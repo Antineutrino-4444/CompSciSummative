@@ -34,6 +34,7 @@ import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.event.KeyEvent;
 
@@ -86,6 +87,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
     private final MabActiveDoctrineOverlayPanel activeDoctrineOverlay;
     private final MabDoctrineStatusOverlayPanel doctrineStatusOverlay;
     private final MabDefconRedesignOverlayPanel defconRedesignOverlay;
+    private final MabVisualEffectsLayer visualEffectsLayer;
     private final JLabel toastLabel;
     private final JLabel pauseLabel;
     private boolean diagLogged = false;
@@ -153,6 +155,10 @@ public final class MabBattleShellPanel extends JLayeredPane {
 
         mainGrid = buildMainGrid();
         add(mainGrid, JLayeredPane.DEFAULT_LAYER);
+
+        visualEffectsLayer = new MabVisualEffectsLayer();
+        visualEffectsLayer.setVisible(true);
+        add(visualEffectsLayer, Integer.valueOf(50));
 
         resultOverlay = new ResultOverlay();
         resultOverlay.setVisible(false);
@@ -222,6 +228,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
         }
         // Layers fill the entire panel.
         if (mainGrid != null) mainGrid.setBounds(0, 0, w, h);
+        if (visualEffectsLayer != null) visualEffectsLayer.setBounds(0, 0, w, h);
         if (resultOverlay != null) resultOverlay.setBounds(0, 0, w, h);
         if (upgradeOverlay != null) upgradeOverlay.setBounds(0, 0, w, h);
         if (activeDoctrineOverlay != null) activeDoctrineOverlay.setBounds(0, 0, w, h);
@@ -455,6 +462,8 @@ public final class MabBattleShellPanel extends JLayeredPane {
         playerStrip.refresh(match, humanSide);
         opponentStrip.refresh(match, opponentSideId);
         opponentBoardPanel.refresh(match, opponentSideId);
+        visualEffectsLayer.observe(match, humanSide, opponentSideId,
+                boardRectFor(playerGamePanel), boardRectFor(opponentBoardPanel));
 
         // Live board-station meta lines.
         if (playerGameState != null) {
@@ -774,6 +783,11 @@ public final class MabBattleShellPanel extends JLayeredPane {
                 || (defconRedesignOverlay != null && defconRedesignOverlay.isVisible());
     }
 
+    private Rectangle boardRectFor(JComponent board) {
+        if (board == null || board.getParent() == null) return new Rectangle();
+        return SwingUtilities.convertRectangle(board.getParent(), board.getBounds(), this);
+    }
+
     private void flashToast(String message) {
         toastLabel.setText(message == null ? "" : message);
         toastLabel.setVisible(true);
@@ -797,6 +811,7 @@ public final class MabBattleShellPanel extends JLayeredPane {
     public MabBoardHostPanel getOpponentBoardHost() { return opponentBoardHost; }
     public MabOpponentBoardPanel getOpponentBoardPanel() { return opponentBoardPanel; }
     public GamePanel getPlayerGamePanel() { return playerGamePanel; }
+    public MabVisualEffectsLayer getVisualEffectsLayer() { return visualEffectsLayer; }
     public MabPieceBayPanel getPlayerBay() { return playerBay; }
     public boolean isResultOverlayMounted() { return resultOverlay != null; }
     public boolean isResultOverlayShown() { return resultOverlay != null && resultOverlay.isVisible(); }

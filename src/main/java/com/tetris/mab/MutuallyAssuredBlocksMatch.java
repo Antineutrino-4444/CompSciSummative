@@ -3119,7 +3119,10 @@ public class MutuallyAssuredBlocksMatch {
                         "doctrine", result.doctrineType(),
                         "size", result.sizeCategory(),
                         "blast", result.blastRating(),
+                        "radiationRating", result.radiationRating(),
                         "radiation", result.radiationLevel(),
+                        "emp", launch.getNukeDesign() == null ? 0
+                                : launch.getNukeDesign().getEmpRating(),
                         "disarmApplied", result.disarmAmountApplied(),
                         "siloDamageApplied", result.siloDamageApplied(),
                         "immediateRows", result.garbageLinesAppliedImmediately(),

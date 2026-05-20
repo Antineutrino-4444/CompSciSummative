@@ -112,15 +112,15 @@ public final class MabMusicDirectorProbe {
 
         director.playLaunchUntilImpact();
         director.playResultPvE(true);
-        expect(director, MusicState.RESULT, "RESULT:PVE_WIN:WIN_STEREO",
-                "pveWinOverridesLaunch");
+        expect(director, MusicState.RESULT, "RESULT:PVE_WIN:WIN_MONO:LOSE_MONO",
+                "pveWinStereoSplitOverridesLaunch");
 
         director.playMenu();
         director.playGameplayDefcon(1);
         director.playLaunchUntilImpact();
         director.playResultPvE(false);
-        expect(director, MusicState.RESULT, "RESULT:PVE_LOSE:LOSE_STEREO",
-                "pveLoseStereo");
+        expect(director, MusicState.RESULT, "RESULT:PVE_LOSE:LOSE_MONO:WIN_MONO",
+                "pveLoseStereoSplit");
 
         director.playMenu();
         director.playGameplayDefcon(1);

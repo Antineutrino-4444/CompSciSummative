@@ -49,6 +49,7 @@ public final class DebugOverlay {
 
     /** Installs the global key dispatcher once. Safe to call repeatedly. */
     public synchronized void install() {
+        SwingPaintDiagnostics.install();
         if (dispatcher != null) return;
         dispatcher = this::dispatchKey;
         KeyboardFocusManager.getCurrentKeyboardFocusManager()

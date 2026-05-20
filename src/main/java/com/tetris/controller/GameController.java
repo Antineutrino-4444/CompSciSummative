@@ -29,6 +29,7 @@ import com.tetris.model.Settings;
 import com.tetris.view.GameView;
 import com.tetris.view.MainFrame;
 import com.tetris.view.SettingsPanel;
+import com.tetris.view.SwingPaintDiagnostics;
 
 import com.tetris.view.DebugOverlay;
 
@@ -85,14 +86,21 @@ public class GameController {
     /** Physics simulation: fixed 120 Hz. */
     private static final int PHYSICS_INTERVAL_MS = FrameRate.PHYSICS_INTERVAL_MS_ROUNDED;
     private static final int AI_FRAME_INTERVAL_MS = FrameRate.RENDER_INTERVAL_MS_ROUNDED;
-    // Live AI search budget. Caps each replan to keep frame drops bounded.
-    // The original 4ms was too tight: every search aborted at root, so
-    // higher tiers couldn't see far enough to keep their Tetris well
-    // clean and topped themselves out within seconds. 30ms gives MASTER
-    // & EXPERT enough lookahead to plan around well-pollution while
-    // still bounding the worst-case frame at ~2 render intervals (and
-    // search only runs once per piece, not every tick).
-    private static final int LIVE_AI_SEARCH_BUDGET_MS = 30;
+    // Live AI search budget. Caps each replan to keep EDT stalls bounded.
+    // Desktop keeps a moderate 16 ms budget; Linux ARM boards default lower
+    // because that same search can monopolize the EDT on Raspberry Pi-class CPUs.
+    // Override with -Dmab.ai.searchBudgetMs=<ms> when profiling.
+    private static final int LIVE_AI_SEARCH_BUDGET_MS =
+            Math.max(2, Integer.getInteger("mab.ai.searchBudgetMs",
+                    defaultLiveAiSearchBudgetMillis()));
+
+    private static int defaultLiveAiSearchBudgetMillis() {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        String arch = System.getProperty("os.arch", "").toLowerCase();
+        boolean linuxArm = os.contains("linux")
+                && (arch.contains("arm") || arch.contains("aarch"));
+        return linuxArm ? 8 : 16;
+    }
 
     /** Render interval (ms) matched to the primary display refresh rate. */
     private final int renderIntervalMs;
@@ -1509,8 +1517,7 @@ public class GameController {
         renderLoop = new FixedRateEdtLoop(
                 "tetris-render-60fps",
                 FrameRate.RENDER_INTERVAL_NS,
-                this::renderFrame,
-                false);
+                this::renderFrame);
         renderLoop.start();
     }
 
@@ -1779,6 +1786,7 @@ public class GameController {
     private void registerDebugContext() {
         DebugOverlay overlay = DebugOverlay.shared();
         overlay.install();
+        SwingPaintDiagnostics.reset();
         overlay.setContextHandler(this::handleConsoleCommand);
         overlay.setPerfSupplier(this::buildPerfString);
         overlay.setConsoleOpenHook(this::releaseGameplayInputs);
@@ -1820,7 +1828,105 @@ public class GameController {
              + "§h\n"
              + String.format(" Heap     %d / %d MB  (max %d MB)", heapUsed, heapTotal, heapMax) + "\n"
              + String.format(" Mode     %s", modeStr) + "\n"
-             + String.format(" Music    %s", musicDirector.currentSoundtrackDisplay());
+             + String.format(" Music    %s", musicDirector.currentSoundtrackDisplay())
+             + "\n" + buildDetailedPerfString();
+    }
+
+    private String buildDetailedPerfString() {
+        FixedRateEdtLoop.TelemetrySnapshot renderStats =
+                renderLoop == null ? null : renderLoop.snapshot();
+        FixedRateEdtLoop.TelemetrySnapshot physicsStats =
+                physicsLoop == null ? null : physicsLoop.snapshot();
+        SwingPaintDiagnostics.Snapshot paintStats = SwingPaintDiagnostics.snapshot();
+
+        StringBuilder sb = new StringBuilder(700);
+        sb.append("Â§h\n");
+        if (renderStats != null && renderStats.skippedTicks > 0L) {
+            sb.append(String.format("Â§w Render   coalesced %,d stale tick(s)",
+                    renderStats.skippedTicks)).append('\n');
+        }
+        sb.append(formatLoopTelemetry("Render", renderStats)).append('\n');
+        sb.append(formatLoopTelemetry("Physics", physicsStats)).append('\n');
+        sb.append(String.format(" Paint    last %.1f ms  avg %.1f  max %.1f  dirty %,d",
+                ms(paintStats.lastPaintNs),
+                ms(paintStats.averagePaintNs()),
+                ms(paintStats.maxPaintNs),
+                paintStats.dirtyRequests)).append('\n');
+        appendAiPerfLine(sb, "AI-P1", mabBoardAiDriverA);
+        appendAiPerfLine(sb, "AI-P2", mabBoardAiDriver);
+        sb.append("Â§h\n");
+        sb.append(String.format(" GC       count %,d  time %,d ms",
+                totalGcCount(), totalGcTimeMillis())).append('\n');
+        sb.append(String.format(" Threads  %d  |  CPU cores %d",
+                Thread.activeCount(), Runtime.getRuntime().availableProcessors())).append('\n');
+        sb.append(String.format(" JVM      %s  %s/%s",
+                System.getProperty("java.version", "?"),
+                System.getProperty("os.name", "?"),
+                System.getProperty("os.arch", "?"))).append('\n');
+        sb.append(String.format(" AI cap   %d ms/search  (-Dmab.ai.searchBudgetMs)",
+                LIVE_AI_SEARCH_BUDGET_MS));
+        return sb.toString();
+    }
+
+    private void appendAiPerfLine(StringBuilder sb, String label, MabBoardAiDriver driver) {
+        if (driver == null) return;
+        sb.append(String.format(" %-7s tick %.1f/%.1f ms  search %.1f/%.1f/%.1f ms  d%d c%d",
+                label,
+                ms(driver.getLastTickNs()),
+                ms(driver.getMaxTickNs()),
+                ms(driver.getLastSearchNs()),
+                ms(driver.getAverageSearchNs()),
+                ms(driver.getMaxSearchNs()),
+                driver.getLastSearchDepthReached(),
+                driver.getLastSearchCandidates())).append('\n');
+    }
+
+    private static String formatLoopTelemetry(String label,
+                                              FixedRateEdtLoop.TelemetrySnapshot s) {
+        if (s == null) return String.format(" %-7s stopped", label);
+        return String.format(" %-7s q %.1f/%.1f ms  cb %.1f/%.1f ms  exec %,d skip %,d",
+                label,
+                ms(s.lastQueueDelayNs),
+                ms(s.maxQueueDelayNs),
+                ms(s.lastCallbackNs),
+                ms(s.maxCallbackNs),
+                s.executedTicks,
+                s.skippedTicks);
+    }
+
+    private static double ms(long ns) {
+        return ns / 1_000_000.0;
+    }
+
+    private static String stripPerfMarkup(String text) {
+        if (text == null) return "";
+        return text
+                .replace("Â§h ", "")
+                .replace("Â§h", "")
+                .replace("Â§w ", "WARN ")
+                .replace("Â§w", "WARN ")
+                .replace("Â§l ", "")
+                .replace("Â§l", "");
+    }
+
+    private static long totalGcCount() {
+        long total = 0L;
+        for (java.lang.management.GarbageCollectorMXBean bean :
+                java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()) {
+            long count = bean.getCollectionCount();
+            if (count > 0L) total += count;
+        }
+        return total;
+    }
+
+    private static long totalGcTimeMillis() {
+        long total = 0L;
+        for (java.lang.management.GarbageCollectorMXBean bean :
+                java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()) {
+            long time = bean.getCollectionTime();
+            if (time > 0L) total += time;
+        }
+        return total;
     }
 
     private java.awt.Window resolveWindow() {
@@ -1843,14 +1949,21 @@ public class GameController {
         return switch (verb) {
             case "fps"      -> lastRenderFps + " fps  (target " + FrameRate.RENDER_FPS
                     + " Hz, frame " + renderIntervalMs + " ms)";
+            case "perf", "diag", "diagnostics" -> stripPerfMarkup(buildPerfString());
             case "gc"       -> { Runtime.getRuntime().gc(); yield "GC requested."; }
             case "debug"    -> {
+                String lowerArg = arg.toLowerCase();
+                if (lowerArg.equals("nuke") || lowerArg.startsWith("nuke ")
+                        || lowerArg.equals("impact") || lowerArg.startsWith("impact ")) {
+                    yield consoleImpactFx(stripFirstWord(arg));
+                }
                 gameState.setGravityFrozen(true);
                 SwingUtilities.invokeLater(this::toggleCheatMenu);
                 yield "Gravity frozen. Cheat menu opened.";
             }
             case "freeze"   -> { gameState.setGravityFrozen(true);  yield "Gravity frozen."; }
             case "unfreeze" -> { gameState.setGravityFrozen(false); yield "Gravity unfrozen."; }
+            case "impactfx", "nukefx", "nukeimpact" -> consoleImpactFx(arg);
             case "state"    -> mabMatch == null ? "Not in a MAB match." : consoleMabState();
             case "charge"   -> consoleCharge(arg);
             case "launch"   -> consoleLaunch(arg);
@@ -1909,6 +2022,50 @@ public class GameController {
     private boolean requireMab(StringBuilder err) {
         if (mabMatch == null) { err.append("Not in a MAB match."); return false; }
         return true;
+    }
+
+    private String consoleImpactFx(String arg) {
+        if (mabBattleShell == null || mabBattleShell.getVisualEffectsLayer() == null) {
+            return "Nuke impact VFX is only available in the MAB battle shell.";
+        }
+        String cleaned = arg == null ? "" : arg.trim().toLowerCase();
+        if (cleaned.isEmpty()) {
+            return "Usage: impactfx p1 | impactfx p2 | impactfx both [type]";
+        }
+        String[] words = cleaned.split("\\s+", 2);
+        String target = words[0];
+        String variant = words.length > 1 ? words[1].trim() : "";
+        var layer = mabBattleShell.getVisualEffectsLayer();
+        Runnable play;
+        String label;
+        switch (target) {
+            case "1", "p1", "player1", "player_1", "a", "player_a" -> {
+                play = () -> layer.playDebugNukeImpact(ParticipantId.PLAYER_A, variant);
+                label = "P1";
+            }
+            case "2", "p2", "player2", "player_2", "b", "player_b" -> {
+                play = () -> layer.playDebugNukeImpact(ParticipantId.PLAYER_B, variant);
+                label = "P2";
+            }
+            case "both", "all" -> {
+                play = () -> layer.playDebugNukeImpactBoth(variant);
+                label = "P1 and P2";
+            }
+            default -> {
+                return "Usage: impactfx p1 | impactfx p2 | impactfx both [type]";
+            }
+        }
+        if (SwingUtilities.isEventDispatchThread()) play.run();
+        else SwingUtilities.invokeLater(play);
+        return "Playing nuke impact VFX on " + label
+                + (variant.isBlank() ? "." : " (" + variant + ").");
+    }
+
+    private static String stripFirstWord(String text) {
+        if (text == null) return "";
+        String s = text.trim();
+        int i = s.indexOf(' ');
+        return i < 0 ? "" : s.substring(i + 1).trim();
     }
 
     private String consoleMabState() {
