@@ -36,6 +36,9 @@ import com.tetris.view.DebugOverlay;
 import javax.swing.JLayeredPane;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryUsage;
+import java.lang.management.ThreadMXBean;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.LongConsumer;
 
@@ -129,6 +132,19 @@ public class GameController {
     private int    lastRenderFps   = 0;
     private final CopyOnWriteArrayList<LongConsumer> renderFrameProbeListeners =
             new CopyOnWriteArrayList<>();
+    private final TimingStats physicsP1Timing = new TimingStats();
+    private final TimingStats physicsP2Timing = new TimingStats();
+    private final TimingStats renderInputTiming = new TimingStats();
+    private final TimingStats renderSpawnAssistTiming = new TimingStats();
+    private final TimingStats renderRepaintRequestTiming = new TimingStats();
+    private final TimingStats renderDebugOverlayTiming = new TimingStats();
+    private final TimingStats renderMusicTiming = new TimingStats();
+    private long gcWindowLastSampleNs = -1L;
+    private long gcWindowLastCount = 0L;
+    private long gcWindowLastTimeMs = 0L;
+    private long gcWindowDeltaCount = 0L;
+    private long gcWindowDeltaTimeMs = 0L;
+    private long gcWindowDurationNs = 0L;
 
     // Step 12: visible MAB debug HUD (vertical slice). Opt-in via
     // -Dmab.debug.hud=true (default off as of Step 15).
@@ -1530,6 +1546,19 @@ public class GameController {
         fpsBucketStartNs = -1L;
         fpsFrameCount = 0;
         lastRenderFps = 0;
+        physicsP1Timing.reset();
+        physicsP2Timing.reset();
+        renderInputTiming.reset();
+        renderSpawnAssistTiming.reset();
+        renderRepaintRequestTiming.reset();
+        renderDebugOverlayTiming.reset();
+        renderMusicTiming.reset();
+        gcWindowLastSampleNs = -1L;
+        gcWindowLastCount = 0L;
+        gcWindowLastTimeMs = 0L;
+        gcWindowDeltaCount = 0L;
+        gcWindowDeltaTimeMs = 0L;
+        gcWindowDurationNs = 0L;
     }
 
     // ─────────────────────── Game loop ───────────────────────────────
@@ -1537,9 +1566,19 @@ public class GameController {
     /** Physics tick — runs at fixed 120 Hz. Updates game state only. */
     private void physicsTick() {
         if (isDevConsoleOpen()) return;
-        gameState.update();
+        long p1StartNs = System.nanoTime();
+        try {
+            gameState.update();
+        } finally {
+            physicsP1Timing.record(System.nanoTime() - p1StartNs);
+        }
         if (launchMode == GameLaunchMode.MAB_LOCAL_PVP && mabPlayerBState != null) {
-            mabPlayerBState.update();
+            long p2StartNs = System.nanoTime();
+            try {
+                mabPlayerBState.update();
+            } finally {
+                physicsP2Timing.record(System.nanoTime() - p2StartNs);
+            }
         }
     }
 
@@ -1570,58 +1609,83 @@ public class GameController {
         boolean modalOverlayUp = mabBattleShell != null
                 && mabBattleShell.isKeyboardModalOverlayVisible();
         boolean devConsoleOpen = isDevConsoleOpen();
-        if (!modalOverlayUp && !devConsoleOpen) {
-            if (launchMode == GameLaunchMode.MAB_LOCAL_PVP && localPvpInputRouter != null) {
-                localPvpInputRouter.processInput();
-            } else {
-                inputHandler.processInput();
+        long inputStartNs = System.nanoTime();
+        try {
+            if (!modalOverlayUp && !devConsoleOpen) {
+                if (launchMode == GameLaunchMode.MAB_LOCAL_PVP && localPvpInputRouter != null) {
+                    localPvpInputRouter.processInput();
+                } else {
+                    inputHandler.processInput();
+                }
             }
+        } finally {
+            renderInputTiming.record(System.nanoTime() - inputStartNs);
         }
 
         // 2. IRS/IHS: apply queued rotation/hold on freshly spawned pieces
-        if (!devConsoleOpen && launchMode != GameLaunchMode.MAB_LOCAL_PVP
-                && gameState.wasJustSpawned()) {
-            Settings s = Settings.get();
-            String irsMode = s.getIrsMode();
-            String ihsMode = s.getIhsMode();
+        long assistStartNs = System.nanoTime();
+        try {
+            if (!devConsoleOpen && launchMode != GameLaunchMode.MAB_LOCAL_PVP
+                    && gameState.wasJustSpawned()) {
+                Settings s = Settings.get();
+                String irsMode = s.getIrsMode();
+                String ihsMode = s.getIhsMode();
 
-            // IRS (Initial Rotation System)
-            if (!"off".equals(irsMode)) {
-                boolean useTap = "tap".equals(irsMode);
-                if (useTap ? inputHandler.hasUnconsumedKey(s.getKeyRotateCW())
-                           : inputHandler.isKeyHeld(s.getKeyRotateCW())) {
-                    gameState.rotateCW();
-                    inputHandler.consumeKey(s.getKeyRotateCW());
-                } else if (useTap ? inputHandler.hasUnconsumedKey(s.getKeyRotateCCW())
-                                  : inputHandler.isKeyHeld(s.getKeyRotateCCW())) {
-                    gameState.rotateCCW();
-                    inputHandler.consumeKey(s.getKeyRotateCCW());
+                // IRS (Initial Rotation System)
+                if (!"off".equals(irsMode)) {
+                    boolean useTap = "tap".equals(irsMode);
+                    if (useTap ? inputHandler.hasUnconsumedKey(s.getKeyRotateCW())
+                               : inputHandler.isKeyHeld(s.getKeyRotateCW())) {
+                        gameState.rotateCW();
+                        inputHandler.consumeKey(s.getKeyRotateCW());
+                    } else if (useTap ? inputHandler.hasUnconsumedKey(s.getKeyRotateCCW())
+                                      : inputHandler.isKeyHeld(s.getKeyRotateCCW())) {
+                        gameState.rotateCCW();
+                        inputHandler.consumeKey(s.getKeyRotateCCW());
+                    }
                 }
-            }
 
-            // IHS (Initial Hold System)
-            if (!"off".equals(ihsMode)) {
-                boolean useTap = "tap".equals(ihsMode);
-                if (useTap ? inputHandler.hasUnconsumedKey(s.getKeyHold())
-                           : inputHandler.isKeyHeld(s.getKeyHold())) {
-                    gameState.hold();
-                    inputHandler.consumeKey(s.getKeyHold());
-                } else if (useTap ? inputHandler.hasUnconsumedKey(s.getKeyHoldAlt())
-                                  : inputHandler.isKeyHeld(s.getKeyHoldAlt())) {
-                    gameState.hold();
-                    inputHandler.consumeKey(s.getKeyHoldAlt());
+                // IHS (Initial Hold System)
+                if (!"off".equals(ihsMode)) {
+                    boolean useTap = "tap".equals(ihsMode);
+                    if (useTap ? inputHandler.hasUnconsumedKey(s.getKeyHold())
+                               : inputHandler.isKeyHeld(s.getKeyHold())) {
+                        gameState.hold();
+                        inputHandler.consumeKey(s.getKeyHold());
+                    } else if (useTap ? inputHandler.hasUnconsumedKey(s.getKeyHoldAlt())
+                                      : inputHandler.isKeyHeld(s.getKeyHoldAlt())) {
+                        gameState.hold();
+                        inputHandler.consumeKey(s.getKeyHoldAlt());
+                    }
                 }
-            }
 
-            gameState.clearJustSpawned();
+                gameState.clearJustSpawned();
+            }
+        } finally {
+            renderSpawnAssistTiming.record(System.nanoTime() - assistStartNs);
         }
 
         // 3. Repaint
-        if (mainFrame != null) mainFrame.repaint();
-        DebugOverlay.shared().refreshPerf();
-        if (gameView  != null) gameView.repaint();
-        if (mabBattleShell != null) mabBattleShell.repaint();
-        refreshMabMusicState();
+        long repaintStartNs = System.nanoTime();
+        try {
+            if (mainFrame != null) mainFrame.repaint();
+            if (gameView  != null) gameView.repaint();
+            if (mabBattleShell != null) mabBattleShell.repaint();
+        } finally {
+            renderRepaintRequestTiming.record(System.nanoTime() - repaintStartNs);
+        }
+        long debugStartNs = System.nanoTime();
+        try {
+            DebugOverlay.shared().refreshPerf();
+        } finally {
+            renderDebugOverlayTiming.record(System.nanoTime() - debugStartNs);
+        }
+        long musicStartNs = System.nanoTime();
+        try {
+            refreshMabMusicState();
+        } finally {
+            renderMusicTiming.record(System.nanoTime() - musicStartNs);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -1808,6 +1872,419 @@ public class GameController {
     }
 
     private String buildPerfString() {
+        return buildRichPerfString();
+    }
+
+    private String buildRichPerfString() {
+        FixedRateEdtLoop.TelemetrySnapshot renderStats =
+                renderLoop == null ? null : renderLoop.snapshot();
+        FixedRateEdtLoop.TelemetrySnapshot physicsStats =
+                physicsLoop == null ? null : physicsLoop.snapshot();
+        SwingPaintDiagnostics.Snapshot paintStats = SwingPaintDiagnostics.snapshot();
+        long gcCount = totalGcCount();
+        long gcTimeMs = totalGcTimeMillis();
+        sampleGcWindow(System.nanoTime(), gcCount, gcTimeMs);
+
+        Runtime rt = Runtime.getRuntime();
+        long heapUsed = rt.totalMemory() - rt.freeMemory();
+        long heapCommitted = rt.totalMemory();
+        long heapMax = rt.maxMemory();
+        MemoryUsage nonHeap = ManagementFactory.getMemoryMXBean().getNonHeapMemoryUsage();
+        com.tetris.model.ScoreSystem sc = gameState.getScoreSystem();
+        Settings settings = Settings.get();
+
+        String modeStr = (mabMatch != null)
+                ? launchMode + " match-paused=" + mabMatch.isPaused()
+                : launchMode.toString();
+
+        StringBuilder sb = new StringBuilder(2600);
+        sb.append("\u00a7h F3 PERFORMANCE\n");
+        sb.append(String.format(" FPS      %d / %d target  |  frame budget %.2f ms",
+                lastRenderFps, FrameRate.RENDER_FPS, ms(FrameRate.RENDER_INTERVAL_NS))).append('\n');
+        sb.append(String.format(" Mode     %s  |  paused=%b  gameOver=%b",
+                modeStr, gameState.isPaused(), gameState.isGameOver())).append('\n');
+        sb.append(String.format(" Score    %,d  L%d  lines=%d  pieces=%d  PPS=%.2f",
+                sc.getScore(), sc.getLevel(), sc.getTotalLinesCleared(),
+                sc.getPiecesPlaced(), sc.getPiecesPerSecond())).append('\n');
+        sb.append(String.format(" Gravity  %d ms/row  |  music=%s",
+                getGravityInterval(), musicDirector.currentSoundtrackDisplay())).append('\n');
+
+        appendRichHotspots(sb, renderStats, physicsStats, paintStats,
+                heapUsed, heapMax);
+
+        sb.append("\u00a7h\n");
+        sb.append("\u00a7h LOOP TIMING  last/avg/max\n");
+        sb.append(formatRichLoopTelemetry("Render", renderStats)).append('\n');
+        sb.append(formatRichLoopTelemetry("Physics", physicsStats)).append('\n');
+        appendTimingLine(sb, "Phys P1", physicsP1Timing.snapshot(),
+                FrameRate.PHYSICS_INTERVAL_NS);
+        if (launchMode == GameLaunchMode.MAB_LOCAL_PVP) {
+            appendTimingLine(sb, "Phys P2", physicsP2Timing.snapshot(),
+                    FrameRate.PHYSICS_INTERVAL_NS);
+        }
+        appendTimingLine(sb, "Input", renderInputTiming.snapshot(),
+                FrameRate.RENDER_INTERVAL_NS);
+        appendTimingLine(sb, "IRS/IHS", renderSpawnAssistTiming.snapshot(),
+                FrameRate.RENDER_INTERVAL_NS);
+        appendTimingLine(sb, "Repaint", renderRepaintRequestTiming.snapshot(),
+                FrameRate.RENDER_INTERVAL_NS);
+        appendTimingLine(sb, "F3 text", renderDebugOverlayTiming.snapshot(),
+                FrameRate.RENDER_INTERVAL_NS);
+        appendTimingLine(sb, "Music", renderMusicTiming.snapshot(),
+                FrameRate.RENDER_INTERVAL_NS);
+
+        sb.append("\u00a7h\n");
+        sb.append("\u00a7h PAINT / REPAINT\n");
+        sb.append(String.format(" Swing   pass %,d  dirty %,d  dirty/pass %.1f",
+                paintStats.paintPasses, paintStats.dirtyRequests,
+                ratio(paintStats.dirtyRequests, paintStats.paintPasses))).append('\n');
+        sb.append(String.format(" Paint   %.2f/%.2f/%.2f ms  budget %.2f ms",
+                ms(paintStats.lastPaintNs), ms(paintStats.averagePaintNs()),
+                ms(paintStats.maxPaintNs), ms(FrameRate.RENDER_INTERVAL_NS))).append('\n');
+        sb.append(String.format(" Backdrop %.3f/%.3f/%.3f ms  passes %,d",
+                ms(paintStats.lastBackdropPaintNs),
+                ms(paintStats.averageBackdropPaintNs()),
+                ms(paintStats.maxBackdropPaintNs),
+                paintStats.backdropPasses)).append('\n');
+        appendComponentPaintLines(sb, paintStats);
+
+        sb.append("\u00a7h\n");
+        sb.append("\u00a7h MEMORY / GC\n");
+        sb.append(String.format(" Heap    %d / %d MB committed  max %d MB  used %.0f%%",
+                mb(heapUsed), mb(heapCommitted), mb(heapMax),
+                percent(heapUsed, heapMax))).append('\n');
+        sb.append(String.format(" NonHeap %d / %d MB committed  max %s",
+                mb(nonHeap.getUsed()), mb(nonHeap.getCommitted()),
+                nonHeap.getMax() < 0L ? "n/a" : mb(nonHeap.getMax()) + " MB")).append('\n');
+        sb.append(String.format(" GC      total %,d collections / %,d ms  recent +%,d / +%,d ms over %.1fs",
+                gcCount, gcTimeMs, gcWindowDeltaCount, gcWindowDeltaTimeMs,
+                gcWindowDurationNs <= 0L ? 0.0 : gcWindowDurationNs / 1_000_000_000.0)).append('\n');
+
+        sb.append("\u00a7h\n");
+        sb.append("\u00a7h GAME / INPUT\n");
+        appendGameStateDiagnostics(sb);
+        sb.append(String.format(" Input   DAS %d ms (%df)  ARR %d ms (%df)  SDF %dx",
+                settings.getDasDelay(),
+                FrameRate.framesForMillisCeil(settings.getDasDelay()),
+                settings.getArrInterval(),
+                settings.getArrInterval() == 0 ? 0
+                        : FrameRate.framesForMillisRounded(settings.getArrInterval()),
+                settings.getSoftDropFactor())).append('\n');
+        sb.append(String.format(" Lock    delay %d ms  resets %d  preview %d",
+                settings.getLockDelay(), settings.getMaxLockResets(),
+                settings.getPreviewCount())).append('\n');
+        sb.append(String.format(" Render  grid %.0f%%  board %.0f%%  ghost %.0f%% opacity",
+                settings.getGridOpacity() * 100.0,
+                settings.getBoardOpacity() * 100.0,
+                settings.getGhostOpacity() * 100.0)).append('\n');
+
+        appendRichAiPerfLine(sb, "AI-P1", mabBoardAiDriverA);
+        appendRichAiPerfLine(sb, "AI-P2", mabBoardAiDriver);
+
+        sb.append("\u00a7h\n");
+        sb.append("\u00a7h SYSTEM\n");
+        appendSystemDiagnostics(sb);
+        sb.append(String.format(" AI cap  %d ms/search (-Dmab.ai.searchBudgetMs)",
+                LIVE_AI_SEARCH_BUDGET_MS)).append('\n');
+        sb.append("\u00a7l Legend  q=EDT wait, cb=loop callback, dirty=repaint requests, max=worst since F3 reset");
+        return sb.toString();
+    }
+
+    private void appendRichHotspots(StringBuilder sb,
+                                    FixedRateEdtLoop.TelemetrySnapshot renderStats,
+                                    FixedRateEdtLoop.TelemetrySnapshot physicsStats,
+                                    SwingPaintDiagnostics.Snapshot paintStats,
+                                    long heapUsed,
+                                    long heapMax) {
+        sb.append("\u00a7h\n");
+        sb.append("\u00a7h HOTSPOTS\n");
+        int warnings = 0;
+        double renderBudgetMs = ms(FrameRate.RENDER_INTERVAL_NS);
+        double physicsBudgetMs = ms(FrameRate.PHYSICS_INTERVAL_NS);
+        if (lastRenderFps > 0 && lastRenderFps < FrameRate.RENDER_FPS - 3) {
+            warnings++;
+            sb.append(String.format("\u00a7w FPS below target: %d/%d",
+                    lastRenderFps, FrameRate.RENDER_FPS)).append('\n');
+        }
+        warnings += appendLoopWarnings(sb, "Render", renderStats, renderBudgetMs);
+        warnings += appendLoopWarnings(sb, "Physics", physicsStats, physicsBudgetMs);
+        if (ms(paintStats.maxPaintNs) > renderBudgetMs) {
+            warnings++;
+            sb.append(String.format("\u00a7w Paint max %.2f ms exceeds %.2f ms frame budget",
+                    ms(paintStats.maxPaintNs), renderBudgetMs)).append('\n');
+        }
+        if (gcWindowDeltaTimeMs >= 25L) {
+            warnings++;
+            sb.append(String.format("\u00a7w GC recently used %,d ms over %.1fs",
+                    gcWindowDeltaTimeMs,
+                    gcWindowDurationNs <= 0L ? 0.0 : gcWindowDurationNs / 1_000_000_000.0))
+                    .append('\n');
+        }
+        if (heapMax > 0L && percent(heapUsed, heapMax) >= 85.0) {
+            warnings++;
+            sb.append(String.format("\u00a7w Heap is %.0f%% of max", percent(heapUsed, heapMax)))
+                    .append('\n');
+        }
+        if (warnings == 0) {
+            sb.append(" No threshold warnings right now").append('\n');
+        }
+    }
+
+    private int appendLoopWarnings(StringBuilder sb, String label,
+                                   FixedRateEdtLoop.TelemetrySnapshot s,
+                                   double budgetMs) {
+        if (s == null) return 0;
+        int warnings = 0;
+        if (s.skippedTicks > 0L) {
+            warnings++;
+            sb.append(String.format("\u00a7w %s coalesced %,d stale tick(s)",
+                    label, s.skippedTicks)).append('\n');
+        }
+        if (ms(s.maxQueueDelayNs) > budgetMs) {
+            warnings++;
+            sb.append(String.format("\u00a7w %s EDT queue max %.2f ms exceeds %.2f ms budget",
+                    label, ms(s.maxQueueDelayNs), budgetMs)).append('\n');
+        }
+        if (ms(s.maxCallbackNs) > budgetMs) {
+            warnings++;
+            sb.append(String.format("\u00a7w %s callback max %.2f ms exceeds %.2f ms budget",
+                    label, ms(s.maxCallbackNs), budgetMs)).append('\n');
+        }
+        return warnings;
+    }
+
+    private static String formatRichLoopTelemetry(String label,
+                                                  FixedRateEdtLoop.TelemetrySnapshot s) {
+        if (s == null) return String.format(" %-7s stopped", label);
+        double intervalMs = ms(s.intervalNs);
+        double avgCallbackMs = ms(s.averageCallbackNs());
+        return String.format(" %-7s target %.2f  q %.2f/%.2f/%.2f  cb %.2f/%.2f/%.2f  duty %.0f%%  exec %,d skip %,d",
+                label,
+                intervalMs,
+                ms(s.lastQueueDelayNs),
+                ms(s.averageQueueDelayNs()),
+                ms(s.maxQueueDelayNs),
+                ms(s.lastCallbackNs),
+                avgCallbackMs,
+                ms(s.maxCallbackNs),
+                intervalMs <= 0.0 ? 0.0 : (avgCallbackMs / intervalMs) * 100.0,
+                s.executedTicks,
+                s.skippedTicks);
+    }
+
+    private static void appendTimingLine(StringBuilder sb, String label,
+                                         TimingSnapshot s, long budgetNs) {
+        if (s == null || s.samples <= 0L) {
+            sb.append(String.format(" %-7s no samples", label)).append('\n');
+            return;
+        }
+        double avgMs = ms(s.averageNs());
+        double budgetMs = ms(budgetNs);
+        sb.append(String.format(" %-7s %.3f/%.3f/%.3f ms  duty %.1f%%  samples %,d",
+                label,
+                ms(s.lastNs),
+                avgMs,
+                ms(s.maxNs),
+                budgetMs <= 0.0 ? 0.0 : (avgMs / budgetMs) * 100.0,
+                s.samples)).append('\n');
+    }
+
+    private static void appendComponentPaintLines(StringBuilder sb,
+                                                  SwingPaintDiagnostics.Snapshot paintStats) {
+        int shown = 0;
+        for (SwingPaintDiagnostics.ComponentSnapshot s : paintStats.componentPaints) {
+            if (shown++ >= 6) break;
+            sb.append(String.format(" %-8s %.3f/%.3f/%.3f ms  pass %,d",
+                    trimLabel(s.name, 8),
+                    ms(s.lastNs),
+                    ms(s.averageNs()),
+                    ms(s.maxNs),
+                    s.passes)).append('\n');
+        }
+        if (shown == 0) {
+            sb.append(" Components no paint samples yet").append('\n');
+        }
+    }
+
+    private void appendGameStateDiagnostics(StringBuilder sb) {
+        String piece = "none";
+        String ghost = "n/a";
+        try {
+            var current = gameState.getCurrentPiece();
+            if (current != null) {
+                var pos = current.getBoardPosition();
+                piece = current.getType() + " x=" + pos.getX()
+                        + " y=" + pos.getY()
+                        + " r=" + current.getRotationState();
+                var ghostPiece = gameState.getGhostPiece();
+                if (ghostPiece != null) {
+                    ghost = String.valueOf(
+                            ghostPiece.getBoardPosition().getY() - pos.getY());
+                }
+            }
+        } catch (RuntimeException ignored) {
+            piece = "unavailable";
+        }
+        sb.append(String.format(" Board   height=%d/%d  listeners=%d  spinPending=%b",
+                gameState.getBoardHeight(), com.tetris.model.Board.VISIBLE_HEIGHT,
+                gameState.getListenerCount(), gameState.isSpinCandidatePending())).append('\n');
+        sb.append(String.format(" Piece   %s  hold=%s used=%b  ghostDrop=%s",
+                piece,
+                gameState.getHoldPiece() == null ? "none" : gameState.getHoldPiece(),
+                gameState.isHoldUsed(),
+                ghost)).append('\n');
+    }
+
+    private void appendRichAiPerfLine(StringBuilder sb, String label,
+                                      MabBoardAiDriver driver) {
+        if (driver == null) return;
+        sb.append(String.format(" %s tick %.2f/%.2f/%.2f ms  search %.2f/%.2f/%.2f ms",
+                label,
+                ms(driver.getLastTickNs()),
+                ms(driver.getAverageTickNs()),
+                ms(driver.getMaxTickNs()),
+                ms(driver.getLastSearchNs()),
+                ms(driver.getAverageSearchNs()),
+                ms(driver.getMaxSearchNs()))).append('\n');
+        sb.append(String.format(" %s enabled=%b targetPPS=%.2f measuredPPS=%.2f calls %,d candidates %,d last d%d/c%d",
+                label,
+                driver.isEnabled(),
+                driver.getTargetPps(),
+                driver.getMeasuredPps(),
+                driver.getSearchCalls(),
+                driver.getSearchCandidates(),
+                driver.getLastSearchDepthReached(),
+                driver.getLastSearchCandidates())).append('\n');
+    }
+
+    private void appendSystemDiagnostics(StringBuilder sb) {
+        ThreadMXBean threads = ManagementFactory.getThreadMXBean();
+        java.lang.management.OperatingSystemMXBean os =
+                ManagementFactory.getOperatingSystemMXBean();
+        sb.append(String.format(" Threads live=%d daemon=%d peak=%d",
+                threads.getThreadCount(),
+                threads.getDaemonThreadCount(),
+                threads.getPeakThreadCount())).append('\n');
+        sb.append(String.format(" CPU     cores=%d  loadAvg=%s  process=%s  system=%s",
+                Runtime.getRuntime().availableProcessors(),
+                os.getSystemLoadAverage() < 0.0
+                        ? "n/a"
+                        : String.format("%.2f", os.getSystemLoadAverage()),
+                cpuLoadString(os, true),
+                cpuLoadString(os, false))).append('\n');
+        sb.append(String.format(" JVM     %s  uptime %.1fs  %s/%s",
+                System.getProperty("java.version", "?"),
+                ManagementFactory.getRuntimeMXBean().getUptime() / 1000.0,
+                System.getProperty("os.name", "?"),
+                System.getProperty("os.arch", "?"))).append('\n');
+    }
+
+    @SuppressWarnings("deprecation")
+    private static String cpuLoadString(java.lang.management.OperatingSystemMXBean os,
+                                        boolean process) {
+        if (!(os instanceof com.sun.management.OperatingSystemMXBean sunOs)) {
+            return "n/a";
+        }
+        double value = process ? sunOs.getProcessCpuLoad() : sunOs.getSystemCpuLoad();
+        return value < 0.0 ? "n/a" : String.format("%.0f%%", value * 100.0);
+    }
+
+    private void sampleGcWindow(long nowNs, long count, long timeMs) {
+        if (gcWindowLastSampleNs < 0L) {
+            gcWindowLastSampleNs = nowNs;
+            gcWindowLastCount = count;
+            gcWindowLastTimeMs = timeMs;
+            return;
+        }
+        long elapsedNs = nowNs - gcWindowLastSampleNs;
+        if (elapsedNs < 1_000_000_000L) return;
+        gcWindowDeltaCount = Math.max(0L, count - gcWindowLastCount);
+        gcWindowDeltaTimeMs = Math.max(0L, timeMs - gcWindowLastTimeMs);
+        gcWindowDurationNs = elapsedNs;
+        gcWindowLastSampleNs = nowNs;
+        gcWindowLastCount = count;
+        gcWindowLastTimeMs = timeMs;
+    }
+
+    private static double ratio(long num, long den) {
+        return den <= 0L ? 0.0 : (double) num / den;
+    }
+
+    private static double percent(long used, long max) {
+        return max <= 0L ? 0.0 : ((double) used / (double) max) * 100.0;
+    }
+
+    private static long mb(long bytes) {
+        return Math.max(0L, bytes) / (1024L * 1024L);
+    }
+
+    private static String trimLabel(String s, int width) {
+        if (s == null) return "";
+        return s.length() <= width ? s : s.substring(0, width);
+    }
+
+    private static String stripRichPerfMarkup(String text) {
+        if (text == null) return "";
+        return text
+                .replace("\u00c2\u00a7h ", "")
+                .replace("\u00c2\u00a7h", "")
+                .replace("\u00c2\u00a7w ", "WARN ")
+                .replace("\u00c2\u00a7w", "WARN ")
+                .replace("\u00c2\u00a7l ", "")
+                .replace("\u00c2\u00a7l", "")
+                .replace("\u00a7h ", "")
+                .replace("\u00a7h", "")
+                .replace("\u00a7w ", "WARN ")
+                .replace("\u00a7w", "WARN ")
+                .replace("\u00a7l ", "")
+                .replace("\u00a7l", "");
+    }
+
+    private static final class TimingStats {
+        private long samples;
+        private long lastNs;
+        private long maxNs;
+        private long totalNs;
+
+        void record(long elapsedNs) {
+            long safeNs = Math.max(0L, elapsedNs);
+            samples++;
+            lastNs = safeNs;
+            totalNs += safeNs;
+            if (safeNs > maxNs) maxNs = safeNs;
+        }
+
+        TimingSnapshot snapshot() {
+            return new TimingSnapshot(samples, lastNs, maxNs, totalNs);
+        }
+
+        void reset() {
+            samples = 0L;
+            lastNs = 0L;
+            maxNs = 0L;
+            totalNs = 0L;
+        }
+    }
+
+    private static final class TimingSnapshot {
+        final long samples;
+        final long lastNs;
+        final long maxNs;
+        final long totalNs;
+
+        TimingSnapshot(long samples, long lastNs, long maxNs, long totalNs) {
+            this.samples = samples;
+            this.lastNs = lastNs;
+            this.maxNs = maxNs;
+            this.totalNs = totalNs;
+        }
+
+        long averageNs() {
+            return samples <= 0L ? 0L : totalNs / samples;
+        }
+    }
+
+    private String buildLegacyPerfString() {
         Runtime rt = Runtime.getRuntime();
         long heapUsed  = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
         long heapTotal = rt.totalMemory() / (1024 * 1024);
@@ -1953,7 +2430,7 @@ public class GameController {
         return switch (verb) {
             case "fps"      -> lastRenderFps + " fps  (target " + FrameRate.RENDER_FPS
                     + " Hz, frame " + renderIntervalMs + " ms)";
-            case "perf", "diag", "diagnostics" -> stripPerfMarkup(buildPerfString());
+            case "perf", "diag", "diagnostics" -> stripRichPerfMarkup(buildPerfString());
             case "gc"       -> { Runtime.getRuntime().gc(); yield "GC requested."; }
             case "debug"    -> {
                 String lowerArg = arg.toLowerCase();

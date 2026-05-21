@@ -97,6 +97,7 @@ public class GamePanel extends JPanel {
 
     @Override
     protected void paintComponent(Graphics g) {
+        long paintStartNs = System.nanoTime();
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g.create();
         try {
@@ -240,6 +241,8 @@ public class GamePanel extends JPanel {
         }
         } finally {
             g2.dispose();
+            SwingPaintDiagnostics.recordComponentPaint("GamePanel",
+                    System.nanoTime() - paintStartNs);
         }
     }
 

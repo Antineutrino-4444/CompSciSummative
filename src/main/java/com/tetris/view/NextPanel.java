@@ -41,17 +41,23 @@ public class NextPanel extends JPanel {
 
     @Override
     protected void paintComponent(Graphics g) {
+        long paintStartNs = System.nanoTime();
         super.paintComponent(g);
-        Graphics2D g2 = (Graphics2D) g;
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+        try {
+            Graphics2D g2 = (Graphics2D) g;
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
 
-        int y = 12;
-        y = drawNext(g2, y);
-        y += 18;
-        drawDivider(g2, y - 9);
-        drawControls(g2, y);
+            int y = 12;
+            y = drawNext(g2, y);
+            y += 18;
+            drawDivider(g2, y - 9);
+            drawControls(g2, y);
+        } finally {
+            SwingPaintDiagnostics.recordComponentPaint("NextPanel",
+                    System.nanoTime() - paintStartNs);
+        }
     }
 
     // ───────────────────── Sections ────────────────────────────

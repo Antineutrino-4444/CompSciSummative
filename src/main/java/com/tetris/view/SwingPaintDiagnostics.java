@@ -2,6 +2,10 @@ package com.tetris.view;
 
 import javax.swing.JComponent;
 import javax.swing.RepaintManager;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -16,6 +20,8 @@ public final class SwingPaintDiagnostics {
 
     private static final AtomicBoolean INSTALLED = new AtomicBoolean(false);
     private static volatile TimedRepaintManager manager;
+    private static final ConcurrentHashMap<String, ComponentPaintStats> COMPONENT_STATS =
+            new ConcurrentHashMap<>();
 
     public static void install() {
         if (!INSTALLED.compareAndSet(false, true)) return;
@@ -37,6 +43,7 @@ public final class SwingPaintDiagnostics {
     public static void reset() {
         TimedRepaintManager m = manager;
         if (m != null) m.reset();
+        COMPONENT_STATS.clear();
     }
 
     public static void recordBackdropPaint(long elapsedNs) {
@@ -44,9 +51,16 @@ public final class SwingPaintDiagnostics {
         if (m != null) m.recordBackdropPaint(Math.max(0L, elapsedNs));
     }
 
+    public static void recordComponentPaint(String componentName, long elapsedNs) {
+        if (componentName == null || componentName.isBlank()) return;
+        COMPONENT_STATS
+                .computeIfAbsent(componentName, ComponentPaintStats::new)
+                .record(Math.max(0L, elapsedNs));
+    }
+
     public static final class Snapshot {
         static final Snapshot EMPTY = new Snapshot(false, 0L, 0L, 0L, 0L, 0L,
-                0L, 0L, 0L, 0L);
+                0L, 0L, 0L, 0L, List.of());
 
         public final boolean installed;
         public final long paintPasses;
@@ -58,11 +72,13 @@ public final class SwingPaintDiagnostics {
         public final long lastBackdropPaintNs;
         public final long maxBackdropPaintNs;
         public final long totalBackdropPaintNs;
+        public final List<ComponentSnapshot> componentPaints;
 
         Snapshot(boolean installed, long paintPasses, long dirtyRequests,
                  long lastPaintNs, long maxPaintNs, long totalPaintNs,
                  long backdropPasses, long lastBackdropPaintNs,
-                 long maxBackdropPaintNs, long totalBackdropPaintNs) {
+                 long maxBackdropPaintNs, long totalBackdropPaintNs,
+                 List<ComponentSnapshot> componentPaints) {
             this.installed = installed;
             this.paintPasses = paintPasses;
             this.dirtyRequests = dirtyRequests;
@@ -73,6 +89,9 @@ public final class SwingPaintDiagnostics {
             this.lastBackdropPaintNs = lastBackdropPaintNs;
             this.maxBackdropPaintNs = maxBackdropPaintNs;
             this.totalBackdropPaintNs = totalBackdropPaintNs;
+            this.componentPaints = componentPaints == null
+                    ? List.of()
+                    : List.copyOf(componentPaints);
         }
 
         public long averagePaintNs() {
@@ -81,6 +100,27 @@ public final class SwingPaintDiagnostics {
 
         public long averageBackdropPaintNs() {
             return backdropPasses <= 0L ? 0L : totalBackdropPaintNs / backdropPasses;
+        }
+    }
+
+    public static final class ComponentSnapshot {
+        public final String name;
+        public final long passes;
+        public final long lastNs;
+        public final long maxNs;
+        public final long totalNs;
+
+        ComponentSnapshot(String name, long passes, long lastNs,
+                          long maxNs, long totalNs) {
+            this.name = name;
+            this.passes = passes;
+            this.lastNs = lastNs;
+            this.maxNs = maxNs;
+            this.totalNs = totalNs;
+        }
+
+        public long averageNs() {
+            return passes <= 0L ? 0L : totalNs / passes;
         }
     }
 
@@ -126,7 +166,8 @@ public final class SwingPaintDiagnostics {
                     backdropPasses.get(),
                     lastBackdropPaintNs.get(),
                     maxBackdropPaintNs.get(),
-                    totalBackdropPaintNs.get());
+                    totalBackdropPaintNs.get(),
+                    componentSnapshots());
         }
 
         void reset() {
@@ -146,6 +187,49 @@ public final class SwingPaintDiagnostics {
             lastBackdropPaintNs.set(elapsedNs);
             totalBackdropPaintNs.addAndGet(elapsedNs);
             updateMax(maxBackdropPaintNs, elapsedNs);
+        }
+
+        private static void updateMax(AtomicLong target, long value) {
+            long prev = target.get();
+            while (value > prev && !target.compareAndSet(prev, value)) {
+                prev = target.get();
+            }
+        }
+    }
+
+    private static List<ComponentSnapshot> componentSnapshots() {
+        ArrayList<ComponentSnapshot> snapshots = new ArrayList<>();
+        for (ComponentPaintStats stats : COMPONENT_STATS.values()) {
+            snapshots.add(stats.snapshot());
+        }
+        snapshots.sort(Comparator
+                .comparingLong((ComponentSnapshot s) -> s.maxNs)
+                .reversed()
+                .thenComparing(s -> s.name));
+        return snapshots;
+    }
+
+    private static final class ComponentPaintStats {
+        private final String name;
+        private final AtomicLong passes = new AtomicLong();
+        private final AtomicLong lastNs = new AtomicLong();
+        private final AtomicLong maxNs = new AtomicLong();
+        private final AtomicLong totalNs = new AtomicLong();
+
+        ComponentPaintStats(String name) {
+            this.name = name;
+        }
+
+        void record(long elapsedNs) {
+            passes.incrementAndGet();
+            lastNs.set(elapsedNs);
+            totalNs.addAndGet(elapsedNs);
+            updateMax(maxNs, elapsedNs);
+        }
+
+        ComponentSnapshot snapshot() {
+            return new ComponentSnapshot(name, passes.get(), lastNs.get(),
+                    maxNs.get(), totalNs.get());
         }
 
         private static void updateMax(AtomicLong target, long value) {
