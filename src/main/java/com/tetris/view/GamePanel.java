@@ -10,6 +10,7 @@ import com.tetris.view.theme.Theme;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -39,8 +40,17 @@ public class GamePanel extends JPanel {
     /** Cached strokes — reused every frame. */
     private static final BasicStroke STROKE_GRID  = new BasicStroke(1f);
     private static final BasicStroke STROKE_BOARD = new BasicStroke(2f);
+    private static final BasicStroke STROKE_OVERLAY = new BasicStroke(1.5f);
+
+    private static final boolean FAST_BACKDROP = true;
 
     private GameState gameState;
+
+    private BufferedImage cachedBackdrop;
+    private int cachedBackdropW = -1;
+    private int cachedBackdropH = -1;
+    private int cachedBackdropStyleKey = 0;
+    private boolean backdropDirty = true;
 
     // ── Line-clear animation ────────────────────────────────────────
     /** Wall-clock start of the current clear flash window (ns). 0 = idle. */
@@ -80,10 +90,16 @@ public class GamePanel extends JPanel {
         lastSplashSource = "";
     }
 
+    public void invalidateBackdropCache() {
+        backdropDirty = true;
+        repaint();
+    }
+
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
-        Graphics2D g2 = (Graphics2D) g;
+        Graphics2D g2 = (Graphics2D) g.create();
+        try {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                 RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
@@ -95,8 +111,13 @@ public class GamePanel extends JPanel {
         int bx   = (getWidth()  - boardW) / 2;
         int by   = (getHeight() - boardH) / 2;
 
-        // ── Background vignette ──
-        paintBackdrop(g2);
+        // ── Cached backdrop ──
+        long backdropStartNs = System.nanoTime();
+        try {
+            paintBackdrop(g2);
+        } finally {
+            SwingPaintDiagnostics.recordBackdropPaint(System.nanoTime() - backdropStartNs);
+        }
 
         // ── Board surface ──
         Settings settings = Settings.get();
@@ -216,6 +237,9 @@ public class GamePanel extends JPanel {
             drawCenterOverlay(g2, "PAUSED",
                     "Press " + keyName(Settings.get().getKeyPause()) + " to resume",
                     Theme.ACCENT);
+        }
+        } finally {
+            g2.dispose();
         }
     }
 
@@ -458,11 +482,70 @@ public class GamePanel extends JPanel {
 
     private void paintBackdrop(Graphics2D g2) {
         int w = getWidth(), h = getHeight();
-        g2.setPaint(new RadialGradientPaint(
-                w / 2f, h / 2f, Math.max(w, h) / 1.4f,
-                new float[]{0f, 1f},
-                new Color[]{Theme.blend(Theme.BG_0, Theme.BG_1, 0.5f), Theme.BG_0}));
-        g2.fillRect(0, 0, w, h);
+        if (w <= 0 || h <= 0) return;
+
+        int styleKey = backdropStyleKey();
+        if (cachedBackdrop == null
+                || cachedBackdropW != w
+                || cachedBackdropH != h
+                || cachedBackdropStyleKey != styleKey
+                || backdropDirty) {
+            rebuildBackdropCache(w, h, styleKey);
+        }
+
+        g2.drawImage(cachedBackdrop, 0, 0, null);
+    }
+
+    private void rebuildBackdropCache(int w, int h, int styleKey) {
+        BufferedImage img = createOpaqueCompatibleImage(w, h);
+        Graphics2D bg = img.createGraphics();
+        try {
+            bg.setComposite(AlphaComposite.Src);
+            bg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+            bg.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
+
+            if (FAST_BACKDROP) {
+                bg.setColor(Theme.BG_0);
+                bg.fillRect(0, 0, w, h);
+            } else {
+                paintSimpleCachedBackdrop(bg, w, h);
+            }
+        } finally {
+            bg.dispose();
+        }
+
+        cachedBackdrop = img;
+        cachedBackdropW = w;
+        cachedBackdropH = h;
+        cachedBackdropStyleKey = styleKey;
+        backdropDirty = false;
+    }
+
+    private static BufferedImage createOpaqueCompatibleImage(int w, int h) {
+        if (!GraphicsEnvironment.isHeadless()) {
+            GraphicsConfiguration gc = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getDefaultScreenDevice()
+                    .getDefaultConfiguration();
+            return gc.createCompatibleImage(w, h, Transparency.OPAQUE);
+        }
+        return new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+    }
+
+    private static void paintSimpleCachedBackdrop(Graphics2D bg, int w, int h) {
+        bg.setColor(Theme.blend(Theme.BG_0, Theme.BG_1, 0.35f));
+        bg.fillRect(0, 0, w, h);
+
+        int band = Math.max(24, h / 10);
+        bg.setColor(Theme.BG_0);
+        bg.fillRect(0, 0, w, band);
+        bg.fillRect(0, h - band, w, band);
+    }
+
+    private static int backdropStyleKey() {
+        int key = Boolean.hashCode(FAST_BACKDROP);
+        key = 31 * key + Theme.BG_0.getRGB();
+        key = 31 * key + Theme.BG_1.getRGB();
+        return key;
     }
 
     private void drawPiece(Graphics2D g2, Tetromino piece, int bx, int by,
@@ -479,19 +562,15 @@ public class GamePanel extends JPanel {
     }
 
     private void drawCenterOverlay(Graphics2D g2, String title, String sub, Color accent) {
-        int w = getWidth(), h = getHeight();
-        g2.setColor(Theme.alpha(Theme.BG_0, 200));
-        g2.fillRect(0, 0, w, h);
-
         int cardW = 360, cardH = 140;
+        int w = getWidth(), h = getHeight();
         int cx = (w - cardW) / 2;
         int cy = (h - cardH) / 2;
 
-        g2.setPaint(new GradientPaint(0, cy, Theme.BG_2,
-                                       0, cy + cardH, Theme.BG_1));
+        g2.setColor(Theme.BG_2);
         g2.fillRoundRect(cx, cy, cardW, cardH, Theme.RADIUS_L, Theme.RADIUS_L);
         g2.setColor(accent);
-        g2.setStroke(new BasicStroke(1.5f));
+        g2.setStroke(STROKE_OVERLAY);
         g2.drawRoundRect(cx, cy, cardW, cardH, Theme.RADIUS_L, Theme.RADIUS_L);
 
         g2.setFont(Theme.FONT_TITLE);

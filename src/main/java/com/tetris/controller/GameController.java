@@ -1852,6 +1852,10 @@ public class GameController {
                 ms(paintStats.averagePaintNs()),
                 ms(paintStats.maxPaintNs),
                 paintStats.dirtyRequests)).append('\n');
+        sb.append(String.format(" Backdrop last %.3f ms  avg %.3f  max %.3f",
+                ms(paintStats.lastBackdropPaintNs),
+                ms(paintStats.averageBackdropPaintNs()),
+                ms(paintStats.maxBackdropPaintNs))).append('\n');
         appendAiPerfLine(sb, "AI-P1", mabBoardAiDriverA);
         appendAiPerfLine(sb, "AI-P2", mabBoardAiDriver);
         sb.append("Â§h\n");

@@ -39,8 +39,14 @@ public final class SwingPaintDiagnostics {
         if (m != null) m.reset();
     }
 
+    public static void recordBackdropPaint(long elapsedNs) {
+        TimedRepaintManager m = manager;
+        if (m != null) m.recordBackdropPaint(Math.max(0L, elapsedNs));
+    }
+
     public static final class Snapshot {
-        static final Snapshot EMPTY = new Snapshot(false, 0L, 0L, 0L, 0L, 0L);
+        static final Snapshot EMPTY = new Snapshot(false, 0L, 0L, 0L, 0L, 0L,
+                0L, 0L, 0L, 0L);
 
         public final boolean installed;
         public final long paintPasses;
@@ -48,19 +54,33 @@ public final class SwingPaintDiagnostics {
         public final long lastPaintNs;
         public final long maxPaintNs;
         public final long totalPaintNs;
+        public final long backdropPasses;
+        public final long lastBackdropPaintNs;
+        public final long maxBackdropPaintNs;
+        public final long totalBackdropPaintNs;
 
         Snapshot(boolean installed, long paintPasses, long dirtyRequests,
-                 long lastPaintNs, long maxPaintNs, long totalPaintNs) {
+                 long lastPaintNs, long maxPaintNs, long totalPaintNs,
+                 long backdropPasses, long lastBackdropPaintNs,
+                 long maxBackdropPaintNs, long totalBackdropPaintNs) {
             this.installed = installed;
             this.paintPasses = paintPasses;
             this.dirtyRequests = dirtyRequests;
             this.lastPaintNs = lastPaintNs;
             this.maxPaintNs = maxPaintNs;
             this.totalPaintNs = totalPaintNs;
+            this.backdropPasses = backdropPasses;
+            this.lastBackdropPaintNs = lastBackdropPaintNs;
+            this.maxBackdropPaintNs = maxBackdropPaintNs;
+            this.totalBackdropPaintNs = totalBackdropPaintNs;
         }
 
         public long averagePaintNs() {
             return paintPasses <= 0L ? 0L : totalPaintNs / paintPasses;
+        }
+
+        public long averageBackdropPaintNs() {
+            return backdropPasses <= 0L ? 0L : totalBackdropPaintNs / backdropPasses;
         }
     }
 
@@ -70,6 +90,10 @@ public final class SwingPaintDiagnostics {
         private final AtomicLong lastPaintNs = new AtomicLong();
         private final AtomicLong maxPaintNs = new AtomicLong();
         private final AtomicLong totalPaintNs = new AtomicLong();
+        private final AtomicLong backdropPasses = new AtomicLong();
+        private final AtomicLong lastBackdropPaintNs = new AtomicLong();
+        private final AtomicLong maxBackdropPaintNs = new AtomicLong();
+        private final AtomicLong totalBackdropPaintNs = new AtomicLong();
 
         @Override
         public void addDirtyRegion(JComponent c, int x, int y, int w, int h) {
@@ -98,7 +122,11 @@ public final class SwingPaintDiagnostics {
                     dirtyRequests.get(),
                     lastPaintNs.get(),
                     maxPaintNs.get(),
-                    totalPaintNs.get());
+                    totalPaintNs.get(),
+                    backdropPasses.get(),
+                    lastBackdropPaintNs.get(),
+                    maxBackdropPaintNs.get(),
+                    totalBackdropPaintNs.get());
         }
 
         void reset() {
@@ -107,6 +135,17 @@ public final class SwingPaintDiagnostics {
             lastPaintNs.set(0L);
             maxPaintNs.set(0L);
             totalPaintNs.set(0L);
+            backdropPasses.set(0L);
+            lastBackdropPaintNs.set(0L);
+            maxBackdropPaintNs.set(0L);
+            totalBackdropPaintNs.set(0L);
+        }
+
+        void recordBackdropPaint(long elapsedNs) {
+            backdropPasses.incrementAndGet();
+            lastBackdropPaintNs.set(elapsedNs);
+            totalBackdropPaintNs.addAndGet(elapsedNs);
+            updateMax(maxBackdropPaintNs, elapsedNs);
         }
 
         private static void updateMax(AtomicLong target, long value) {
