@@ -41,7 +41,7 @@ public class MainFrame extends JFrame {
     }
 
     public MainFrame(GameState gameState, InputHandler inputHandler) {
-        super("Modern Tetris");
+        super("MAB");
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         // Fullscreen-only: borderless, maximized to fill the screen.
         setUndecorated(true);

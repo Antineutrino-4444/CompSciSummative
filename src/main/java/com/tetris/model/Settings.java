@@ -307,7 +307,7 @@ public class Settings {
             p.setProperty("controls.wizardCompleted", String.valueOf(controlsWizardCompleted));
 
             try (OutputStream out = Files.newOutputStream(SETTINGS_FILE)) {
-                p.store(out, "Modern Tetris Settings — do not edit manually");
+                p.store(out, "MAB Settings - do not edit manually");
             }
         } catch (IOException e) {
             System.err.println("Failed to save settings: " + e.getMessage());

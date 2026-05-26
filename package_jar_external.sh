@@ -20,10 +20,10 @@
 #
 #  Usage:
 #    ./package_jar_external.sh
-#        Builds target/ModernTetris-external.jar. Run it from any
+#        Builds target/MAB-external.jar. Run it from any
 #        folder that has music/ and sfx/ subfolders (e.g. the repo
 #        root):
-#            java -jar target/ModernTetris-external.jar
+#            java -jar target/MAB-external.jar
 #
 #    ./package_jar_external.sh --stage
 #        Also assembles a ready-to-run folder at target/dist-external/
@@ -35,7 +35,7 @@
 #        (where music/ and sfx/ live) to confirm it boots.
 #
 #  Options:
-#    --jar PATH         Output jar path (default target/ModernTetris-external.jar)
+#    --jar PATH         Output jar path (default target/MAB-external.jar)
 #    --stage            Assemble a runnable folder with jar + music + sfx
 #    --stage-dir DIR    Stage destination (default target/dist-external)
 #    --smoke-test       Boot-check the jar after building
@@ -50,7 +50,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # ---- Defaults ----
-JAR_PATH="target/ModernTetris-external.jar"
+JAR_PATH="target/MAB-external.jar"
 STAGE=0
 STAGE_DIR="target/dist-external"
 SMOKE_TEST=0

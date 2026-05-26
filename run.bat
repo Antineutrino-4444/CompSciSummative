@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  run.bat -- Launcher for Modern Tetris
+REM  run.bat -- Launcher for MAB
 REM ============================================================
 REM  Always performs a clean rebuild, then runs the game.
 REM  Requires: a JDK 17+ on PATH (provides javac/java).
@@ -88,7 +88,7 @@ if not "%JAVAC_RC%"=="0" (
 )
 
 REM ---- Launch ----
-echo [run] Starting Modern Tetris...
+echo [run] Starting MAB...
 java -cp "%OUT_DIR%" %MAIN_CLASS% %*
 set "EXIT=%errorlevel%"
 

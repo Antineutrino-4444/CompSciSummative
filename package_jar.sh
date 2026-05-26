@@ -7,8 +7,8 @@
 #  music-manifest.txt. On first run RuntimeBootstrap extracts the
 #  bundled tracks to the per-user data dir, e.g.:
 #
-#      macOS : ~/Library/Application Support/Modern Tetris/music/
-#      Linux : ~/.local/share/modern-tetris/music/
+#      macOS : ~/Library/Application Support/MAB/music/
+#      Linux : ~/.local/share/mab/music/
 #
 #  This is the cross-platform twin of package_jar.ps1 (Windows).
 #  For the slim, audio-beside-the-jar variant, use
@@ -16,8 +16,8 @@
 #
 #  Usage:
 #    ./package_jar.sh
-#        Builds target/ModernTetris.jar (music bundled in).
-#            java -jar target/ModernTetris.jar
+#        Builds target/MAB.jar (music bundled in).
+#            java -jar target/MAB.jar
 #
 #    ./package_jar.sh --no-music
 #        Code-only diagnostic jar (no music bundled, no manifest).
@@ -27,7 +27,7 @@
 #        extracts bundled music.
 #
 #  Options:
-#    --jar PATH      Output jar path (default target/ModernTetris.jar)
+#    --jar PATH      Output jar path (default target/MAB.jar)
 #    --no-music      Skip bundling music (diagnostic only)
 #    --smoke-test    Boot-check the jar after building
 #    -h, --help      Show this help
@@ -41,7 +41,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # ---- Defaults ----
-JAR_PATH="target/ModernTetris.jar"
+JAR_PATH="target/MAB.jar"
 INCLUDE_MUSIC=1
 SMOKE_TEST=0
 

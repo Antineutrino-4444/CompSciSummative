@@ -28,14 +28,18 @@ import com.tetris.model.GameState;
 import com.tetris.model.Settings;
 import com.tetris.view.GameView;
 import com.tetris.view.MainFrame;
+import com.tetris.view.FpsOverlayPanel;
 import com.tetris.view.SettingsPanel;
 import com.tetris.view.SwingPaintDiagnostics;
 
 import com.tetris.view.DebugOverlay;
 
 import javax.swing.JLayeredPane;
+import javax.swing.RootPaneContainer;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+import java.awt.Container;
+import java.awt.Dimension;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryUsage;
 import java.lang.management.ThreadMXBean;
@@ -145,6 +149,7 @@ public class GameController {
     private long gcWindowDeltaCount = 0L;
     private long gcWindowDeltaTimeMs = 0L;
     private long gcWindowDurationNs = 0L;
+    private FpsOverlayPanel fpsOverlay;
 
     // Step 12: visible MAB debug HUD (vertical slice). Opt-in via
     // -Dmab.debug.hud=true (default off as of Step 15).
@@ -349,6 +354,7 @@ public class GameController {
     /** Stops both timers. Safe to call multiple times. */
     public void stop() {
         DebugOverlay.shared().clearContext();
+        detachFpsOverlay();
         if (cheatMenu != null) {
             cheatMenu.setVisible(false);
             cheatMenu = null;
@@ -1666,6 +1672,7 @@ public class GameController {
         }
 
         // 3. Repaint
+        updateFpsOverlay();
         long repaintStartNs = System.nanoTime();
         try {
             if (mainFrame != null) mainFrame.repaint();
@@ -1859,6 +1866,51 @@ public class GameController {
     private void releaseGameplayInputs() {
         if (inputHandler != null) inputHandler.releaseAll();
         if (localPvpInputRouter != null) localPvpInputRouter.releaseAll();
+    }
+
+    private void updateFpsOverlay() {
+        JLayeredPane lp = activeGameLayeredPane();
+        if (lp == null) return;
+        if (fpsOverlay == null) {
+            fpsOverlay = new FpsOverlayPanel();
+        }
+        if (fpsOverlay.getParent() != lp) {
+            Container prev = fpsOverlay.getParent();
+            if (prev != null) {
+                prev.remove(fpsOverlay);
+                prev.repaint();
+            }
+            lp.add(fpsOverlay, Integer.valueOf(JLayeredPane.DRAG_LAYER + 1));
+        }
+        fpsOverlay.setFps(displayFps());
+        Dimension size = fpsOverlay.getPreferredSize();
+        int x = Math.max(8, lp.getWidth() - size.width - 12);
+        int y = 12;
+        fpsOverlay.setBounds(x, y, size.width, size.height);
+        fpsOverlay.setVisible(true);
+        fpsOverlay.repaint();
+    }
+
+    private JLayeredPane activeGameLayeredPane() {
+        java.awt.Window window = resolveWindow();
+        if (!(window instanceof RootPaneContainer rpc)) return null;
+        JLayeredPane lp = rpc.getRootPane().getLayeredPane();
+        if (lp == null || lp.getWidth() <= 0 || lp.getHeight() <= 0) return null;
+        return lp;
+    }
+
+    private int displayFps() {
+        return lastRenderFps > 0 ? lastRenderFps : fpsFrameCount;
+    }
+
+    private void detachFpsOverlay() {
+        if (fpsOverlay == null) return;
+        Container parent = fpsOverlay.getParent();
+        if (parent != null) {
+            parent.remove(fpsOverlay);
+            parent.repaint();
+        }
+        fpsOverlay = null;
     }
 
     /** Toggle the dev console open/closed. Called by InputHandler on ` / ~ key. */

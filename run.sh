@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-#  run.sh — Launcher for Modern Tetris (Linux / macOS)
+#  run.sh — Launcher for MAB (Linux / macOS)
 # ============================================================
 #  Always performs a clean rebuild, then runs the game.
 #  Requires: a JDK 17+ on PATH (provides javac/java).
@@ -97,7 +97,7 @@ if [ "$JAVAC_RC" -ne 0 ]; then
 fi
 
 # ---- Launch ----
-echo "[run] Starting Modern Tetris..."
+echo "[run] Starting MAB..."
 java -cp "$OUT_DIR" "$MAIN_CLASS" "$@"
 EXIT=$?
 

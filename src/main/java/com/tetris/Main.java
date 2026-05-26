@@ -32,7 +32,7 @@ import java.awt.event.WindowEvent;
 /**
  * Main.java
  * =========
- * Entry point for the Modern Tetris application.
+ * Entry point for the MAB application.
  *
  * ═══════════════════════════════════════════════════════════════════════
  * APPLICATION STARTUP SEQUENCE
@@ -179,7 +179,7 @@ public class Main {
 
     private static void runSmokeTest() {
         Settings.get();
-        System.out.println("[smoke] Modern Tetris startup complete.");
+        System.out.println("[smoke] MAB startup complete.");
         System.out.println("[smoke] Data dir: " + AppPaths.dataDir());
         System.out.println("[smoke] Settings file: " + AppPaths.settingsFile());
         System.out.println("[smoke] Music root: " + AppPaths.musicDir());

@@ -116,7 +116,7 @@ public class StartMenu extends JFrame {
     private StartMenu(Runnable onPlayTetrisFallback, int startLevel,
                       java.util.function.IntFunction<GameController> controllerFactory,
                       java.util.function.BiFunction<Integer, GameLaunchMode, GameController> modedFactory) {
-        super("Modern Tetris");
+        super("MAB");
         this.startLevel = Math.max(1, startLevel);
         this.controllerFactory = controllerFactory;
         this.modedFactory = modedFactory;
@@ -945,12 +945,12 @@ public class StartMenu extends JFrame {
         eyebrow.setForeground(Theme.ACCENT_DIM);
         eyebrow.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JLabel title = new JLabel("MODERN TETRIS");
+        JLabel title = new JLabel("MAB");
         title.setFont(Theme.FONT_DISPLAY);
         title.setForeground(Theme.ACCENT);
         title.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JLabel sub = new JLabel("A guideline-faithful Tetris client");
+        JLabel sub = new JLabel("Mutually Assured Blocks");
         sub.setFont(Theme.FONT_BODY);
         sub.setForeground(Theme.TEXT_BODY);
         sub.setAlignmentX(Component.CENTER_ALIGNMENT);

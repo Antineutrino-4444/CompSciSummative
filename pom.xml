@@ -2,7 +2,7 @@
 <!--
   pom.xml
   =======
-  Maven build configuration for Modern Tetris.
+  Maven build configuration for MAB.
 
   The application uses Java Swing for rendering (part of the JDK, no external deps).
   JUnit 5 is included for testing.
@@ -10,7 +10,7 @@
   To compile:      mvn compile
   To run:          mvn exec:java
   To package JAR:  mvn package
-  To run JAR:      java -jar target/modern-tetris-1.0.0.jar
+  To run JAR:      java -jar target/mab-1.0.0.jar
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -18,12 +18,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.tetris</groupId>
-    <artifactId>modern-tetris</artifactId>
+    <artifactId>mab</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>Modern Tetris</name>
-    <description>A modern Tetris implementation in Java with SRS, DAS/ARR, T-spins, and more.</description>
+    <name>MAB</name>
+    <description>Mutually Assured Blocks.</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

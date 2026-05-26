@@ -1,5 +1,5 @@
 param(
-    [string]$JarPath = "target\ModernTetris-external.jar",
+    [string]$JarPath = "target\MAB-external.jar",
     [switch]$Stage,
     [string]$StageDir = "target\dist-external",
     [switch]$SmokeTest
@@ -23,10 +23,10 @@ param(
 #
 #  Usage:
 #    .\package_jar_external.ps1
-#        -> builds target\ModernTetris-external.jar
+#        -> builds target\MAB-external.jar
 #           Run it from any folder that has music\ and sfx\
 #           subfolders (e.g. the repo root):
-#               java -jar target\ModernTetris-external.jar
+#               java -jar target\MAB-external.jar
 #
 #    .\package_jar_external.ps1 -Stage
 #        -> additionally assembles a ready-to-run folder at

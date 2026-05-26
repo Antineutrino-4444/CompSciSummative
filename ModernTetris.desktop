@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Modern Tetris
-Comment=Launch Modern Tetris (clean rebuild + run)
+Name=MAB
+Comment=Launch MAB (clean rebuild + run)
 Exec=bash -c 'cd "$(dirname "%k")" && ./run.sh; exec bash'
 Path=.
 Terminal=true

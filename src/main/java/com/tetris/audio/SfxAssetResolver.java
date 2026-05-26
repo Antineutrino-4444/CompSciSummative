@@ -63,7 +63,7 @@ public final class SfxAssetResolver {
         // Repo / development layout: ./sfx
         Path dev = Paths.get("sfx").toAbsolutePath().normalize();
         unique.add(dev);
-        // Packaged install: <appdata>/Modern Tetris/sfx (sibling of music/)
+        // Packaged install: <appdata>/MAB/sfx (sibling of music/)
         unique.add(AppPaths.dataDir().resolve("sfx"));
         // Music root sibling lookup, in case music was extracted elsewhere.
         Path musicRoot = AppPaths.musicDir();

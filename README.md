@@ -1,4 +1,4 @@
-# Modern Tetris — Java + Maven
+# MAB — Java + Maven
 
 A faithful implementation of modern Tetris following the Tetris Guideline specification, built in Java with Swing rendering and Maven build system. Handling settings sourced from a TETR.IO config file (config.ttc).
 
@@ -12,8 +12,8 @@ mvn package
 mvn exec:java
 
 # Or run the JAR directly (optional: start at a specific level 1–20)
-java -jar target/modern-tetris-1.0.0.jar
-java -jar target/modern-tetris-1.0.0.jar 5
+java -jar target/mab-1.0.0.jar
+java -jar target/mab-1.0.0.jar 5
 ```
 
 ## Controls

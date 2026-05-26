@@ -1,5 +1,5 @@
 param(
-    [string]$JarPath = "target\ModernTetris.jar",
+    [string]$JarPath = "target\MAB.jar",
     [switch]$NoMusic,
     [switch]$SmokeTest
 )

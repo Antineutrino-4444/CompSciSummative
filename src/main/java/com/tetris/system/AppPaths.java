@@ -9,8 +9,8 @@ import java.util.Locale;
  * Centralized runtime paths for installed/packaged runs.
  */
 public final class AppPaths {
-    private static final String APP_DIR_NAME = "Modern Tetris";
-    private static final String APP_DIR_NAME_UNIX = "modern-tetris";
+    private static final String APP_DIR_NAME = "MAB";
+    private static final String APP_DIR_NAME_UNIX = "mab";
     private static final Path DATA_DIR = computeDataDir();
     private static final Path SETTINGS_FILE = DATA_DIR.resolve("settings.properties");
     private static final Path PACKAGED_MUSIC_DIR = DATA_DIR.resolve("music");
@@ -61,7 +61,37 @@ public final class AppPaths {
     }
 
     public static Path legacySettingsFile() {
-        return Paths.get(System.getProperty("user.home"), ".modern-tetris", "settings.properties");
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        String home = System.getProperty("user.home", ".");
+        Path[] candidates;
+        if (os.contains("win")) {
+            String appData = trimToNull(System.getenv("APPDATA"));
+            String localAppData = trimToNull(System.getenv("LOCALAPPDATA"));
+            candidates = new Path[] {
+                    appData == null ? null : Paths.get(appData, "Modern Tetris", "settings.properties"),
+                    localAppData == null ? null : Paths.get(localAppData, "Modern Tetris", "settings.properties"),
+                    Paths.get(home, "AppData", "Roaming", "Modern Tetris", "settings.properties"),
+                    Paths.get(home, ".modern-tetris", "settings.properties")
+            };
+        } else if (os.contains("mac")) {
+            candidates = new Path[] {
+                    Paths.get(home, "Library", "Application Support", "Modern Tetris", "settings.properties"),
+                    Paths.get(home, ".modern-tetris", "settings.properties")
+            };
+        } else {
+            String xdgDataHome = trimToNull(System.getenv("XDG_DATA_HOME"));
+            candidates = new Path[] {
+                    xdgDataHome == null ? null : Paths.get(xdgDataHome, "modern-tetris", "settings.properties"),
+                    Paths.get(home, ".local", "share", "modern-tetris", "settings.properties"),
+                    Paths.get(home, ".modern-tetris", "settings.properties")
+            };
+        }
+        for (Path candidate : candidates) {
+            if (candidate != null && Files.isRegularFile(candidate)) {
+                return candidate;
+            }
+        }
+        return Paths.get(home, ".modern-tetris", "settings.properties");
     }
 
     public static void ensureBaseDirectories() throws java.io.IOException {
